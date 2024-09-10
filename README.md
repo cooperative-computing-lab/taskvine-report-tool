@@ -14,7 +14,11 @@ conda install -y flask pandas tqdm bitarray python-graphviz
 
 The process of generating a report from a log directory involves three steps:
 
-1. Organize the logs directory properly. All log entries should be stored in the `logs` directory. By default, when running TaskVine, the manager generates a log directory named `vine-logs` located under `vine-run-info/most-recent`, though `most-recent` can be replaced by any entry within `vine-run-info`. You need to copy the `most-recent` (or any other entry from `vine-run-info`) into the `logs` directory.
+1. Organize the logs directory properly. All log entries should be stored in the `logs` directory. 
+
+   By default, when running TaskVine, the manager generates a log directory named `vine-logs` located under `vine-run-info/most-recent`, though `most-recent` can be replaced by any entry within `vine-run-info`. 
+
+   You need to copy the `most-recent` (or any other entry from `vine-run-info`) into the `logs` directory.
 
    There is an example in the repository that looks like this:
 
@@ -29,9 +33,15 @@ The process of generating a report from a log directory involves three steps:
            └── workflow.json
    ~~~
 
-   Typically, log files under `vine-logs` include at least `debug`, `performance`, `taskgraph`, and `transactions`. A `workflow.json` file is also normally produced by TaskVine, but it won't be used by this tool.
+   Typically, log files under `vine-logs` include at least `debug`, `performance`, `taskgraph`, and `transactions`.
 
-2. Once the logs are properly arranged, you can produce the intermediate CSV and graph files for visualization. The reason we split this process is that data processing is usually compute-intensive, while visualization alone is relatively fast. By generating the data once, it can be reused multiple times.
+   A `workflow.json` file is also normally produced by TaskVine, but it won't be used by this tool.
+
+2. Once the logs are properly arranged, you can produce the intermediate CSV and graph files for visualization. 
+
+   The reason we split this process is that data processing is usually compute-intensive, while visualization alone is relatively fast. 
+
+   By generating the data once, it can be reused multiple times.
 
    To generate the CSV files, use:
 
