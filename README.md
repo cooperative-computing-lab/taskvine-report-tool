@@ -76,4 +76,4 @@ The process of generating a report from a log directory involves three steps:
    All entries under `logs` are detected, allowing to switch between different entries for exploring and comparing.
 
 
-There are features to be added, but by now it is a good tool to quickly gain some insights from your logs. Please feel free to comment the feature you want, report a bug in the issue, or propose a PR!
+Please feel free to comment the feature you want, or propose an issue/PR when you see there is a problem!
