@@ -1,0 +1,20 @@
+html, body {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    margin: 0;
+    padding: 0;
+}
+
+.log-text {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    height: calc(100% - 20px);
+    padding: 10px;
+    font-size: 14px;
+    overflow: auto;
+    resize: vertical;
+    border: 0;
+    outline: none;
+}

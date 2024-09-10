@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>d3.js vine</title>
+    
+    <!-- icon -->
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+    <!-- import d3.js -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    
+    <!-- parse csv files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <!-- import css files -->
+    <!-- <link rel="stylesheet" href="{{ url_for('static', filename='css/header.css') }}"> -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/sidebar.css') }}?v=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/content.css') }}?v=1.0">
+    <!-- import js files-->
+    <script src="{{ url_for('static', filename='js/index.js') }}" type="module"></script>
+</head>
+<body>
+    <div id="sidebar">
+        <div id="sidebar-logo-container">
+            <img src="../static/imgs/taskvine_icon.svg" alt="Logo" id="sidebar-logo">
+            <div id="sidebar-logo-descripiton">
+                <p id="taskvine-text">TaskVine</p>
+                <p id="taskvine-version">V8.0.0</p>
+            </div>
+        </div>
+
+        <div id="log-selector-div">
+            <select id="log-selector">
+                {% for folder in log_folders %}
+                    <option value="{{ folder }}">{{ folder }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="sidebar-section-title">Report</div>
+
+        <button data-target="#manager-summary-title" class="report-scroll-btn">Manager Summary</button>
+        <button data-target="#tasks-completed-title" class="report-scroll-btn">Tasks Completed</button>
+        <button data-target="#tasks-failed-title" class="report-scroll-btn">Tasks Failed</button>
+        <button data-target="#tasks-execution-details-title" class="report-scroll-btn">Tasks Execution Details</button>
+        <button data-target="#worker-summary-title" class="report-scroll-btn">Worker Summary</button>
+        <button data-target="#worker-concurrency-title" class="report-scroll-btn">Worker Concurrency</button>
+        <button data-target="#worker-disk-usage-title" class="report-scroll-btn">Worker Disk Usage</button>
+        <button data-target="#graph-info-title" class="report-scroll-btn">DAG Summary</button>
+        <button data-target="#subgraph-info-title" class="report-scroll-btn">DAG Components</button>
+        <button data-target="#file-summary-title" class="report-scroll-btn">File Summary</button>
+        <!--
+        <button data-target="#execution-summary-title" class="report-scroll-btn">Execution Summary</button>
+        -->
+
+        <div class="sidebar-section-title">Manager Logs</div>
+        <button id="btn-debug">Debug</button>
+        <button id="btn-performance">Performance</button>
+        <button id="btn-transactions">Transactions</button>
+        
+        <div class="sidebar-section-title">Library Logs</div>
+    </div>
+
+    <!--
+    <div id="header">
+        <div id="header-left">
+            <div id="header-top">
+                <img src="../static/imgs/taskvine_icon.svg" alt="Logo" id="header-logo">
+                <h1>TaskVine Report</h1>
+            </div>
+            <div id="header-bottom">
+                <p>Generated on <span id="current-time"></span></p>
+            </div>
+        </div>
+        <div id="header-right">
+            <table>
+                <tr>
+                    <th>task count</th>
+                    <td>3000</td> 
+                    <th>worker count</th>
+                    <td>1</td>
+                    <th>per-worker cores</th>
+                    <td>4</td>
+                </tr>
+                <tr>
+                    <th>start time</th>
+                    <td>xxx</td>
+                    <th>end time</th>
+                    <td>xxx</td>
+                    <th>total time</th>
+                    <td>xxx</td>
+                </tr>
+                <tr>
+                    <th>lowest runtime</th>
+                    <td>1</td>
+                    <th>average runtime</th>
+                    <td>1</td>
+                    <th>longest runtime</th>
+                    <td>1</td>
+                </tr>
+            </table>
+        </div>
+        <div id="header-button-wrapper">
+            <button id="header-button"></button>
+        </div>
+    </div>
+    -->
+
+    <div id="content">
+        <iframe id="content-frame" src="/report" class="iframe-style"></iframe>        
+    </div>
+
+</body>
+</html>

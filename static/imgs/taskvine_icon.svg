@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_2" data-name="Layer 2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 247.5 194.06">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: none;
+        stroke: #304976;
+      }
+
+      .cls-1, .cls-2, .cls-3 {
+        stroke-miterlimit: 10;
+      }
+
+      .cls-2 {
+        fill: #294a7a;
+      }
+
+      .cls-2, .cls-3 {
+        stroke: #231f20;
+      }
+
+      .cls-3 {
+        fill: #3a7f47;
+      }
+
+      .cls-4 {
+        fill: #304976;
+        stroke-width: 0px;
+      }
+    </style>
+  </defs>
+  <g id="Layer_1-2" data-name="Layer 1">
+    <g>
+      <circle class="cls-2" cx="94.53" cy="85.75" r="14.94"/>
+      <circle class="cls-2" cx="153.92" cy="107.84" r="14.94"/>
+      <circle class="cls-2" cx="15.44" cy="178.62" r="14.94"/>
+      <circle class="cls-3" cx="82.89" cy="152.02" r="14.94"/>
+      <circle class="cls-3" cx="232.06" cy="65.32" r="14.94"/>
+      <circle class="cls-3" cx="187.41" cy="29.21" r="14.94"/>
+      <circle class="cls-3" cx="133.01" cy="15.44" r="14.94"/>
+      <circle class="cls-3" cx="70.07" cy="15.44" r="14.94"/>
+      <g>
+        <line class="cls-1" x1="30.37" y1="174.5" x2="66.91" y2="163.28"/>
+        <polygon class="cls-4" points="71.64 161.83 65.81 166.59 66.56 163.39 64.14 161.15 71.64 161.83"/>
+      </g>
+      <g>
+        <line class="cls-1" x1="94.53" y1="142.36" x2="141.55" y2="122.49"/>
+        <polygon class="cls-4" points="146.1 120.56 140.79 125.9 141.21 122.63 138.58 120.66 146.1 120.56"/>
+      </g>
+      <g>
+        <line class="cls-1" x1="168.85" y1="103.8" x2="214.52" y2="74.62"/>
+        <polygon class="cls-4" points="218.68 71.96 214.35 78.11 214.21 74.82 211.28 73.31 218.68 71.96"/>
+      </g>
+      <g>
+        <line class="cls-1" x1="160.56" y1="94.14" x2="178.68" y2="47.05"/>
+        <polygon class="cls-4" points="180.45 42.43 180.61 49.95 178.55 47.39 175.3 47.91 180.45 42.43"/>
+      </g>
+      <g>
+        <line class="cls-1" x1="96.17" y1="70.81" x2="122.14" y2="32.08"/>
+        <polygon class="cls-4" points="124.89 27.97 123.38 35.34 121.93 32.38 118.65 32.17 124.89 27.97"/>
+      </g>
+      <g>
+        <line class="cls-1" x1="96.17" y1="70.81" x2="78.02" y2="33.65"/>
+        <polygon class="cls-4" points="75.85 29.21 81.46 34.22 78.18 33.99 76.35 36.72 75.85 29.21"/>
+      </g>
+      <g>
+        <line class="cls-1" x1="84.14" y1="137.08" x2="91" y2="105.51"/>
+        <polygon class="cls-4" points="92.05 100.68 93.35 108.09 90.92 105.87 87.79 106.88 92.05 100.68"/>
+      </g>
+    </g>
+  </g>
+</svg>

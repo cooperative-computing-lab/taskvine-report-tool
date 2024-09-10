@@ -1,0 +1,321 @@
+html {
+    font-size: 4px;
+}
+
+body {
+    font-size: 3.5rem;
+}
+body h1 {
+    font-size: 6rem;
+}
+body h2 {
+    font-size: 5rem;
+}
+
+
+/* the 'header' of datatables */
+.dt-layout-row {
+    padding-top: 10px;
+}
+
+/* Containers */
+.container-alpha {
+    width: 90%;
+    height: 60vh;
+    min-width: 500px;
+    min-height: 200px;
+    overflow: auto;
+    display: inline-block;
+    justify-content: center;
+    align-items: center;
+    border: 1px solid #ccc;
+}
+
+
+/* Tips */
+#vine-tooltip {
+    position: absolute;
+    visibility: hidden;
+    padding: 10px;
+    white-space: nowrap;
+    background-color: white;
+    border: 1px solid black;
+    border-radius: 8px;
+    font-size: 3rem;
+    color: #333;
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+    pointer-events: none;
+    z-index: 9999;
+}
+.error-tip {
+    padding-left: 5rem; 
+    font-size: 4rem; 
+    color: #C32929; 
+    visibility: hidden;
+}
+
+/* Text Description */
+.text-description {
+    font-size: 4rem;
+    width: 90%;
+    height: auto;
+}
+
+.formatted-json {
+    line-height: 6rem;
+}
+
+/* Execution Details svg */
+#execution-details {
+    width: 100%;
+    height: 100%;
+}
+
+/* Label */
+.report-label-container {
+    position: relative;
+    display: inline-block;
+    justify-content: center;
+    padding-right: 2rem;
+    align-items: center;
+    height: 100%;
+    font-size: 3rem;
+    font-family: 'Open Sans', sans-serif;
+}
+
+/* Input Box */
+.report-input-box {
+    width: 35rem;
+    padding: 8px 6px;
+    font-size: 3rem;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    transition: all 0.3s ease;
+}
+
+/* Selector */
+.report-selector {
+    padding: 8px 16px;
+    margin-right: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    transition: all 0.3s ease;
+    font-size: 3rem;
+    font-family: Arial, sans-serif;
+    background-color: #ffffff;
+    font-weight: normal;
+}
+
+.report-input-box:focus,
+.report-selector:focus{
+    border-color: #66afe9;
+    box-shadow: 0 0 5px rgba(102, 175, 233, 0.6);
+    padding: 8px 16px;
+    margin-right: 10px;
+    font-size: 3rem;
+}
+
+/* Button */
+.report-button {
+    padding: 8px 16px;
+    margin-right: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    cursor: pointer;
+    outline: none;
+    transition: all 0.3s ease;
+    font-size: 3rem;
+    font-family: Arial, sans-serif;
+    background-color: #ffffff;
+    font-weight: normal;
+}
+.report-button:hover {
+    background-color: #e6e6e6;
+    box-shadow: 0 0 5px rgba(102, 175, 233, 0.6);
+}
+.report-button-active {
+    background: linear-gradient(to right, #cccccc, #d4d4d4);
+}
+
+/* Tool Box*/
+.report-toolbox {
+    position: relative;
+    justify-content: flex-start;
+    align-items: flex-start;
+    flex-direction: row;
+    margin: 10px 0px;
+    width: 90%;
+    min-width: 500px;
+}
+
+/* Preface Area */
+.preface {
+    width: 90%;
+    min-width: 500px;
+    max-height: 40vh;
+    font-size: 3.5rem; 
+    background-color: #f3f3f3;
+}
+
+
+/* Legend */
+.legend-table-container {
+    width: 90%;
+    min-width: 500px;
+    max-height: 40vh;
+    font-size: 3.5rem;
+    overflow: auto;
+    margin-bottom: 2rem;
+}
+.legend-table {
+    width: 90%;
+    border-collapse: collapse;
+    font-size: 3.5rem;
+}
+.legend-table tr {
+    height: 3rem;
+}
+.legend-table th {
+    padding: 0;
+    width: 6%;
+    text-align: center;
+    vertical-align: middle;
+}
+.legend-table td {
+    width: auto;
+    text-align: left;
+}
+
+/* Analyze Area */
+
+#critical-path-info-div {
+    width: 100%;
+    min-width: 500px;
+    white-space: nowrap; 
+    font-size: 3.5rem; 
+    padding: 0px 0px 0px 0px;
+    display: none;
+    position: relative;
+}
+
+#critical-path-container {
+    overflow: hidden; 
+    font-size: 3.5rem;
+    max-height: 8vh;
+    border: 1px solid #ccc;
+    margin-top: 2rem;
+    width: 90%;
+    margin-bottom: 2rem;
+}
+
+#analyze-task-display-details {
+    white-space: nowrap; 
+    font-size: 3.5rem; 
+    padding: 10px 0px; 
+    display: none;
+    margin: 2rem 0rem;
+}
+
+
+#analyze-task-display-task-information {
+    width: 90%;
+    display: block;
+    overflow: auto; 
+}
+
+#analyze-task-display-input-files {
+    width: 100%;
+}
+
+
+/* MANAGER info part, not hidden */
+#manager-info-container {
+    width: 90%;
+    min-width: 500px;
+    max-height: 40vh;
+    white-space: nowrap; 
+    font-size: 3.5rem; 
+    padding: 0px 0px 0px 0px;
+    display: flex;
+    position: relative;
+}
+
+#manager-description-container {
+    position: relative;
+    overflow: hidden; 
+}
+
+#manager-description-table {
+    width: 100%;
+    max-width: 600px;
+    margin: 20px auto;
+    border-collapse: collapse;
+}
+#manager-description-table th, 
+#manager-description-table td {
+    border-bottom: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+}
+#manager-description-table th {
+    width: 50%;
+}
+
+
+/* DAG */
+#graph-information-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: auto;
+    border: 1px solid #ccc;
+}
+
+
+#graph-information-svg {
+    display: inline-block;
+    max-width: 100%;
+    max-height: 100%;
+    overflow: auto;
+}
+
+/* DataTables */
+table.dataTable td{
+    max-width: 400px !important;
+    overflow: auto !important;
+}
+table.dataTable thead th {
+    text-align: left !important;
+}
+.dt-container {
+    width: auto !important;
+    max-width: 90% !important;
+    height: auto !important;
+    position: relative !important;
+    font-size: 3.5rem !important;
+    white-space: nowrap !important;
+}
+.dt-layout-cell  {
+    white-space: nowrap !important;
+    height: auto !important;
+ }
+.dt-scroll-body {
+    height: auto !important;
+    max-height: 30vh !important;
+}
+
+
+/* Footnote */
+.footnote {
+    color: #999999;
+    height: 2vh;
+    width: 90%;
+    font-size: 3.5rem;
+    background-color: #f0f0f0;
+    display: block;
+}
+
+.footnote a {
+    text-decoration: none;
+    border-bottom: 1px solid #999999;
+}
