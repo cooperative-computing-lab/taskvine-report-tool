@@ -20,7 +20,7 @@ The process of generating a report from a log directory involves three steps:
 
    You need to copy the `most-recent` (or any other entry from `vine-run-info`) into the `logs` directory.
 
-   There is an example in the repository that looks like this:
+   There is an example in the repository which can be used out of the box:
 
    ~~~
    logs
@@ -74,6 +74,12 @@ The process of generating a report from a log directory involves three steps:
    ```
 
    All entries under `logs` are detected, allowing to switch between different entries for exploring and comparing.
+
+### Examples
+
+Here are some 
+
+![screenshot_1](/Users/jinzhou/applications/taskvine-report-tool/imgs/screenshot_1.png)
 
 
 Please feel free to comment the feature you want, or propose an issue/PR when you see there is a problem!
