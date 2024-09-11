@@ -81,17 +81,17 @@ Here are some quick demostrations of the demonstration page. Note that this demo
 
 ![screenshot_1](imgs/screenshot_1.png)
 
-![screenshot_1](imgs/screenshot_2.png)
+![screenshot_2](imgs/screenshot_2.png)
 
-![screenshot_1](imgs/screenshot_3.png)
+![screenshot_3](imgs/screenshot_3.png)
 
-![screenshot_1](imgs/screenshot_4.png)
+![screenshot_4](imgs/screenshot_4.png)
 
-![screenshot_1](imgs/screenshot_5.png)
+![screenshot_5](imgs/screenshot_5.png)
 
-![screenshot_1](imgs/screenshot_6.png)
+![screenshot_6](imgs/screenshot_6.png)
 
-![screenshot_1](imgs/screenshot_7.png)
+![screenshot_7](imgs/screenshot_7.png)
 
 
 Please feel free to comment the feature you want, or propose an issue/PR when you see there is a problem!
