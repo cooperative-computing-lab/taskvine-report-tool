@@ -79,7 +79,7 @@ The process of generating a report from a log directory involves three steps:
 
 Here are some 
 
-![screenshot_1](/Users/jinzhou/applications/taskvine-report-tool/imgs/screenshot_1.png)
+![screenshot_1](imgs/screenshot_1.png)
 
 
 Please feel free to comment the feature you want, or propose an issue/PR when you see there is a problem!
