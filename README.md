@@ -77,9 +77,21 @@ The process of generating a report from a log directory involves three steps:
 
 ### Examples
 
-Here are some 
+Here are some quick demostrations of the demonstration page. Note that this demo runs on a larger scale example, which is different from the one in the current repository.
 
 ![screenshot_1](imgs/screenshot_1.png)
+
+![screenshot_1](imgs/screenshot_2.png)
+
+![screenshot_1](imgs/screenshot_3.png)
+
+![screenshot_1](imgs/screenshot_4.png)
+
+![screenshot_1](imgs/screenshot_5.png)
+
+![screenshot_1](imgs/screenshot_6.png)
+
+![screenshot_1](imgs/screenshot_7.png)
 
 
 Please feel free to comment the feature you want, or propose an issue/PR when you see there is a problem!
