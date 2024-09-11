@@ -1,6 +1,6 @@
 ## README
 
-This is an interactive visualization tool for TaskVine, allowing users to efficiently organize and visualize the results from log files. 
+This is an interactive visualization tool for [TaskVine](https://ccl.cse.nd.edu/software/taskvine/), allowing users to efficiently organize and visualize the results from log files. 
 
 ### Quick Install
 
