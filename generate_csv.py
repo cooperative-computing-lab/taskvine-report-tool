@@ -425,6 +425,10 @@ def parse_debug():
 
     # send task info to a worker
     sending_task_id = None
+    sending_task_try_id = {}
+    for task_info_key in task_info.keys():
+        task_id, try_id = task_info_key
+        sending_task_try_id[task_id] = 1
 
     with open(debug, 'r') as file:
         pbar = tqdm(total=total_lines, desc="parsing debug")
@@ -565,25 +569,23 @@ def parse_debug():
                 sending_task_id = int(parts[parts.index("task") + 1])
                 continue
             if sending_task_id:
+                task_try_id = sending_task_try_id[sending_task_id]
                 if "end" in parts:
+                    sending_task_try_id[sending_task_id] += 1
                     sending_task_id = None
-                    continue
-                if "cores" in parts:
+                elif "cores" in parts:
                     cores_requested = int(float(parts[parts.index("cores") + 1]))
-                    task_info[(sending_task_id, task_try_count[sending_task_id])]['cores_requested'] = cores_requested
-                    continue
-                if "gpus" in parts:
+                    task_info[(sending_task_id, task_try_id)]['cores_requested'] = cores_requested
+                elif "gpus" in parts:
                     gpus_requested = int(float(parts[parts.index("gpus") + 1]))
-                    task_info[(sending_task_id, task_try_count[sending_task_id])]['gpus_requested'] = gpus_requested
-                    continue
-                if "memory" in parts:
+                    task_info[(sending_task_id, task_try_id)]['gpus_requested'] = gpus_requested
+                elif "memory" in parts:
                     memory_requested = int(float(parts[parts.index("memory") + 1]))
-                    task_info[(sending_task_id, task_try_count[sending_task_id])]['memory_requested(MB)'] = memory_requested
-                    continue
-                if "disk" in parts:
+                    task_info[(sending_task_id, task_try_id)]['memory_requested(MB)'] = memory_requested
+                elif "disk" in parts:
                     disk_requested = int(float(parts[parts.index("disk") + 1]))
-                    task_info[(sending_task_id, task_try_count[sending_task_id])]['disk_requested(MB)'] = disk_requested
-                    continue
+                    task_info[(sending_task_id, task_try_id)]['disk_requested(MB)'] = disk_requested
+                continue
 
             if ("infile" in parts or "outfile" in parts) and "needs" not in parts:
                 file_id = parts.index("infile") if "infile" in parts else parts.index("outfile")
