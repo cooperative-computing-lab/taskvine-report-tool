@@ -46,31 +46,31 @@ The process of generating a report from a log directory involves three steps:
    To generate the CSV files, use:
 
    ```
-   python vine_report_generate_csv.py logs/[log_name]
+   python generate_csv.py logs/[log_name]
    ```
 
    For example
 
    ```
-   python vine_report_generate_csv.py logs/test_example
+   python generate_csv.py logs/test_example
    ```
 
    To generate the graph files, use
 
    ```
-   python vine_report_generate_graph.py logs/[log_name]
+   python generate_graph.py logs/[log_name]
    ```
 
    For example
 
    ```
-   python vine_report_generate_graph.py logs/test_example/
+   python generate_graph.py logs/test_example/
    ```
 
 3. Once all the data is generated, run the following command to open a port for online visualization
 
    ```
-   python vine_report.py
+   python app.py
    ```
 
    All entries under `logs` are detected, allowing to switch between different entries for exploring and comparing.
