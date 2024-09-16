@@ -20,7 +20,7 @@ function plotTasksConcurrency() {
     const margin = {top: 20, right: 20, bottom: 40, left: 60};
     const svgWidth = svgContainer.clientWidth - margin.left - margin.right;
     const svgHeight = svgContainer.clientHeight - margin.top - margin.bottom;
-    
+
     var taskConcurrency = window.taskConcurrency;
     taskConcurrency.forEach(function(d) {
         d.time = +d.time;

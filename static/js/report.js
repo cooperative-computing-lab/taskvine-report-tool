@@ -46,7 +46,6 @@ window.addEventListener('load', function() {
         
             plotWorkerDiskUsage({displayDiskUsageByPercentage: false});
 
-
         } catch (error) {
             console.error('Error fetching data directory:', error);
         }
