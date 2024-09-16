@@ -62,6 +62,7 @@ function drawTaskCompletedTable(url) {
             { "data": "when_done" },
             { "data": "when_output_fully_lost" },
             { "data": "cores_requested" },
+            { "data": "gpus_requested" },
             { "data": "memory_requested(MB)" },
             { "data": "disk_requested(MB)" },
             { "data": "category" },
@@ -146,6 +147,10 @@ function drawTaskFailedTable(url) {
             { "data": "when_running" },
             { "data": "when_next_ready" },
             { "data": "category" },
+            { "data": "cores_requested" },
+            { "data": "gpus_requested" },
+            { "data": "memory_requested(MB)" },
+            { "data": "disk_requested(MB)" },
         ],
     };
     var table = createTable('#tasks-failed-table', specificSettings);
