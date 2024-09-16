@@ -15,7 +15,6 @@ import pytz
 import numpy as np
 
 
-
 # initialize the global variables
 task_info, task_try_count, library_info, worker_info, manager_info, file_info, category_info = {}, {}, {}, {}, {}, {}, {}
 worker_address_hash_map = {}
@@ -420,8 +419,12 @@ def parse_debug():
         for line in file:
             total_lines += 1
 
+    # put a file on a worker
     putting_file = False
     putting_filename = None
+
+    # send task info to a worker
+    sending_task_id = None
 
     with open(debug, 'r') as file:
         pbar = tqdm(total=total_lines, desc="parsing debug")
@@ -558,6 +561,30 @@ def parse_debug():
                     # the start time has been indicated in the puturl message, so we don't need to update it here
                     worker_info[worker_hash]['disk_update'][filename]['when_stage_in'].append(start_time + wall_time)
 
+            if "task" in parts and "tx" in parts and "to" in parts and parts.index("task") == len(parts) - 2:
+                sending_task_id = int(parts[parts.index("task") + 1])
+                continue
+            if sending_task_id:
+                if "end" in parts:
+                    sending_task_id = None
+                    continue
+                if "cores" in parts:
+                    cores_requested = int(float(parts[parts.index("cores") + 1]))
+                    task_info[(sending_task_id, task_try_count[sending_task_id])]['cores_requested'] = cores_requested
+                    continue
+                if "gpus" in parts:
+                    gpus_requested = int(float(parts[parts.index("gpus") + 1]))
+                    task_info[(sending_task_id, task_try_count[sending_task_id])]['gpus_requested'] = gpus_requested
+                    continue
+                if "memory" in parts:
+                    memory_requested = int(float(parts[parts.index("memory") + 1]))
+                    task_info[(sending_task_id, task_try_count[sending_task_id])]['memory_requested(MB)'] = memory_requested
+                    continue
+                if "disk" in parts:
+                    disk_requested = int(float(parts[parts.index("disk") + 1]))
+                    task_info[(sending_task_id, task_try_count[sending_task_id])]['disk_requested(MB)'] = disk_requested
+                    continue
+
             if ("infile" in parts or "outfile" in parts) and "needs" not in parts:
                 file_id = parts.index("infile") if "infile" in parts else parts.index("outfile")
                 worker_hash = get_worker_hash(parts[file_id - 1])
@@ -575,7 +602,7 @@ def parse_debug():
                 timestamp = datestring_to_timestamp(datestring)
                 worker_hash = worker_address_hash_map[(worker_ip, worker_port)]
                 worker_id = worker_info[worker_hash]['worker_id']
-                
+
                 if filename not in worker_info[worker_hash]['disk_update']:
                     print(f"Warning: file {filename} not in worker {worker_hash}")
                     print(f"workers: {get_worker_ip_port_by_hash(worker_address_hash_map, worker_hash)}")
