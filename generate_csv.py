@@ -159,6 +159,7 @@ def parse_txn():
                         'critical_input_file': None,            # input file that took the shortest time to use
                         'critical_input_file_wait_time': 0,     # wait time from when the input file was ready to when it was used
                         'is_recovery_task': False,
+                        'exhausted_resources': False,
 
                         'graph_id': -1,                         # will be set in dag part
                         'schedule_id': -1,                      # order of scheduling
@@ -635,6 +636,12 @@ def parse_debug():
                 for try_id in range(1, try_count + 1):
                     task_info[(task_id, try_id)]['is_recovery_task'] = True
                     task_info[(task_id, try_id)]['category'] = "recovery_task"
+
+            if "exhausted" in parts and "resources" in parts:
+                exhausted_id = parts.index("exhausted")
+                task_id = int(parts[exhausted_id - 1])
+                task_info[(task_id, task_try_count[task_id])]['exhausted_resources'] = True
+
         pbar.close()
 
     for worker_hash, worker in worker_info.items():
