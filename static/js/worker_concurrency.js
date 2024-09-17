@@ -9,6 +9,10 @@ const svgContainer = document.getElementById('worker-concurrency-container');
 
 
 async function plotWorkerConnections() {
+    if (!window.workerConcurrency) {
+        return;
+    }
+
     const data = window.workerConcurrency;
     const minTime = window.time_manager_start;
 

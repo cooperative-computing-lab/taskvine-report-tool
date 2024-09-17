@@ -30,6 +30,10 @@ const tooltip = document.getElementById('vine-tooltip');
 const maxBarWidth = 50;
 
 export function plotTaskCategoryInformation({ sortByAvgExecutionTime = false } = {}) {
+    if (!window.categoryInfo) {
+        return;
+    }
+
     svgElement.selectAll('*').remove();
     const margin = {top: 40, right: 80, bottom: 40, left: 80};
     const svgWidth = svgContainer.clientWidth - margin.left - margin.right;

@@ -41,14 +41,15 @@ export async function fetchCSVData(csvFilename) {
             params: {
                 log_name: logName,
                 csv_filename: csvFilename
-            }
+            },
         });
         return response.data;
-
     } catch (error) {
-        console.error('Error:', error);
+        console.error('Error fetching data for:', csvFilename, 'Error:', error);
+        return null;
     }
 }
+
 
 export async function fetchFile(filePath) {
     try {

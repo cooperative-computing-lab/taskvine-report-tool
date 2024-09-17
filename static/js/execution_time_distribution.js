@@ -31,6 +31,10 @@ var svgHeight = svgContainer.clientHeight - margin.top - margin.bottom;
 var taskDone = '';
 
 export function plotTaskExecutionTimeDistribution({displayCDF = false} = {}) {
+    if (!window.taskDone) {
+        return;
+    }
+
     svgElement.selectAll('*').remove();
     svgWidth = svgContainer.clientWidth - margin.left - margin.right;
     svgHeight = svgContainer.clientHeight - margin.top - margin.bottom;

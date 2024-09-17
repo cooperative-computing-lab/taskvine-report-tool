@@ -11,10 +11,11 @@ const svgContainer = document.getElementById('worker-disk-usage-container');
 
 const tooltip = document.getElementById('vine-tooltip');
 
-export function plotWorkerDiskUsage({ displayDiskUsageByPercentage = false, highlightWorkerID = null, displayAccumulationOnly = false } = {}) {
+function plotWorkerDiskUsage({ displayDiskUsageByPercentage = false, highlightWorkerID = null, displayAccumulationOnly = false } = {}) {
     if (!window.workerDiskUpdate) {
         return;
     }
+
     // first remove all the elements in the svg
     svgElement.selectAll('*').remove();
 
@@ -83,7 +84,9 @@ export function plotWorkerDiskUsage({ displayDiskUsageByPercentage = false, high
     const line = d3.line()
         .x(d => {
             if (d.when_stage_in_or_out - window.minTime < 0) {
-                console.log('d.when_stage_in_or_out - window.minTime < 0, d.when_stage_in_or_out = ', d.when_stage_in_or_out, 'window.minTime = ', window.minTime);
+                console.log('d.when_stage_in_or_out - window.minTime < 0, \
+                    d.when_stage_in_or_out = ', d.when_stage_in_or_out, 'window.minTime = ', window.minTime);
+                console.log('d.filename = ', d.filename, ' d[size(MB)] = ', d['size(MB)']);
             }
             if (isNaN(d.when_stage_in_or_out - window.minTime)) {
                 console.log('d.when_stage_in_or_out - window.minTime is NaN', d);
@@ -267,8 +270,6 @@ buttonDisplayAccumulatedOnly.addEventListener('click', async function() {
     });
 });
 
-
-
 function getHighlightWorkerID() {
     let workerID = document.getElementById('input-highlight-worker-disk-usage').value;
     if (!window.workerDiskUpdate.some(d => +d.worker_id === +workerID)) {
@@ -307,6 +308,7 @@ function handleResetClick() {
     buttonAnalyzeWorker.classList.remove('report-button-active');
     plotWorkerDiskUsage({displayDiskUsageByPercentage: false});
 }
+
 window.parent.document.addEventListener('dataLoaded', function() {
     // deactivating the buttons
     buttonDisplayPercentages.classList.remove('report-button-active');
@@ -318,11 +320,13 @@ window.parent.document.addEventListener('dataLoaded', function() {
 
     buttonReset.removeEventListener('click', handleResetClick);
     buttonReset.addEventListener('click', handleResetClick);
-});
 
+    plotWorkerDiskUsage({displayDiskUsageByPercentage: false});
+});
 
 window.addEventListener('resize', _.debounce(() => plotWorkerDiskUsage({
     displayDiskUsageByPercentage: buttonDisplayPercentages.classList.contains('report-button-active'),
     highlightWorkerID: getHighlightWorkerID(),
     displayAccumulationOnly: buttonDisplayAccumulatedOnly.classList.contains('report-button-active'),
 }), 300));
+

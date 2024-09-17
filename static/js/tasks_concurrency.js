@@ -14,7 +14,11 @@ var dotRadius = lineStrokeWidth;
 const dotColor = 'steelblue';
 const tooltip = document.getElementById('vine-tooltip');
 
-function plotTasksConcurrency() {
+function plotTaskConcurrency() {
+    if (!window.taskConcurrency) {
+        return;
+    }
+
     svgElement.selectAll('*').remove();
 
     const margin = {top: 20, right: 20, bottom: 40, left: 60};
@@ -111,11 +115,11 @@ function handleDownloadClick() {
 }
 function handleResetClick() {
 
-    plotTasksConcurrency();
+    plotTaskConcurrency();
 }
 
 window.parent.document.addEventListener('dataLoaded', function() {
-    plotTasksConcurrency();
+    plotTaskConcurrency();
 
     buttonDownload.removeEventListener('click', handleDownloadClick);
     buttonDownload.addEventListener('click', handleDownloadClick);
@@ -124,4 +128,4 @@ window.parent.document.addEventListener('dataLoaded', function() {
     buttonReset.addEventListener('click', handleResetClick);
 });
 
-window.addEventListener('resize', _.debounce(() => plotTasksConcurrency(), 300));
+window.addEventListener('resize', _.debounce(() => plotTaskConcurrency(), 300));

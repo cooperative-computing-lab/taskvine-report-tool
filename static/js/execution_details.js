@@ -1,4 +1,5 @@
 import { downloadSVG, getTaskInnerHTML } from './tools.js';
+import { setupZoomAndScroll } from './tools.js';
 
 const buttonReset = document.getElementById('button-reset-task-execution-details');
 const buttonDownload = document.getElementById('button-download-task-execution-details');
@@ -35,6 +36,10 @@ const colors = {
 }
 
 export function plotExecutionDetails() {
+    if (!window.taskDone) {
+        return;
+    }
+
     const taskDone = window.taskDone;
     const taskFailedOnWorker = window.taskFailedOnWorker;
 
@@ -381,6 +386,9 @@ window.parent.document.addEventListener('dataLoaded', function() {
 
     buttonReset.removeEventListener('click', handleResetClick);
     buttonReset.addEventListener('click', handleResetClick);
+
+    plotExecutionDetails();
+    setupZoomAndScroll('#execution-details', '#execution-details-container');
 });
 
 window.addEventListener('resize', _.debounce(() => plotExecutionDetails(), 300));
