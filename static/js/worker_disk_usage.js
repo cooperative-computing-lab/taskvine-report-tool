@@ -271,6 +271,9 @@ buttonDisplayAccumulatedOnly.addEventListener('click', async function() {
 });
 
 function getHighlightWorkerID() {
+    if (!window.workerDiskUpdate) {
+        return null;
+    }
     let workerID = document.getElementById('input-highlight-worker-disk-usage').value;
     if (!window.workerDiskUpdate.some(d => +d.worker_id === +workerID)) {
         workerID = null;
