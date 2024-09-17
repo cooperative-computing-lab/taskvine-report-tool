@@ -1,4 +1,4 @@
-import { setupZoomAndScroll, fetchCSVData } from './tools.js';
+import { fetchCSVData } from './tools.js';
 
 
 async function loadAllCSVData() {
