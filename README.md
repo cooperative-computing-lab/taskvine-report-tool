@@ -43,6 +43,8 @@ The process of generating a report from a log directory involves three steps:
 
    By generating the data once, it can be reused multiple times.
 
+   The first step is to generate some CSV files, which provides the majority of aspects of a run, including how tasks are distributed among workers, what are the execution time of each task, how many tasks are running concurrently at different time, etc.
+   
    To generate the CSV files, use:
 
    ```
@@ -54,6 +56,8 @@ The process of generating a report from a log directory involves three steps:
    ```
    python generate_csv.py logs/test_example
    ```
+
+   Additionally, users can optionally generate the task graph to further examine the relationships between tasks. We separate this process because it can take a significant amount of time if there are hundreds of thousands of tasks.
 
    To generate the graph files, use
 
