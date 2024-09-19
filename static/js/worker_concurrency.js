@@ -14,7 +14,7 @@ async function plotWorkerConnections() {
     }
 
     const data = window.workerConcurrency;
-    const minTime = window.time_manager_start;
+    const minTime = window.minTime;
 
     const margin = {top: 40, right: 30, bottom: 40, left: 30};
 
@@ -37,7 +37,7 @@ async function plotWorkerConnections() {
     const maxParallelWorkers = d3.max(data, d => d.concurrent_workers);
 
     const xScale = d3.scaleLinear()
-        .domain([0, d3.max(data, d => d.time - minTime)])
+        .domain([0, window.maxTime - window.minTime])
         .range([0, svgWidth]);
 
     const yScale = d3.scaleLinear()
@@ -53,7 +53,7 @@ async function plotWorkerConnections() {
                         xScale.domain()[0] + (xScale.domain()[1] - xScale.domain()[0]) * 0.75,
                         xScale.domain()[1]
                     ])
-                    .tickFormat(d3.format(".1f"));
+                    .tickFormat(d3.format(window.xTickFormat));
     svg.append("g")
         .attr("transform", `translate(0,${svgHeight})`)
         .call(xAxis)

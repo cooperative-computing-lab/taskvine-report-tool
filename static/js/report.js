@@ -1,5 +1,10 @@
 import { fetchCSVData } from './tools.js';
 
+const logSelector = window.parent.document.getElementById('log-selector');
+
+// Some global variables
+window.xTickFormat = ".2f";
+
 
 async function loadAllCSVData() {
     try {
@@ -16,17 +21,17 @@ async function loadAllCSVData() {
             categoryInfo,
             graphInfo,
         ] = await Promise.all([
-            fetchCSVData("manager_info.csv"),
-            fetchCSVData("task_done.csv"),
-            fetchCSVData("task_concurrency.csv"),
-            fetchCSVData("task_failed_on_manager.csv"),
-            fetchCSVData("task_failed_on_worker.csv"),
-            fetchCSVData("worker_disk_usage.csv"),
-            fetchCSVData("worker_concurrency.csv"),
-            fetchCSVData("worker_summary.csv"),
-            fetchCSVData("file_info.csv"),
-            fetchCSVData("category_info.csv"),
-            fetchCSVData("graph_info.csv"),
+            fetchCSVData(window.logName, "manager_info.csv"),
+            fetchCSVData(window.logName, "task_done.csv"),
+            fetchCSVData(window.logName, "task_concurrency.csv"),
+            fetchCSVData(window.logName, "task_failed_on_manager.csv"),
+            fetchCSVData(window.logName, "task_failed_on_worker.csv"),
+            fetchCSVData(window.logName, "worker_disk_usage.csv"),
+            fetchCSVData(window.logName, "worker_concurrency.csv"),
+            fetchCSVData(window.logName, "worker_summary.csv"),
+            fetchCSVData(window.logName, "file_info.csv"),
+            fetchCSVData(window.logName, "category_info.csv"),
+            fetchCSVData(window.logName, "graph_info.csv"),
         ]);
 
         window.managerInfo = managerInfo;
@@ -41,41 +46,50 @@ async function loadAllCSVData() {
         window.categoryInfo = categoryInfo;
         window.graphInfo = graphInfo;
 
+        window.managerInfo = window.window.managerInfo[0];
+        window.time_manager_start = window.managerInfo.time_start;
+        window.time_manager_end = window.managerInfo.time_end;
+        window.when_first_task_start_commit = window.managerInfo.when_first_task_start_commit;
+        window.when_last_task_done = window.managerInfo.when_last_task_done
+
+        // 2 set of time
+        // window.minTime = window.time_manager_start;
+        window.minTime = window.when_first_task_start_commit;
+        window.maxTime = window.time_manager_end;
+        // window.maxTime = window.when_last_task_done;
+
     } catch (error) {
         console.error("Error loading data:", error);
     }
 }
 
-window.addEventListener('load', function() {
-    
-    async function handleLogChange() {
-        window.logName = this.value;
-        // remove all the svgs
-        var svgs = d3.selectAll('svg');
-        svgs.each(function() {
-            d3.select(this).selectAll('*').remove();
-        });
+async function handleLogChange() {
+    window.logName = this.value;
 
-        // hidden some divs
-        const headerTips = window.parent.document.getElementsByClassName('error-tip');
-        for (let i = 0; i < headerTips.length; i++) {
-            headerTips[i].style.display = 'none';
-        }
+    // update the url
+    window.parent.history.pushState({}, '', `/logs/${window.logName}`);
 
-        await loadAllCSVData();
+    // remove all the svgs
+    var svgs = d3.selectAll('svg');
+    svgs.each(function() {
+        d3.select(this).selectAll('*').remove();
+    });
 
-        window.managerInfo = window.window.managerInfo[0];
-        window.time_manager_start = window.managerInfo.time_start;
-        window.time_manager_end = window.managerInfo.time_end;
-
-        window.minTime = window.time_manager_start;
-        window.maxTime = window.time_manager_end;
-
-        window.parent.document.dispatchEvent(new Event('dataLoaded'));
+    // hidden some divs
+    const headerTips = window.parent.document.getElementsByClassName('error-tip');
+    for (let i = 0; i < headerTips.length; i++) {
+        headerTips[i].style.display = 'none';
     }
 
+    // load all csv data and set global variables
+    await loadAllCSVData();
+
+    window.parent.document.dispatchEvent(new Event('dataLoaded'));
+}
+
+window.addEventListener('load', function() {
+
     // Bind the change event listener to logSelector
-    const logSelector = window.parent.document.getElementById('log-selector');
     logSelector.addEventListener('change', handleLogChange);
 
     // Initialize the report iframe if the logSelector has an initial value
@@ -83,3 +97,4 @@ window.addEventListener('load', function() {
         logSelector.dispatchEvent(new Event('change'));
     }
 });
+

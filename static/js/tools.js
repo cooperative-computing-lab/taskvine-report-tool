@@ -35,11 +35,10 @@ export function formatUnixTimestamp(unixTimestamp, format = 'YYYY-MM-DD HH:mm:ss
     }
 }
 
-export async function fetchCSVData(csvFilename) {
+export async function fetchCSVData(logName, csvFilename) {
     try {
-        const response = await axios.get(`get_csv_data`, {
+        const response = await axios.get(`/logs/${logName}/get_csv_data`, {
             params: {
-                log_name: logName,
                 csv_filename: csvFilename
             },
         });

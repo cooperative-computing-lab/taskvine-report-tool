@@ -258,18 +258,30 @@ def get_file():
     }
     return response
 
-@app.route('/get_csv_data', methods=['GET'])
-def get_csv_data():
-    log_name = request.args.get('log_name')
+@app.route('/logs/<log_name>/get_csv_data', methods=['GET'])
+def get_csv_data(log_name):
     csv_filename = request.args.get('csv_filename', type=str)
+    file_path = os.path.join(LOGS_DIR, log_name, 'vine-logs', csv_filename)
+
     try:
-        df = pd.read_csv(os.path.join(LOGS_DIR, log_name, 'vine-logs', csv_filename)).fillna('N/A')
+        df = pd.read_csv(file_path).fillna('N/A')
         for col in ['input_files', 'output_files', 'producers', 'consumers', 'worker_holding', 'critical_tasks']:
             if col in df.columns:
                 df[col] = df[col].apply(safe_literal_eval)
-        return df.to_dict(orient='records')
+        
+        return jsonify(df.to_dict(orient='records'))
+    except FileNotFoundError:
+        return jsonify({'error': f'File {csv_filename} not found in log {log_name}'}), 404
     except Exception as e:
-        return jsonify({'error': str(e)}), 404
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/logs/<log_name>')
+def render_log_page(log_name):
+    log_folders = [name for name in os.listdir(LOGS_DIR) if os.path.isdir(os.path.join(LOGS_DIR, name))]
+    log_folders_sorted = sorted(log_folders)
+    return render_template('index.html', log_folders=log_folders_sorted)
+
 
 @app.route('/')
 def index():

@@ -55,7 +55,7 @@ function plotTaskConcurrency() {
             xScale.domain()[0] + (xScale.domain()[1] - xScale.domain()[0]) * 0.75,
             xScale.domain()[1]
         ])
-        .tickFormat(d3.format(".2f"));
+        .tickFormat(d3.format(window.xTickFormat));
     svg.append("g")
         .attr("transform", `translate(0,${svgHeight})`)
         .call(xAxis);

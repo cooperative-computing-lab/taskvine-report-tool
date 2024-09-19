@@ -314,6 +314,8 @@ def parse_txn():
                     manager_info['lifetime(s)'] = None
                     manager_info['time_start_human'] = None
                     manager_info['time_end_human'] = None
+                    manager_info['when_first_task_start_commit'] = None
+                    manager_info['when_last_task_done'] = None
                     manager_info['tasks_submitted'] = 0
                     manager_info['tasks_done'] = 0
                     manager_info['tasks_failed_on_manager'] = 0
@@ -860,6 +862,10 @@ def generate_other_statistics(task_df, worker_summary_df):
     manager_info['time_end_human'] = timestamp_to_datestring(manager_info['time_end'])[:22]
     # the max try_id in task_df
     manager_info['max_task_try_count'] = task_df['try_id'].max()
+    # the min start_time in task_df
+    manager_info['when_first_task_start_commit'] = task_df['time_commit_start'].min()
+    manager_info['when_last_task_done'] = task_df['when_done'].max()
+    # convert into csv format
     manager_info_df = pd.DataFrame([manager_info])
     manager_info_df.to_csv(os.path.join(dirname, 'manager_info.csv'), index=False)
     #####################################################
@@ -993,6 +999,10 @@ def generate_worker_disk_usage():
             # Preparing row data
             for event_time, disk_increment in zip(disk_update['when_stage_in'] + disk_update['when_stage_out'],
                                                  [disk_update['size(MB)']] * len_in + [-disk_update['size(MB)']] * len_out):
+                if len(str(event_time).split('.')[1]) == 2:
+                    # some timestamps only have 2 decimal places, which is a bug needs to be fixed
+                    event_time += 0.01
+
                 if event_time < manager_info['time_start']:
                     if abs(event_time - manager_info['time_start']) < 1:
                         # manager_info['time_start'] is more accurate

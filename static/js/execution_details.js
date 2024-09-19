@@ -272,7 +272,7 @@ function plotAxis(svg, svgWidth, svgHeight) {
             xScale.domain()[0] + (xScale.domain()[1] - xScale.domain()[0]) * 0.75,
             xScale.domain()[1]
         ])
-        .tickFormat(d3.format(".1f"));
+        .tickFormat(window.XTickFormat);
     svg.append('g')
         .attr('transform', `translate(0, ${svgHeight})`)
         .call(xAxis);
