@@ -1002,6 +1002,9 @@ def generate_worker_disk_usage():
                 if len(str(event_time).split('.')[1]) == 2:
                     # some timestamps only have 2 decimal places, which is a bug needs to be fixed
                     event_time += 0.01
+                elif len(str(event_time).split('.')[1]) == 1:
+                    # some timestamps only have 1 decimal places, which is a bug needs to be fixed
+                    event_time += 0.1
 
                 if event_time < manager_info['time_start']:
                     if abs(event_time - manager_info['time_start']) < 1:

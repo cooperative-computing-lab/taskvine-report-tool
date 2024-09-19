@@ -1,7 +1,5 @@
 import { fetchCSVData } from './tools.js';
 
-const logSelector = window.parent.document.getElementById('log-selector');
-
 // Some global variables
 window.xTickFormat = ".2f";
 
@@ -88,7 +86,17 @@ async function handleLogChange() {
 }
 
 window.addEventListener('load', function() {
+    const logSelector = window.parent.document.getElementById('log-selector');
 
+    // Get the log name from the URL (in case of refresh)
+    const currentPath = window.parent.location.pathname;
+    const currentLogName = currentPath.split('/')[2];
+
+    if (currentLogName) {
+        window.logName = currentLogName;
+        logSelector.value = currentLogName;
+    }
+    
     // Bind the change event listener to logSelector
     logSelector.addEventListener('change', handleLogChange);
 
@@ -97,4 +105,3 @@ window.addEventListener('load', function() {
         logSelector.dispatchEvent(new Event('change'));
     }
 });
-
