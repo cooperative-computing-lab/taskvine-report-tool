@@ -87,7 +87,7 @@ function handleDownloadClick() {
     downloadSVG('graph-information-svg', 'subgraph_' + selectedDAGID + '.svg');
 }
 window.parent.document.addEventListener('dataLoaded', function() {
-    if (typeof window.graphInfo === 'undefined') {
+    if (typeof window.graphInfo === 'undefined' || window.graphInfo === null) {
         errorTip.style.visibility = 'visible';
         return;
     }

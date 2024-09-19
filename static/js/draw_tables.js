@@ -221,7 +221,7 @@ function drawWorkerTable(url) {
     var table = createTable('#worker-table', specificSettings)
 }
 
-function drawDAGTable(url) {
+function drawGraphTable(url) {
     var specificSettings = {
         "ajax": {
             "url": url,
@@ -309,8 +309,8 @@ function loadPage(dataName, page, perPage) {
                 drawTaskFailedTable(url);
             } else if (dataName === 'worker') {
                 drawWorkerTable(url);
-            } else if (dataName === 'dag') {
-                drawDAGTable(url);
+            } else if (dataName === 'graph') {
+                drawGraphTable(url);
             } else if (dataName == 'file') {
                 drawFileTable(url);
             }
@@ -326,7 +326,9 @@ window.parent.document.addEventListener('dataLoaded', function() {
     document.getElementById('button-tasks-completed-reset-table').click();
     loadPage('tasksFailed', 1, dataTableSettings.pageLength);
     loadPage('worker', 1, dataTableSettings.pageLength);
-    loadPage('dag', 1, dataTableSettings.pageLength);
+    if (window.graphInfo !== null) {
+        loadPage('graph', 1, dataTableSettings.pageLength);
+    }
     loadPage('file', 1, dataTableSettings.pageLength);
 });
 

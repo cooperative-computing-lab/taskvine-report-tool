@@ -179,8 +179,8 @@ def get_worker_summary():
 
     return response
 
-@app.route('/dag')
-def get_dag():
+@app.route('/graph')
+def get_graph():
     log_name = request.args.get('log_name')
     draw = int(request.args.get('draw', 1))
     start = int(request.args.get('start', 0))
@@ -189,9 +189,9 @@ def get_dag():
     search_type = request.args.get('search[type]', '')
     timestamp_type = request.args.get('timestamp_type')
 
-    dag_df = pd.read_csv(os.path.join(LOGS_DIR, log_name, 'vine-logs', 'graph_info.csv'))
+    graph_info_df = pd.read_csv(os.path.join(LOGS_DIR, log_name, 'vine-logs', 'graph_info.csv'))
     columns_to_return = ['graph_id', 'num_tasks', 'time_completion', 'num_critical_tasks', 'critical_tasks']
-    dag_df = dag_df[columns_to_return]
+    graph_info_df = graph_info_df[columns_to_return]
 
     if search_value:
         pass
@@ -201,17 +201,17 @@ def get_dag():
         order_dir = request.args.get('order[0][dir]', 'asc')
         column_name = request.args.get(f'columns[{order_column}][data]', 'graph_id')
         if order_dir == 'asc':
-            dag_df = dag_df.sort_values(by=column_name, ascending=True)
+            graph_info_df = graph_info_df.sort_values(by=column_name, ascending=True)
         else:
-            dag_df = dag_df.sort_values(by=column_name, ascending=False)
+            graph_info_df = graph_info_df.sort_values(by=column_name, ascending=False)
     
-    page_data = dag_df.iloc[start:start + length].to_dict(orient='records')
+    page_data = graph_info_df.iloc[start:start + length].to_dict(orient='records')
 
     response = {
         "draw": draw,
         "data": page_data,
-        "recordsTotal": len(dag_df),
-        "recordsFiltered": len(dag_df)
+        "recordsTotal": len(graph_info_df),
+        "recordsFiltered": len(graph_info_df)
     }
     return response
 
@@ -280,7 +280,7 @@ def get_csv_data(log_name):
 def render_log_page(log_name):
     log_folders = [name for name in os.listdir(LOGS_DIR) if os.path.isdir(os.path.join(LOGS_DIR, name))]
     log_folders_sorted = sorted(log_folders)
-    return render_template('index.html', log_folders=log_folders_sorted)
+    return render_template('index.html', log_folders=log_folders_sorted, current_log=log_name)
 
 
 @app.route('/')
