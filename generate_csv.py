@@ -352,7 +352,10 @@ def parse_taskgraph():
             pbar.update(1)
             if '->' not in line:
                 if line.startswith('"'):
-                    left, right = line.split(' ')
+                    try:
+                        left, right = line.split(' ')
+                    except:
+                        print(f"Warning: Unexpected format: {line}")
                     filename = left[1:-1]
                     if filename.startswith('file'):
                         filename = filename[5:]
