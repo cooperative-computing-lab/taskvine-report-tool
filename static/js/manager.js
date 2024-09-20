@@ -20,6 +20,7 @@ function fillMgrDescription() {
     document.getElementById('workers-connected').textContent = window.managerInfo.total_workers;
     document.getElementById('workers-active').textContent = window.managerInfo.active_workers;
     document.getElementById('max-concurrent-workers').textContent = window.managerInfo.max_concurrent_workers;
+    document.getElementById('size-of-all-files').textContent = window.managerInfo['size_of_all_files(MB)'] + 'MB';
 }
 
 async function fillFactoryDescription() {

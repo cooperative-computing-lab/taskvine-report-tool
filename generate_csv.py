@@ -866,7 +866,7 @@ def generate_other_statistics(task_df, file_info_df, worker_summary_df):
     manager_info['when_first_task_start_commit'] = task_df['time_commit_start'].min()
     manager_info['when_last_task_done'] = task_df['when_done'].max()
     # total size of files transferred
-    manager_info['size_of_all_files(MB)'] = file_info_df['size(MB)'].sum()
+    manager_info['size_of_all_files(MB)'] = round(file_info_df['size(MB)'].sum(), 4)
     # convert into csv format
     manager_info_df = pd.DataFrame([manager_info])
     manager_info_df.to_csv(os.path.join(dirname, 'manager_info.csv'), index=False)
@@ -1045,31 +1045,29 @@ def generate_worker_disk_usage():
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('log_dirs', nargs='+', type=str, help='list of log directories')
+    parser.add_argument('log_dir', type=str, help='list of log directories')
     parser.add_argument('--execution-details-only', action='store_true', help='Only generate data for task execution details')
     args = parser.parse_args()
 
-    for log_dir in args.log_dirs:
-        print(f"=== Processing {log_dir}...")
-        dirname = os.path.join(log_dir, 'vine-logs')
-        txn = os.path.join(dirname, 'transactions')
-        debug = os.path.join(dirname, 'debug')
-        taskgraph = os.path.join(dirname, 'taskgraph')
-        daskvine_log = os.path.join(dirname, 'daskvine.log')
+    dirname = os.path.join(args.log_dir, 'vine-logs')
+    txn = os.path.join(dirname, 'transactions')
+    debug = os.path.join(dirname, 'debug')
+    taskgraph = os.path.join(dirname, 'taskgraph')
+    daskvine_log = os.path.join(dirname, 'daskvine.log')
 
-        parse_txn()
+    parse_txn()
 
-        if not args.execution_details_only:
-            parse_taskgraph()
-            parse_debug()
-            file_info_df = store_file_info()
+    if not args.execution_details_only:
+        parse_taskgraph()
+        parse_debug()
+        file_info_df = store_file_info()
 
-        parse_daskvine_log()
+    parse_daskvine_log()
 
-        task_df = generate_task_df()
-        worker_disk_usage_df  = generate_worker_disk_usage()
-        worker_summary_df = generate_worker_summary(worker_disk_usage_df)
-        generate_other_statistics(task_df, file_info_df, worker_summary_df)
+    task_df = generate_task_df()
+    worker_disk_usage_df  = generate_worker_disk_usage()
+    worker_summary_df = generate_worker_summary(worker_disk_usage_df)
+    generate_other_statistics(task_df, file_info_df, worker_summary_df)
 
-        # for function calls
-        generate_library_summary()
+    # for function calls
+    generate_library_summary()
