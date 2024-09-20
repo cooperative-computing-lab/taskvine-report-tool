@@ -870,6 +870,8 @@ def generate_other_statistics(task_df, file_info_df, worker_summary_df):
     manager_info['when_last_task_done'] = task_df['when_done'].max()
     # total size of files transferred
     manager_info['size_of_all_files(MB)'] = round(file_info_df['size(MB)'].sum(), 4)
+    # peak disk usage among all workers
+    manager_info['cluster_peak_disk_usage(MB)'] = round(worker_summary_df['peak_disk_usage(MB)'].max(), 4)
     # convert into csv format
     manager_info_df = pd.DataFrame([manager_info])
     manager_info_df.to_csv(os.path.join(dirname, 'manager_info.csv'), index=False)

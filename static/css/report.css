@@ -232,7 +232,7 @@ body h2 {
 #manager-info-container {
     width: 90%;
     min-width: 500px;
-    max-height: 40vh;
+    max-height: 50vh;
     white-space: nowrap; 
     font-size: 3.5rem; 
     padding: 0px 0px 0px 0px;
