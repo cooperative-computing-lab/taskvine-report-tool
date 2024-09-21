@@ -6,7 +6,8 @@ import graphviz
 import argparse
 from collections import deque
 from multiprocessing import Pool, cpu_count, set_start_method
-
+import sys
+sys.setrecursionlimit(30000)
 
 def safe_literal_eval(val):
     try:
