@@ -16,7 +16,7 @@ import numpy as np
 
 
 # initialize the global variables
-task_info, task_try_count, library_info, worker_info, manager_info, file_info, category_info = {}, {}, {}, {}, {}, {}, {}
+task_info, task_try_count, library_info, worker_info, manager_info, file_info, category_info, manager_disk_usage = {}, {}, {}, {}, {}, {}, {}, {}
 worker_address_hash_map = {}
 task_start_timestamp = 'time_worker_start'
 task_finish_timestamp = 'time_worker_end'
@@ -30,6 +30,14 @@ def datestring_to_timestamp(datestring):
     tz_custom = timezone(timedelta(hours=manager_info['time_zone_offset_hours']))
     datestring_custom = datetime.strptime(datestring, "%Y/%m/%d %H:%M:%S.%f").replace(tzinfo=tz_custom)
     unix_timestamp = float(datestring_custom.timestamp())
+
+    # timestamps only have 2 decimal places, operations might happen before the manager connection, which is a bug needs to be fixed
+    if len(str(unix_timestamp).split('.')[1]) == 2:
+        unix_timestamp += 0.01
+    elif len(str(unix_timestamp).split('.')[1]) == 1:
+        unix_timestamp += 0.1
+    elif len(str(unix_timestamp).split('.')[1]) == 0:
+        unix_timestamp += 1
     return unix_timestamp
 
 def timestamp_to_datestring(unix_timestamp):
@@ -57,8 +65,11 @@ def get_worker_ip_port_by_hash(worker_address_hash_map, worker_hash):
             workers_by_ip_port.append(k[0] + ":" + k[1])
     return workers_by_ip_port
 
-def get_worker_hash(worker_ip_port_string):
-    content = re.search(r'\((.*?)\)', worker_ip_port_string).group(1)
+def worker_ipport_to_hash(worker_ip_port_string):
+    if worker_ip_port_string.startswith('('):
+        content = re.search(r'\((.*?)\)', worker_ip_port_string).group(1)
+    else:
+        content = worker_ip_port_string
     worker_ip, worker_port = content.split(':')
     return worker_address_hash_map[(worker_ip, worker_port)]
 
@@ -463,7 +474,7 @@ def parse_debug():
             if putting_file:
                 if "file" in parts and parts[parts.index("file") - 1].endswith(':'):
                     file_id = parts.index("file")
-                    worker_hash = get_worker_hash(parts[file_id - 1])
+                    worker_hash = worker_ipport_to_hash(parts[file_id - 1])
                     putting_filename = parts[file_id + 1]
                     size_in_mb = int(parts[file_id + 2]) / 2**20
 
@@ -496,7 +507,7 @@ def parse_debug():
                     if putting_filename is None:
                         raise ValueError("putting_filename is None")
                     received_id = parts.index("received")
-                    worker_hash = get_worker_hash(parts[received_id - 1])
+                    worker_hash = worker_ipport_to_hash(parts[received_id - 1])
                     datestring = parts[0] + " " + parts[1]
                     timestamp = datestring_to_timestamp(datestring)
                     if putting_filename not in worker_info[worker_hash]['disk_update']:
@@ -508,7 +519,7 @@ def parse_debug():
             if "puturl" in parts or "puturl_now" in parts:
                 puturl_id = parts.index("puturl") if "puturl" in parts else parts.index("puturl_now")
                 url_source = parts[puturl_id + 1]
-                worker_hash = get_worker_hash(parts[puturl_id - 1])
+                worker_hash = worker_ipport_to_hash(parts[puturl_id - 1])
                 filename = parts[puturl_id + 2]
                 cache_level = parts[puturl_id + 3]
                 size_in_mb = int(parts[puturl_id + 4]) / 2**20
@@ -547,7 +558,7 @@ def parse_debug():
                 wall_time = float(parts[cache_update_id + 6]) / 1e6
                 start_time = float(parts[cache_update_id + 7]) / 1e6
 
-                worker_hash = get_worker_hash(parts[cache_update_id - 1])
+                worker_hash = worker_ipport_to_hash(parts[cache_update_id - 1])
 
                 # start time should be after the manager start time
                 if start_time < manager_info['time_start']:
@@ -595,7 +606,7 @@ def parse_debug():
 
             if ("infile" in parts or "outfile" in parts) and "needs" not in parts:
                 file_id = parts.index("infile") if "infile" in parts else parts.index("outfile")
-                worker_hash = get_worker_hash(parts[file_id - 1])
+                worker_hash = worker_ipport_to_hash(parts[file_id - 1])
                 manager_site_name = parts[file_id + 2]
 
                 # update disk usage
@@ -646,8 +657,38 @@ def parse_debug():
                 exhausted_id = parts.index("exhausted")
                 task_id = int(parts[exhausted_id - 1])
                 task_info[(task_id, task_try_count[task_id])]['exhausted_resources'] = True
+            
+            # get an output file from a worker
+            if "Receiving" in parts and "file" in parts:
+                # timestamp
+                datestring = parts[0] + " " + parts[1]
+                timestamp = datestring_to_timestamp(datestring)
+                # filename
+                receiving_idx = parts.index("Receiving")
+                target_filepath = parts[receiving_idx + 2]
+                target_filename = target_filepath.split('/')[-1]
+                if target_filepath.split('/')[-2] != "outputs":
+                    print(f"Waring: receiving a file but not in outputs folder: {target_filepath}")
+                # size
+                size_in_mb = int(parts[receiving_idx + 4]) / 2**20
+                # source worker
+                worker_hash = worker_ipport_to_hash(parts[parts.index("from") + 1])
+                # update manager_disk_usage
+                if target_filename in file_info:
+                    print(f"Warning: file {target_filename} already exists")
+                manager_disk_usage[target_filename] = {
+                    'time_stage_in': timestamp,
+                    'size(MB)': size_in_mb,
+                    'from_worker': worker_hash,
+                }
 
         pbar.close()
+    
+    # manager_disk_usage can be immediately transferred to manager_disk_usage_df
+    manager_disk_usage_df = pd.DataFrame.from_dict(manager_disk_usage, orient='index')
+    manager_disk_usage_df.index.name = 'filename'
+    manager_disk_usage_df["accumulated_disk_usage(MB)"] = manager_disk_usage_df["size(MB)"].cumsum()
+    manager_disk_usage_df.to_csv(os.path.join(dirname, 'manager_disk_usage.csv'))
 
     for worker_hash, worker in worker_info.items():
         for filename, worker_disk_update in worker['disk_update'].items():
@@ -1006,12 +1047,6 @@ def generate_worker_disk_usage():
             # Preparing row data
             for event_time, disk_increment in zip(disk_update['when_stage_in'] + disk_update['when_stage_out'],
                                                  [disk_update['size(MB)']] * len_in + [-disk_update['size(MB)']] * len_out):
-                if len(str(event_time).split('.')[1]) == 2:
-                    # some timestamps only have 2 decimal places, which is a bug needs to be fixed
-                    event_time += 0.01
-                elif len(str(event_time).split('.')[1]) == 1:
-                    # some timestamps only have 1 decimal places, which is a bug needs to be fixed
-                    event_time += 0.1
 
                 if event_time < manager_info['time_start']:
                     if abs(event_time - manager_info['time_start']) < 1:

@@ -8,6 +8,7 @@ async function loadAllCSVData() {
     try {
         const [
             managerInfo,
+            manager_disk_usage,
             taskDone,
             taskConcurrency,
             taskFailedOnManager,
@@ -20,6 +21,7 @@ async function loadAllCSVData() {
             graphInfo,
         ] = await Promise.all([
             fetchCSVData(window.logName, "manager_info.csv"),
+            fetchCSVData(window.logName, "manager_disk_usage.csv"),
             fetchCSVData(window.logName, "task_done.csv"),
             fetchCSVData(window.logName, "task_concurrency.csv"),
             fetchCSVData(window.logName, "task_failed_on_manager.csv"),
@@ -33,6 +35,7 @@ async function loadAllCSVData() {
         ]);
 
         window.managerInfo = managerInfo;
+        window.managerDiskUsage = manager_disk_usage;
         window.taskDone = taskDone;
         window.taskConcurrency = taskConcurrency;
         window.taskFailedOnManager = taskFailedOnManager;
