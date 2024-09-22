@@ -97,8 +97,8 @@ function plotManagerDiskUsage() {
                     time: ${(d.time_stage_in - minTime).toFixed(2)}s<br>
                     filename: ${d.filename}<br>
                     from worker: ${d.from_worker}<br>
-                    size (MB): ${d['size(MB)'].toFixed(2)} MB
-                    accumulated disk usage (MB): ${d['accumulated_disk_usage(MB)'].toFixed(2)} MB<br>
+                    size (MB): ${d['size(MB)'].toFixed(2)} MB <br>
+                    accumulated disk usage (MB): ${d['accumulated_disk_usage(MB)'].toFixed(2)} MB
                 `;
             tooltip.style.visibility = 'visible';
             tooltip.style.top = (event.pageY + 10) + 'px';
