@@ -209,7 +209,7 @@ function scatterplot(svg) {
         .on("mouseout", function(d) {
             d3.select(this)
                 .attr('r', dotRadius)
-                .style("fill", dotColor);
+                .style("fill", lineColor);
             tooltip.style.visibility = 'hidden';
         });
 }
