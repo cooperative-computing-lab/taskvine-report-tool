@@ -1,6 +1,6 @@
 import { formatUnixTimestamp, downloadSVG } from './tools.js';
 
-const buttonReset = document.getElementById('button-manager-disk-usage-reset');
+const buttonReset = document.getElementById('button-reset-manager-disk-usage');
 const buttonDownload = document.getElementById('button-download-manager-disk-usage');
 
 const svgElement = d3.select('#manager-disk-usage');
@@ -18,10 +18,10 @@ function plotManagerDiskUsage() {
     // first remove all existing elements
     svgElement.selectAll('*').remove();
 
-    const data = window.managerDiskUsage;
+    var data = window.managerDiskUsage;
 
     // set dimensions and margins
-    const margin = {top: 20, right: 20, bottom: 40, left: 100};
+    const margin = {top: 20, right: 20, bottom: 40, left: 60};
     const svgWidth = svgContainer.clientWidth - margin.left - margin.right;
     const svgHeight = svgContainer.clientHeight - margin.top - margin.bottom;
 
@@ -33,6 +33,23 @@ function plotManagerDiskUsage() {
 
     const minTime = window.minTime;
     const maxTime = window.maxTime;
+
+    // Ensure the first and the last point have disk usage of 0
+    const firstPoint = {
+        time_stage_in: minTime,
+        'accumulated_disk_usage(MB)': 0,
+        filename: 'initial',
+        'size(MB)': 0,
+        from_worker: 'N/A'
+    };
+    const lastPoint = {
+        time_stage_in: maxTime,
+        'accumulated_disk_usage(MB)': 0,
+        filename: 'final',
+        'size(MB)': 0,
+        from_worker: 'N/A'
+    };
+    data = [firstPoint, ...data, lastPoint];
 
     const xScale = d3.scaleLinear()
         .domain([0, maxTime - minTime])
@@ -57,6 +74,7 @@ function plotManagerDiskUsage() {
     svg.append('g')
         .attr('transform', `translate(0, ${svgHeight})`)
         .call(xAxis);
+
     const yAxis = d3.axisLeft(yScale)
         .tickSizeOuter(0)
         .tickValues([

@@ -685,6 +685,7 @@ def parse_debug():
                 if target_filename in file_info:
                     print(f"Warning: file {target_filename} already exists")
                 manager_disk_usage[target_filename] = {
+                    'id': len(manager_disk_usage),
                     'time_stage_in': timestamp,
                     'size(MB)': size_in_mb,
                     'from_worker': worker_hash,
