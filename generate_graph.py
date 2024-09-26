@@ -3,6 +3,7 @@ import os
 import tqdm
 import ast
 import graphviz
+import hashlib
 import argparse
 from collections import deque
 from multiprocessing import Pool, cpu_count, set_start_method
@@ -14,6 +15,14 @@ def safe_literal_eval(val):
         return ast.literal_eval(val)
     except (ValueError, SyntaxError):
         return []
+
+def hash_filename(filename):
+    # hash a filename to a 6-character string
+    if args.hash_filename:
+        return f"file-{hashlib.sha256(filename.encode()).hexdigest()[:8]}"
+    else:
+        return filename
+
 
 class EdgeNode:
     def __init__(self, tail, head, weight=None, tail_link=None, head_link=None):
@@ -192,7 +201,7 @@ class OrthogonalListGraph:
                         # it means that this input file is lost after this task is done and it is used as another task's input file                        
                         print(f"Warning: Task {task_id} is started before its producer task {actual_producer_task_id} is finished.")
                         continue
-                    dot.node(input_file, input_file, shape='box')
+                    dot.node(input_file, hash_filename(input_file), shape='box')
                     if this_task['is_recovery_task'] or actual_producer_task['is_recovery_task']:
                         dot.edge(input_file, str(task_id), color='#ea67a9', style='dashed', label=edge_label)
                     else:
@@ -201,7 +210,7 @@ class OrthogonalListGraph:
                 for output_file in task_info[task_id]['output_files']:
                     time_period = round(float(this_task[task_finish_timestamp]) - float(this_task[task_start_timestamp]), 4)
                     edge_label = f"{time_period}s" if not args.no_weight else None
-                    dot.node(output_file, output_file, shape='box')
+                    dot.node(output_file, hash_filename(output_file), shape='box')
                     if this_task['is_recovery_task']:
                         dot.edge(str(task_id), output_file, label=edge_label, color='#ea67a9', style='dashed')
                     else:
@@ -290,6 +299,7 @@ if __name__ == '__main__':
     parser.add_argument('log_dir', type=str, help='the target log directory')
     parser.add_argument('--no-files', action='store_true')
     parser.add_argument('--no-weight', action='store_true')
+    parser.add_argument('--hash-filename', action='store_true')
     parser.add_argument('--task-node-label', type=str, default='task-id')
     parser.add_argument('--save-format', type=str, default='svg')
     args = parser.parse_args()
