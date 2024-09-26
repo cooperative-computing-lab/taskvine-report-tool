@@ -136,6 +136,7 @@ def parse_txn():
 
                         # Timestamps throughout the task lifecycle
                         'when_ready': timestamp,          # ready status on the manager
+                        'when_input_transfer_ready': None,   # when the input files are ready to be transferred
                         'time_commit_start': None,              # start commiting to worker
                         'time_commit_end': None,                # end commiting to worker
                         'when_running': None,             # running status on worker
@@ -540,6 +541,13 @@ def parse_debug():
                     # already cached previously, start a new cache here
                     worker_info[worker_hash]['disk_update'][filename]['when_start_stage_in'].append(timestamp)
 
+            if "has" in parts and "a" in parts and "ready" in parts and "transfer" in parts:
+                datestring = parts[0] + " " + parts[1]
+                timestamp = datestring_to_timestamp(datestring)
+                has_idx = parts.index("has")
+                task_id = int(parts[has_idx - 1])
+                task_info[(task_id, task_try_count[task_id])]['when_input_transfer_ready'] = timestamp
+
             if "cache-update" in parts:
                 # cache-update cachename, &type, &cache_level, &size, &mtime, &transfer_time, &start_time, id
                 # type: VINE_FILE=1, VINE_URL=2, VINE_TEMP=3, VINE_BUFFER=4, VINE_MINI_TASK=5
@@ -768,6 +776,10 @@ def store_file_info():
 
     # save the file_info into a csv file, should use filename as key
     file_info_df = pd.DataFrame.from_dict(file_info, orient='index')
+    # remove those with no producers
+    if not args.meta_files:
+        file_info_df = file_info_df[file_info_df['producers'].apply(lambda x: len(x) > 0)]
+
     file_info_df.index.name = 'filename'
     file_info_df.to_csv(os.path.join(dirname, 'file_info.csv'))
 
@@ -1087,6 +1099,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('log_dir', type=str, help='list of log directories')
     parser.add_argument('--execution-details-only', action='store_true', help='Only generate data for task execution details')
+    parser.add_argument('--meta-files', action='store_true', help='include meta files in the file_info.csv')
     args = parser.parse_args()
 
     dirname = os.path.join(args.log_dir, 'vine-logs')

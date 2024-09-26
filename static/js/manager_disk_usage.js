@@ -8,6 +8,8 @@ const svgContainer = document.getElementById('manager-disk-usage-container');
 
 const tooltip = document.getElementById('vine-tooltip');
 
+const file_size_precesion = 6;
+
 function plotManagerDiskUsage() {
     if (!window.managerDiskUsage) {
         return;
@@ -19,7 +21,7 @@ function plotManagerDiskUsage() {
     const data = window.managerDiskUsage;
 
     // set dimensions and margins
-    const margin = {top: 20, right: 20, bottom: 40, left: 60};
+    const margin = {top: 20, right: 20, bottom: 40, left: 100};
     const svgWidth = svgContainer.clientWidth - margin.left - margin.right;
     const svgHeight = svgContainer.clientHeight - margin.top - margin.bottom;
 
@@ -64,7 +66,7 @@ function plotManagerDiskUsage() {
             yScale.domain()[0] + (yScale.domain()[1] - yScale.domain()[0]) * 0.75,
             yScale.domain()[1]
         ])
-        .tickFormat(d3.format(".2f"));
+        .tickFormat(d3.format(`.${file_size_precesion}f`));
     svg.append('g')
         .call(yAxis);
 
@@ -97,8 +99,8 @@ function plotManagerDiskUsage() {
                     time: ${(d.time_stage_in - minTime).toFixed(2)}s<br>
                     filename: ${d.filename}<br>
                     from worker: ${d.from_worker}<br>
-                    size (MB): ${d['size(MB)'].toFixed(2)} MB <br>
-                    accumulated disk usage (MB): ${d['accumulated_disk_usage(MB)'].toFixed(2)} MB
+                    size (MB): ${d['size(MB)'].toFixed(file_size_precesion)} MB <br>
+                    accumulated disk usage (MB): ${d['accumulated_disk_usage(MB)'].toFixed(file_size_precesion)} MB
                 `;
             tooltip.style.visibility = 'visible';
             tooltip.style.top = (event.pageY + 10) + 'px';
