@@ -38,7 +38,7 @@ function plotWorkerDiskUsage({ displayDiskUsageByPercentage = false, highlightWo
     }
 
     const margin = calculateMargin();
-    console.log('margin', margin);
+    console.log('worker disk usage margin', margin);
 
     const svgWidth = svgContainer.clientWidth - margin.left - margin.right;
     const svgHeight = svgContainer.clientHeight - margin.top - margin.bottom;
