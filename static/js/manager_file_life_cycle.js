@@ -38,7 +38,7 @@ function plotManagerFileLifeCycle() {
 
     const yScale = d3.scaleBand()
         .domain(data.map(d => d.id))
-        .range([0, svgHeight])
+        .range([svgHeight, 0])
         .padding(0.1);
 
     const xAxis = d3.axisBottom(xScale)
@@ -50,13 +50,26 @@ function plotManagerFileLifeCycle() {
             xScale.domain()[0] + (xScale.domain()[1] - xScale.domain()[0]) * 0.75,
             xScale.domain()[1]
         ])
-        .tickFormat(d3.format(window.xTickFormat));
+        .tickFormat(d3.format(window.xTickFormat))
     svg.append("g")
         .attr("transform", `translate(0, ${svgHeight})`)
         .call(xAxis);
+
+    
+    // Add y-axis
+    const selectedTicks = [
+        data[0].id, 
+        data[Math.floor(data.length / 3)].id,
+        data[Math.floor(2 * data.length / 3)].id,
+        data[data.length - 1].id
+    ];
     const yAxis = d3.axisLeft(yScale)
-        .tickSize(0);
-    svg.append('g').call(yAxis);
+        .tickSize(0)
+        .tickValues(selectedTicks); 
+    svg.append('g')
+        .call(yAxis)
+        .selectAll('text')
+        .attr("font-size", window.yTickFontSize);
 
     const maxBandHeight = 50;
 
@@ -66,7 +79,7 @@ function plotManagerFileLifeCycle() {
         .append('rect')
         .attr('class', 'file-bar')
         .attr('x', d => xScale(d.time_stage_in - minTime))
-        .attr('y', d => yScale(d.id) + (yScale.bandwidth() - maxBandHeight) / 2)
+        .attr('y', d => yScale(d.id) + (yScale.bandwidth() - Math.min(yScale.bandwidth(), maxBandHeight)) / 2)
         .attr('width', d => xScale(maxTime) - xScale(d.time_stage_in))
         .attr('height', Math.min(yScale.bandwidth(), maxBandHeight))
         .attr('fill', 'steelblue')

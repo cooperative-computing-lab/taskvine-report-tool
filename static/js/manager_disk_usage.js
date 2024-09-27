@@ -8,7 +8,7 @@ const svgContainer = document.getElementById('manager-disk-usage-container');
 
 const tooltip = document.getElementById('vine-tooltip');
 
-const file_size_precesion = 6;
+const file_size_precesion = 2;
 
 function plotManagerDiskUsage() {
     if (!window.managerDiskUsage) {
@@ -21,7 +21,9 @@ function plotManagerDiskUsage() {
     var data = window.managerDiskUsage;
 
     // set dimensions and margins
-    const margin = {top: 20, right: 20, bottom: 40, left: 60};
+    const margin = calculateMargin();
+    console.log('manager disk usage margin', margin);
+
     const svgWidth = svgContainer.clientWidth - margin.left - margin.right;
     const svgHeight = svgContainer.clientHeight - margin.top - margin.bottom;
 
@@ -73,7 +75,9 @@ function plotManagerDiskUsage() {
         .tickFormat(d3.format(window.xTickFormat));
     svg.append('g')
         .attr('transform', `translate(0, ${svgHeight})`)
-        .call(xAxis);
+        .call(xAxis)
+        .selectAll('text')
+        .attr('font-size', window.xTickFontSize);
 
     const yAxis = d3.axisLeft(yScale)
         .tickSizeOuter(0)
@@ -86,7 +90,9 @@ function plotManagerDiskUsage() {
         ])
         .tickFormat(d3.format(`.${file_size_precesion}f`));
     svg.append('g')
-        .call(yAxis);
+        .call(yAxis)
+        .selectAll('text')
+        .attr('font-size', window.yTickFontSize);
 
     const line = d3.line()
         .x(d => xScale(d.time_stage_in - minTime))
@@ -138,6 +144,49 @@ function handleDownloadClick() {
 
 function handleResetClick() {
     plotManagerDiskUsage();
+}
+
+function calculateMargin() {
+    const margin = {top: 40, right: 30, bottom: 40, left: 30};
+    const svgHeight = svgContainer.clientHeight - margin.top - margin.bottom;
+
+    const tempSvg = svgElement
+        .attr('viewBox', `0 0 ${svgContainer.clientWidth} ${svgContainer.clientHeight}`)
+        .attr('preserveAspectRatio', 'xMidYMid meet')
+        .append("g")
+        .attr('transform', `translate(${margin.left}, ${margin.top})`);
+
+    const data = window.managerDiskUsage;
+    const maxAccumulatedDiskUsage = d3.max(data, d => d['accumulated_disk_usage(MB)']);
+    const yScale = d3.scaleLinear()
+        .domain([0, maxAccumulatedDiskUsage])
+        .range([svgHeight, 0]);
+
+    const yAxis = d3.axisLeft(yScale)
+        .tickSizeOuter(0)
+        .tickValues([
+            yScale.domain()[0],
+            yScale.domain()[0] + (yScale.domain()[1] - yScale.domain()[0]) * 0.25,
+            yScale.domain()[0] + (yScale.domain()[1] - yScale.domain()[0]) * 0.5,
+            yScale.domain()[0] + (yScale.domain()[1] - yScale.domain()[0]) * 0.75,
+            yScale.domain()[1]
+        ])
+        .tickFormat(d3.format(`.${file_size_precesion}f`));
+    tempSvg.append('g')
+        .call(yAxis)
+        .selectAll('text')
+        .attr('font-size', window.yTickFontSize);
+    tempSvg.append('g')
+        .call(yAxis)
+        .selectAll('text')
+        .style('font-size', window.yTickFontSize);
+
+    const maxTickWidth = d3.max(tempSvg.selectAll('.tick text').nodes(), d => d.getBBox().width);
+    tempSvg.remove();
+
+    margin.left = Math.ceil(maxTickWidth + 20);
+
+    return margin
 }
 
 window.parent.document.addEventListener('dataLoaded', function() {

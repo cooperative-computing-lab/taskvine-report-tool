@@ -58,7 +58,9 @@ function plotTaskConcurrency() {
         .tickFormat(d3.format(window.xTickFormat));
     svg.append("g")
         .attr("transform", `translate(0,${svgHeight})`)
-        .call(xAxis);
+        .call(xAxis)
+        .selectAll("text")
+        .attr("font-size", window.xTickFontSize);
     let selectedTicks;
     if (maxConcurrentTasks <= 10) {
         selectedTicks = d3.range(0, maxConcurrentTasks + 1);
@@ -70,7 +72,8 @@ function plotTaskConcurrency() {
         .tickFormat(d3.format("d"))
         .tickSizeOuter(0);
     svg.append("g")
-        .call(yAxis);
+        .call(yAxis)
+        .attr("font-size", window.yTickFontSize);
 
     const line = d3.line()
         .x(d => xScale(d.time - window.minTime))

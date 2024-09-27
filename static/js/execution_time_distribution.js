@@ -103,7 +103,9 @@ function cdfplot(svg) {
         .attr("transform", `translate(0,${svgHeight})`)
         .call(xAxis);
     svg.append("g")
-        .call(yAxis);
+        .call(yAxis)
+        .selectAll("text")
+        .attr("font-size", window.yTickFontSize);
 
     // line
     const lineGenerator = d3.line()
@@ -166,7 +168,8 @@ function scatterplot(svg) {
         .attr("transform", `translate(0,${svgHeight})`)
         .call(xAxis)
         .selectAll("text")
-        .style("text-anchor", "end");
+        .style("text-anchor", "end")
+        .attr("font-size", window.xTickFontSize);
 
     const yScale = d3.scaleLinear()
         .domain([0, maxExecutionTime])
@@ -182,7 +185,9 @@ function scatterplot(svg) {
                     ])
                     .tickFormat(d3.format(".2f"));
     svg.append("g")
-        .call(yAxis);
+        .call(yAxis)
+        .selectAll("text")
+        .attr("font-size", window.yTickFontSize);
 
     const points = svg.selectAll(".point")
     .data(taskDone)

@@ -58,6 +58,7 @@ async function plotWorkerConnections() {
         .attr("transform", `translate(0,${svgHeight})`)
         .call(xAxis)
         .selectAll("text")
+        .attr("font-size", window.xTickFontSize)
         .style("text-anchor", "end");
     
     let selectedTicks;
@@ -72,7 +73,9 @@ async function plotWorkerConnections() {
                     .tickSizeOuter(0);
     
     svg.append("g")
-        .call(yAxis);
+        .call(yAxis)
+        .selectAll("text")
+        .attr("font-size", window.yTickFontSize);
 
     const line = d3.line()
         .x(d => xScale(d.time - minTime))

@@ -11,6 +11,8 @@ const svgContainer = document.getElementById('worker-disk-usage-container');
 
 const tooltip = document.getElementById('vine-tooltip');
 
+let maxDiskUsage;
+
 function plotWorkerDiskUsage({ displayDiskUsageByPercentage = false, highlightWorkerID = null, displayAccumulationOnly = false } = {}) {
     if (!window.workerDiskUpdate) {
         return;
@@ -28,14 +30,16 @@ function plotWorkerDiskUsage({ displayDiskUsageByPercentage = false, highlightWo
         columnNameMB = 'disk_usage_accumulation(MB)';
         columnNamePercentage = 'disk_usage_accumulation(%)';
     }
-    let maxDiskUsage;
+
     if (displayDiskUsageByPercentage) {
         maxDiskUsage = d3.max(window.workerDiskUpdate, function(d) { return +d[columnNamePercentage]; });
     } else {
         maxDiskUsage = d3.max(window.workerDiskUpdate, function(d) { return +d[columnNameMB]; });
     }
 
-    const margin = {top: 20, right: 20, bottom: 40, left: 60};
+    const margin = calculateMargin();
+    console.log('margin', margin);
+
     const svgWidth = svgContainer.clientWidth - margin.left - margin.right;
     const svgHeight = svgContainer.clientHeight - margin.top - margin.bottom;
 
@@ -66,7 +70,9 @@ function plotWorkerDiskUsage({ displayDiskUsageByPercentage = false, highlightWo
         .tickFormat(d3.format(window.xTickFormat));
     svg.append('g')
         .attr('transform', `translate(0, ${svgHeight})`)
-        .call(xAxis);
+        .call(xAxis)
+        .selectAll('text')
+        .style('font-size', window.xTickFontSize);
     const yAxis = d3.axisLeft(yScale)
         .tickSizeOuter(0)
         .tickValues([
@@ -78,7 +84,9 @@ function plotWorkerDiskUsage({ displayDiskUsageByPercentage = false, highlightWo
         ])
         .tickFormat(displayDiskUsageByPercentage === true ? d3.format(".4f") : d3.format(".2f"));
     svg.append('g')
-        .call(yAxis);
+        .call(yAxis)
+        .selectAll('text')
+        .style('font-size', window.yTickFontSize);
 
     // Create line generator
     const line = d3.line()
@@ -222,11 +230,14 @@ function plotWorkerDiskUsage({ displayDiskUsageByPercentage = false, highlightWo
                 const pointY = yScale(closestPoint[displayDiskUsageByPercentage ? columnNamePercentage : columnNameMB]);
                 tooltip.innerHTML = `
                     worker id: ${closestPoint.worker_id}<br>
+                    worker hash: ${closestPoint.worker_hash}<br>
                     filename: ${closestPoint.filename}<br>
                     time from start: ${(+closestPoint.when_stage_in_or_out - window.minTime).toFixed(2)}s<br>
                     time in human: ${formatUnixTimestamp(+closestPoint.when_stage_in_or_out)}<br>
                     disk contribute: ${(+closestPoint['size(MB)']).toFixed(4)}MB<br>
                     disk usage: ${(+closestPoint[displayDiskUsageByPercentage ? columnNamePercentage : columnNameMB]).toFixed(2)}${displayDiskUsageByPercentage ? '%' : 'MB'}<br>
+                    current cached files: ${closestPoint['current_cached_files']} <br>
+                    history cached files: ${closestPoint['history_cached_files']} <br>
                 `;
 
                 tooltip.style.visibility = 'visible';
@@ -300,6 +311,44 @@ buttonAnalyzeWorker.addEventListener('click', async function() {
         displayAccumulationOnly: buttonDisplayAccumulatedOnly.classList.contains('report-button-active'),
     });
 });
+
+function calculateMargin() {
+    const margin = {top: 40, right: 30, bottom: 40, left: 30};
+    const svgHeight = svgContainer.clientHeight - margin.top - margin.bottom;
+
+    const tempSvg = svgElement
+        .attr('viewBox', `0 0 ${svgContainer.clientWidth} ${svgContainer.clientHeight}`)
+        .attr('preserveAspectRatio', 'xMidYMid meet')
+        .append("g")
+        .attr('transform', `translate(${margin.left}, ${margin.top})`);
+
+    const yScale = d3.scaleLinear()
+        .domain([0, maxDiskUsage])
+        .range([svgHeight, 0]);
+
+    const yAxis = d3.axisLeft(yScale)
+        .tickSizeOuter(0)
+        .tickValues([
+            yScale.domain()[0],
+            yScale.domain()[0] + (yScale.domain()[1] - yScale.domain()[0]) * 0.25,
+            yScale.domain()[0] + (yScale.domain()[1] - yScale.domain()[0]) * 0.5,
+            yScale.domain()[0] + (yScale.domain()[1] - yScale.domain()[0]) * 0.75,
+            yScale.domain()[1]
+        ])
+        .tickFormat(d3.format(".2f"));
+
+    tempSvg.append('g')
+        .call(yAxis)
+        .selectAll('text')
+        .style('font-size', window.yTickFontSize);
+
+    const maxTickWidth = d3.max(tempSvg.selectAll('.tick text').nodes(), d => d.getBBox().width);
+    tempSvg.remove();
+
+    margin.left = Math.ceil(maxTickWidth + 20);
+
+    return margin
+}
 
 function handleDownloadClick() {
     downloadSVG('worker-disk-usage');

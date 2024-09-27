@@ -75,7 +75,12 @@ def worker_ipport_to_hash(worker_ip_port_string):
 
 def update_file_size(filename, size_in_mb):
     if filename not in file_info:
-        raise ValueError(f"file {filename} not in file_info")
+        file_info[filename] = {
+            'size(MB)': 0,
+            'producers': [],
+            'consumers': [],
+            'worker_holding': [],
+        }
     if file_info[filename]['size(MB)'] == 0:
         file_info[filename]['size(MB)'] = size_in_mb
     else:
@@ -227,18 +232,24 @@ def parse_txn():
                         for core in task['core_id']:
                             worker_coremap[worker_hash][core] = 0
                 if status == 'RETRIEVED':
+                    task_status = info.split(' ', 5)[0]
+                    if task_status == 'INPUT_MISSING':
+                        # don't consider input missing as of now
+                        continue
                     try:
                         resources_retrieved = json.loads(info.split(' ', 5)[-1])
                     except json.JSONDecodeError:
+                        print(f"Warning: failed to parse resources_retrieved: {info}")
                         resources_retrieved = {}
+
                     if task_id in task_try_count:
                         task = task_info[(task_id, task_try_count[task_id])]
                         task['when_retrieved'] = timestamp
                         task['retrieved_status'] = status
                         task['time_worker_start'] = resources_retrieved.get("time_worker_start", [None])[0]
                         task['time_worker_end'] = resources_retrieved.get("time_worker_end", [None])[0]
-                        task['execution_time'] = task['time_worker_end'] - task['time_worker_start']
                         task['size_output_mgr'] = resources_retrieved.get("size_output_mgr", [None])[0]
+                        task['execution_time'] = task['time_worker_end'] - task['time_worker_start']
                     else:
                         library = library_info[task_id]
                         library['when_retrieved'] = timestamp
@@ -255,7 +266,13 @@ def parse_txn():
                         worker_info[worker_hash]['tasks_completed'].append(task_id)
                         # update category_info
                         task_category = task['category']
-                        execution_time = round(task[task_finish_timestamp] - task[task_start_timestamp], 4)
+                        try:
+                            execution_time = round(task[task_finish_timestamp] - task[task_start_timestamp], 4)
+                        except TypeError:
+                            print(f"Warning: task {task_id} does not have start or finish timestamp. Often indicates an INPUT_MISSING issue.")
+                            task[task_finish_timestamp] = 0
+                            task[task_start_timestamp] = 0
+                            execution_time = 0
                         if task_category not in category_info:
                             category_info[task_category] = {
                                 'category_id': int(len(category_info) + 1),  # starts from 1
@@ -367,7 +384,7 @@ def parse_taskgraph():
                     try:
                         left, right = line.split(' ')
                     except:
-                        print(f"Warning: Unexpected format: {line}")
+                        print(f"Warning: Unexpected format: {line}. This means the taskgraph is broken.")
                     filename = left[1:-1]
                     if filename.startswith('file'):
                         filename = filename[5:]
@@ -630,9 +647,12 @@ def parse_debug():
                 worker_hash = worker_address_hash_map[(worker_ip, worker_port)]
                 worker_id = worker_info[worker_hash]['worker_id']
 
+                if filename not in file_info:
+                    print(f"Warning: file {filename} not in file_info. This means the debug log is broken.")
+                    continue
                 if filename not in worker_info[worker_hash]['disk_update']:
                     print(f"Warning: file {filename} not in worker {worker_hash}")
-                    print(f"workers: {get_worker_ip_port_by_hash(worker_address_hash_map, worker_hash)}")
+                    continue
                 worker_when_start_stage_in = worker_info[worker_hash]['disk_update'][filename]['when_start_stage_in']
                 worker_when_stage_in = worker_info[worker_hash]['disk_update'][filename]['when_stage_in']
                 worker_when_stage_out = worker_info[worker_hash]['disk_update'][filename]['when_stage_out']
@@ -644,6 +664,9 @@ def parse_debug():
                         worker_when_stage_in.append(worker_when_start_stage_in[len(worker_when_start_stage_in) - i - 1])
 
                 # this indicates the fully lost file, update the producer's when_output_fully_lost if any
+                if filename not in file_info:
+                    print(f"Warning: file {filename} not in file_info")
+                    continue
                 if len(worker_when_stage_out) == len(worker_when_stage_in) and len(file_info[filename]['producers']) != 0:
                     producers = file_info[filename]['producers']
                     i = len(producers) - 1
@@ -704,11 +727,12 @@ def parse_debug():
             len_stage_in = len(worker_disk_update['when_stage_in'])
             len_stage_out = len(worker_disk_update['when_stage_out'])
             if len_stage_in < len_stage_out:
-                print(f"Warning: file {filename} stage out more than stage in for worker {worker_hash}, stage_in: {len_stage_in}, stage_out: {len_stage_out}")
                 worker_disk_update['when_stage_out'] = worker_disk_update['when_stage_out'][:len_stage_in]
                 len_stage_out = len_stage_in
             if filename not in file_info:
-                raise ValueError(f"file {filename} not in file_info")
+                print(f"Warning: file {filename} not in file_info")
+                continue
+                # raise ValueError(f"file {filename} not in file_info")
             # add the worker holding information
             for i in range(len_stage_out):
                 worker_holding = {
@@ -855,6 +879,8 @@ def generate_worker_summary(worker_disk_usage_df):
         if row['num_tasks_completed'] > 0:
             total_execution_time = 0
             for task_id in worker_info[worker_hash]['tasks_completed']:
+                if not task_info[(task_id, task_try_count[task_id])][task_finish_timestamp] or not task_info[(task_id, task_try_count[task_id])][task_start_timestamp]:
+                    continue
                 total_execution_time += task_info[(task_id, task_try_count[task_id])][task_finish_timestamp] - task_info[(task_id, task_try_count[task_id])][task_start_timestamp]
             row['avg_task_runtime(s)'] = total_execution_time / row['num_tasks_completed']
         if len(info['time_connected']) != len(info['time_disconnected']):
@@ -1027,8 +1053,13 @@ def generate_task_df():
     })
 
     # skip if when_waiting_retrieval is na, use when_next_ready instead
+    def handle_waiting_retrieval(row):
+        if pd.notna(row['when_waiting_retrieval']):
+            return row['when_waiting_retrieval']
+        return row['when_next_ready']
+    scheduled_task_df = scheduled_task_df.dropna(subset=['when_waiting_retrieval', 'when_next_ready'], how='all')
     task_ending_df = pd.DataFrame({
-        'time': scheduled_task_df.apply(lambda row: row['when_waiting_retrieval'] if pd.notna(row['when_waiting_retrieval']) else row['when_next_ready'], axis=1).dropna(),
+        'time': scheduled_task_df.apply(handle_waiting_retrieval, axis=1),
         'task_id': scheduled_task_df['task_id'],
         'worker_id': scheduled_task_df['worker_id'],
         'category': scheduled_task_df['category'],
@@ -1052,6 +1083,8 @@ def generate_worker_disk_usage():
     rows = []
     for worker_hash, worker in worker_info.items():
         worker_id = worker['worker_id']
+        current_cached_files = 0
+        history_cached_files = 0
         for filename, disk_update in worker['disk_update'].items():
             # Initial checks for disk update logs
             len_in = len(disk_update['when_stage_in'])
@@ -1068,12 +1101,22 @@ def generate_worker_disk_usage():
                     else:
                         print(f"Warning: disk update start time {event_time} of file {filename} on worker {worker_hash} is before manager start time {manager_info['time_start']}")
                         exit(1)
+
+                if disk_increment > 0:
+                    current_cached_files += 1
+                    history_cached_files += 1
+                else:
+                    pass
+                    current_cached_files -= 1
+
                 rows.append({
                     'worker_hash': worker_hash,
                     'worker_id': worker_id,
                     'filename': filename,
                     'when_stage_in_or_out': event_time,
-                    'size(MB)': disk_increment
+                    'size(MB)': disk_increment,
+                    'current_cached_files': current_cached_files,
+                    'history_cached_files': history_cached_files,
                 })
 
     worker_disk_usage_df = pd.DataFrame(rows)

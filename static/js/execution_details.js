@@ -43,8 +43,9 @@ export function plotExecutionDetails() {
     const taskDone = window.taskDone;
     const taskFailedOnWorker = window.taskFailedOnWorker;
 
-    const margin = calculateMargin();
-    
+    let margin = calculateMargin();
+    console.log('execution details margin', margin);
+
     const svgWidth = svgContainer.clientWidth - margin.left - margin.right;
     const svgHeight = svgContainer.clientHeight - margin.top - margin.bottom;
 
@@ -156,7 +157,7 @@ export function plotExecutionDetails() {
                 } else if (this.classList.contains('regular-tasks')) {
                     d3.select(this).attr('fill', function(d) {
                         return d.is_recovery_task === "True" ? colors['recovery-tasks'].normal : colors['regular-tasks'].normal;
-                    });  
+                    });
                 } else if (this.classList.contains('waiting-retrieval-on-worker')) {
                     d3.select(this).attr('fill', colors['waiting-retrieval-on-worker'].normal);
                 }
@@ -181,7 +182,7 @@ export function plotExecutionDetails() {
             }
             return width;
         })
-                .attr('height', yScale.bandwidth())
+        .attr('height', yScale.bandwidth())
         .attr('fill', colors['failed-tasks'].normal)
         .attr('opacity', 0.8)
         .on('mouseover', function(event, d) {
@@ -212,7 +213,6 @@ export function plotExecutionDetails() {
 
 function calculateMargin() {
     const margin = {top: 40, right: 30, bottom: 40, left: 30};
-    const svgWidth = svgContainer.clientWidth - margin.left - margin.right;
     const svgHeight = svgContainer.clientHeight - margin.top - margin.bottom;
 
     const tempSvg = d3.select('#execution-details')
@@ -241,7 +241,7 @@ function calculateMargin() {
     const maxTickWidth = d3.max(tempSvg.selectAll('.tick text').nodes(), d => d.getBBox().width);
     tempSvg.remove();
 
-    margin.left = maxTickWidth + 15;
+    margin.left = Math.ceil(maxTickWidth + 15);
 
     return margin
 }
@@ -272,10 +272,12 @@ function plotAxis(svg, svgWidth, svgHeight) {
             xScale.domain()[0] + (xScale.domain()[1] - xScale.domain()[0]) * 0.75,
             xScale.domain()[1]
         ])
-        .tickFormat(window.XTickFormat);
+        .tickFormat(d3.format(window.xTickFormat));
     svg.append('g')
         .attr('transform', `translate(0, ${svgHeight})`)
-        .call(xAxis);
+        .call(xAxis)
+        .selectAll('text')
+        .style('font-size', window.xTickFontSize);
 
     // draw y axis
     const totalWorkers = window.workerSummary.length;
@@ -286,11 +288,12 @@ function plotAxis(svg, svgWidth, svgHeight) {
         selectedTicks.unshift(`${window.workerSummary[i].worker_id}-${window.workerSummary[i].cores}`);
     }
     const yAxis = d3.axisLeft(yScale)
-        .tickSizeOuter(0)
         .tickValues(selectedTicks)
         .tickFormat(d => d.split('-')[0]);
     svg.append('g')
-        .call(yAxis);
+        .call(yAxis)
+        .selectAll('text')
+        .style('font-size', window.yTickFontSize);
 
     return { xScale, yScale };
 }

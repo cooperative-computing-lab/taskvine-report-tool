@@ -1,7 +1,9 @@
 import { fetchCSVData } from './tools.js';
 
 // Some global variables
-window.xTickFormat = ".2f";
+window.xTickFormat = ".0f";
+window.xTickFontSize = "12px";
+window.yTickFontSize = "12px";
 
 
 async function loadAllCSVData() {
