@@ -29,11 +29,12 @@ PLOT_SETTINGS = {
 }
 
 ROOT_PATH = '/Users/jinzhou/applications/taskvine-report-tool/logs'
-LOGS = ['bfs+0rep+prune','bfs+0rep+prune2','dfs+sharedfs+0rep','lif+0rep+prune_2','lif+0rep+prune_2']
+LOGS = ['bfs+0rep+prune']
 
 SAVE_TO = "/Users/jinzhou/Downloads"
 
 DISK_USAGE_CSV_FILES = [os.path.join(ROOT_PATH, log, 'vine-logs', 'worker_disk_usage.csv') for log in LOGS]
 FILE_INFO_CSV_FILES = [os.path.join(ROOT_PATH, log, 'vine-logs', 'file_info.csv') for log in LOGS]
 
+# change this if you want to set the title of the logs
 LOG_TITLES = LOGS
