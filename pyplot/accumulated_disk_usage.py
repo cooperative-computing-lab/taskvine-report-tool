@@ -1,14 +1,4 @@
-import argparse
 from config import *
-import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
-import os
-import ast
-import math
-import numpy as np
-from matplotlib.gridspec import GridSpec
-from adjustText import adjust_text
 
 
 def plot_accumulated_disk_usage(show=True, add_peak_line_and_text=True, plot_file_count=True):
@@ -59,7 +49,7 @@ def plot_accumulated_disk_usage(show=True, add_peak_line_and_text=True, plot_fil
         axes.append(ax1)
 
         line1, = ax1.plot(df['adjusted_time'], df['accumulated_disk_usage_gb'],
-                          color=PLOT_SETTINGS["color_primary"],
+                          color=PLOT_SETTINGS["line_color"],
                           linewidth=PLOT_SETTINGS["worker_disk_usage_line_width"],
                           alpha=PLOT_SETTINGS["plot_alpha"], label='ASC')
         ax1.set_xlabel('Time (s)', fontsize=PLOT_SETTINGS["label_fontsize"])

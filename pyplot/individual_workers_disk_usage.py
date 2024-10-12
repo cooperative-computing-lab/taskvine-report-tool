@@ -9,15 +9,6 @@ from matplotlib.gridspec import GridSpec
 from matplotlib.ticker import FuncFormatter
 
 
-def get_adjusted_max(actual_max, step=200):
-    if actual_max < 0:
-        raise ValueError("actual_max must be non-negative.")
-    if step <= 0:
-        raise ValueError("step must be a positive integer.")
-    
-    return math.ceil(actual_max / step) * step
-
-
 def plot_individual_worker_disk_usage(add_peak_line_and_text=True, show=True):
     num_logs = len(LOGS)
 
