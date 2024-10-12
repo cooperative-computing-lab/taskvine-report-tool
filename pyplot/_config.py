@@ -9,6 +9,7 @@ import ast
 import numpy as np
 from matplotlib.gridspec import GridSpec
 from adjustText import adjust_text
+from matplotlib.ticker import FuncFormatter
 
 
 PLOT_SETTINGS = {
@@ -27,7 +28,6 @@ PLOT_SETTINGS = {
     "individual_disk_usage_line_width": 0.6,
     "plot_alpha": 0.8,
     "color_secondary": "g",
-    "wspace": 0,
     "yticks_count": 5,
     "xticks_count": 5,
 
@@ -50,6 +50,7 @@ SAVE_TO = "/Users/jinzhou/Downloads"
 DISK_USAGE_CSV_FILES = [os.path.join(ROOT_PATH, log, 'vine-logs', 'worker_disk_usage.csv') for log in LOGS]
 FILE_INFO_CSV_FILES = [os.path.join(ROOT_PATH, log, 'vine-logs', 'file_info.csv') for log in LOGS]
 MANAGER_INFO_CSV_FILES = [os.path.join(ROOT_PATH, log, 'vine-logs', 'manager_info.csv') for log in LOGS]
+TASK_DONE_CSV_FILES = [os.path.join(ROOT_PATH, log, 'vine-logs', 'task_done.csv') for log in LOGS]
 
 # change this if you want to set the title of the logs
 LOG_TITLES = LOGS

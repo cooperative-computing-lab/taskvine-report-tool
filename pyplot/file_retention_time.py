@@ -1,4 +1,4 @@
-from config import *
+from _config import *
 
 
 def generate_file_retention_time_csv(file_info_csv, file_retention_time_csv):
