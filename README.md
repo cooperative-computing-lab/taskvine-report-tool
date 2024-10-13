@@ -98,4 +98,4 @@ Here are some quick demostrations of the demonstration page. Note that this demo
 ![screenshot_7](imgs/screenshot_7.png)
 
 
-Please feel free to comment the feature you want, or propose an issue/PR when you see there is a problem!
+Optionally, we also provide more lightweight visualizations using matplotlib, take a look at ![pyplot](pyplot)

@@ -18,23 +18,21 @@ Before ploting, all csv files must be generated using `generate_csv.py` in the u
 
 `accumulated_disk_usage.py` plots the overall accumulated usage of the storage, which is the sum of all workers' disk usage over time
 
-![ASC-AFC](imgs/ASC.png)
+![ASC](imgs/ASC.png)
 
 `individual_workers_disk_usage.py` plots the per-worker disk usage over time
 
-![ASC-AFC](imgs/WSC.png)
+![WSC](imgs/WSC.png)
 
 `file_consumer_count.py` plots the number of consumer tasks of each output file. One output file is strictly produced by one task
 
-![ASC-AFC](imgs/file_consumer_count.png)
+![file_consumer_count](imgs/file_consumer_count.png)
 
 `file_retention_time.py` plots the retention time of each file, starting from when it was generated to when it was totally consumed and staged out from the cluster 
 
-![ASC-AFC](imgs/FRR.png)
+![FRR](imgs/FRR.png)
 
 `task_execution_time_cdf.py` plots the CDF of execution time of each task.
 
-![ASC-AFC](imgs/task_execution_time_cdf.png)
+![task_execution_time_cdf](imgs/task_execution_time_cdf.png)
 
-
-Optionally, we also provide more lightweight visualizations using matplotlib, take a look at ![pyplot](pyplot)
