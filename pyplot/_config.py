@@ -42,10 +42,10 @@ PLOT_SETTINGS = {
     "bar_width": 0.4,
 }
 
-ROOT_PATH = '/Users/jinzhou/applications/taskvine-report-tool/logs'
+ROOT_PATH = '../logs'
 LOGS = ['bfs+0rep+prune', 'lif+3rep+prune', 'lif+5rep+prune']
 
-SAVE_TO = "/Users/jinzhou/Downloads"
+SAVE_TO = "../imgs"
 
 DISK_USAGE_CSV_FILES = [os.path.join(ROOT_PATH, log, 'vine-logs', 'worker_disk_usage.csv') for log in LOGS]
 FILE_INFO_CSV_FILES = [os.path.join(ROOT_PATH, log, 'vine-logs', 'file_info.csv') for log in LOGS]
