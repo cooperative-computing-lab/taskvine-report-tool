@@ -49,11 +49,12 @@ def timestamp_to_datestring(unix_timestamp):
     return datestring_custom
 
 def set_time_zone(datestring):
-    mgr_start_datesting = datetime.strptime(datestring, "%Y/%m/%d %H:%M:%S.%f").strftime("%Y-%m-%d %H:%M:%S")
+    mgr_start_datesting = datetime.strptime(datestring, "%Y/%m/%d %H:%M:%S.%f").strftime("%Y-%m-%d %H:%M")
+
     formatted_timestamp = int(manager_info['time_start'])
     utc_datestring = datetime.fromtimestamp(formatted_timestamp, timezone.utc)
     for tz in pytz.all_timezones:
-        tz_datestring = utc_datestring.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(tz)).strftime('%Y-%m-%d %H:%M:%S')
+        tz_datestring = utc_datestring.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(tz)).strftime('%Y-%m-%d %H:%M')
         if mgr_start_datesting == tz_datestring:
             manager_info['time_zone_offset_hours'] = int(pytz.timezone(tz).utcoffset(datetime.now()).total_seconds() / 3600)
             
@@ -608,6 +609,9 @@ def parse_debug():
                     worker_info[worker_hash]['disk_update'][filename]['when_stage_in'].append(start_time + wall_time)
 
             if "task" in parts and "tx" in parts and "to" in parts and parts.index("task") == len(parts) - 2:
+                # this is a library task
+                if sending_task_id not in task_try_count:
+                    continue
                 sending_task_id = int(parts[parts.index("task") + 1])
                 continue
             if sending_task_id:
@@ -719,6 +723,8 @@ def parse_debug():
     # manager_disk_usage can be immediately transferred to manager_disk_usage_df
     manager_disk_usage_df = pd.DataFrame.from_dict(manager_disk_usage, orient='index')
     manager_disk_usage_df.index.name = 'filename'
+    if 'size(MB)' not in manager_disk_usage_df.columns:
+        manager_disk_usage_df['size(MB)'] = 0
     manager_disk_usage_df["accumulated_disk_usage(MB)"] = manager_disk_usage_df["size(MB)"].cumsum()
     manager_disk_usage_df.to_csv(os.path.join(dirname, 'manager_disk_usage.csv'))
 
