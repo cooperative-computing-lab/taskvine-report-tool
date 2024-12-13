@@ -4,7 +4,6 @@ import argparse
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-import os
 import ast
 import numpy as np
 from matplotlib.gridspec import GridSpec
@@ -32,6 +31,7 @@ PLOT_SETTINGS = {
     "xticks_count": 5,
 
     "line_color": "#3b7397",
+    "bar_color": "#3b7397",
     "dot_color": "#9cc2db",
     "dot_edgecolor": "#3d80ad",
 
@@ -43,7 +43,15 @@ PLOT_SETTINGS = {
 }
 
 ROOT_PATH = '../logs'
-LOGS = ['bfs+0rep+prune', 'lif+3rep+prune', 'lif+5rep+prune']
+# LOGS = ['prefer_file_replication', 'prefer_task_dispatch', 'no_prune']
+#LOGS = ['5rep_120s_pruning', '5rep_120s_nopruning']
+
+#LOGS = ['small_original', 'small_unlimited_1', 'small_unlimited_2', 'small_unlimited_3', 'small_unlimited_all']
+#LOG_TITLES = ['Original', 'unlimited_1', 'unlimited_2', 'unlimited_3', 'unlimited_all']
+
+LOGS = ['t1']
+# LOG_TITLES = ['big_unlimited_1', 'big_unlimited_2', 'big_unlimited_3', 'unlimited_all']
+LOG_TITLES = LOGS
 
 SAVE_TO = "../imgs"
 
@@ -53,7 +61,6 @@ MANAGER_INFO_CSV_FILES = [os.path.join(ROOT_PATH, log, 'vine-logs', 'manager_inf
 TASK_DONE_CSV_FILES = [os.path.join(ROOT_PATH, log, 'vine-logs', 'task_done.csv') for log in LOGS]
 
 # change this if you want to set the title of the logs
-LOG_TITLES = LOGS
 
 
 def get_adjusted_max(actual_max, step=200):
@@ -63,3 +70,5 @@ def get_adjusted_max(actual_max, step=200):
         raise ValueError("step must be a positive integer.")
     
     return math.ceil(actual_max / step) * step
+
+
