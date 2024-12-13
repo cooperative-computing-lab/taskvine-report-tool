@@ -15,6 +15,7 @@ let maxDiskUsage;
 
 function plotWorkerDiskUsage({ displayDiskUsageByPercentage = false, highlightWorkerID = null, displayAccumulationOnly = false } = {}) {
     if (!window.workerDiskUpdate) {
+        console.log('workerDiskUpdate is not available');
         return;
     }
 
@@ -53,11 +54,6 @@ function plotWorkerDiskUsage({ displayDiskUsageByPercentage = false, highlightWo
     const xScale = d3.scaleLinear()
         .domain([0, window.maxTime - window.minTime])
         .range([0, svgWidth]);
-    const yScale = d3.scaleLinear()
-        .domain([0, maxDiskUsage])
-        .range([svgHeight, 0]);
-
-    // Draw axes
     const xAxis = d3.axisBottom(xScale)
         .tickSizeOuter(0)
         .tickValues([
@@ -73,6 +69,10 @@ function plotWorkerDiskUsage({ displayDiskUsageByPercentage = false, highlightWo
         .call(xAxis)
         .selectAll('text')
         .style('font-size', window.xTickFontSize);
+
+    const yScale = d3.scaleLinear()
+        .domain([0, maxDiskUsage])
+        .range([svgHeight, 0]);
     const yAxis = d3.axisLeft(yScale)
         .tickSizeOuter(0)
         .tickValues([
