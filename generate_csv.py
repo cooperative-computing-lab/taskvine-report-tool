@@ -954,6 +954,13 @@ def generate_other_statistics(task_df, file_info_df, worker_summary_df):
     # the min start_time in task_df
     manager_info['when_first_task_start_commit'] = task_df['time_commit_start'].min()
     manager_info['when_last_task_done'] = task_df['when_done'].max()
+    
+    manager_info['when_first_worker_connect'] = worker_summary_df['time_connected'].min()
+    manager_info['when_last_worker_disconnect'] = worker_summary_df['time_disconnected'].max()
+    # if one of the when_last_worker_disconnect fields is na, set it to the other
+    if pd.isna(manager_info['when_last_worker_disconnect']):
+        manager_info['when_last_worker_disconnect'] = manager_info['time_end']
+
     # total size of files transferred
     manager_info['size_of_all_files(MB)'] = round(file_info_df['size(MB)'].sum(), 4)
     # peak disk usage among all workers
