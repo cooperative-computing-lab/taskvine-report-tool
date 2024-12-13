@@ -31,9 +31,9 @@ def plot_temp_file_size(show=True):
                color=PLOT_SETTINGS["bar_color"], 
                alpha=PLOT_SETTINGS["plot_alpha"])
 
-        ax.set_title(f"File Sizes ({LOG_TITLES[i]})", fontsize=PLOT_SETTINGS['title_fontsize'])
+        ax.set_title(f"{LOG_TITLES[i]}", fontsize=PLOT_SETTINGS['title_fontsize'])
         ax.set_xlabel('File Index', fontsize=PLOT_SETTINGS['label_fontsize'])
-        ax.set_ylabel('Size (MB)', fontsize=PLOT_SETTINGS['label_fontsize'])
+        ax.set_ylabel('File Size (MB)', fontsize=PLOT_SETTINGS['label_fontsize'])
         ax.tick_params(axis='both', labelsize=PLOT_SETTINGS['tick_fontsize'])
         ax.grid(True, alpha=PLOT_SETTINGS["grid_alpha"], linewidth=PLOT_SETTINGS["grid_linewidth"])
 
