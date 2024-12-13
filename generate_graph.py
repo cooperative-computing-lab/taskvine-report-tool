@@ -4,10 +4,15 @@ import tqdm
 import ast
 import graphviz
 import hashlib
+import numpy as np
 import argparse
 from collections import deque
+from matplotlib import colormaps
 from multiprocessing import Pool, cpu_count, set_start_method
 import sys
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
+
 sys.setrecursionlimit(30000)
 
 def safe_literal_eval(val):
@@ -157,22 +162,41 @@ class OrthogonalListGraph:
             print("Error: save_to is not provided.")
             return
         dot = graphviz.Digraph()
-        
+
+        if args.color_scale == 'local':
+            execution_times = [self.vertices[task_id].task_life_time for task_id in subgraph]
+            log_execution_times = [np.log(time + 1) for time in execution_times]
+            min_time, max_time = min(log_execution_times), max(log_execution_times)
+            norm = mcolors.Normalize(vmin=min_time, vmax=max_time)
+            cmap = colormaps['Reds']
+        else:
+            norm = mcolors.Normalize(vmin=self.min_time, vmax=self.max_time)
+            cmap = colormaps['Reds']
+
         # create nodes, each node is a task
         for task_id in subgraph:
+            task_life_time = self.vertices[task_id].task_life_time
+            rgba_color = cmap(norm(task_life_time))
+            hex_color = mcolors.to_hex(rgba_color)
+
             if args.task_node_label == 'task-id':
                 task_node_label = str(task_id)
             elif args.task_node_label == 'category-id':
                 task_node_label = str(int(task_info[task_id]['category_id'])).split('.')[0]
             elif args.task_node_label == 'schedule-id':
                 task_node_label = str(int(task_info[task_id]['schedule_id'])).split('.')[0]
-            dot.node(str(task_id), task_node_label, shape='ellipse')
+
             this_task = task_info[task_id]
+    
             # highlight recovery tasks
-            if this_task['is_recovery_task']:
-                dot.node(str(task_id), task_node_label, style='filled', color='#ea67a9', shape='ellipse')
+            if args.color_scale:
+                task_node_color = hex_color if not this_task['is_recovery_task'] else '#ea67a9'
             else:
-                dot.node(str(task_id), task_node_label, shape='ellipse')
+                task_node_color = '#ffffff'
+            if this_task['is_recovery_task']:
+                task_node_color = '#ea67a9'
+
+            dot.node(str(task_id), task_node_label, style='filled', color=task_node_color, shape='ellipse')
 
             if args.no_files:
                 # plot edges from this task to its successors
@@ -221,6 +245,8 @@ class OrthogonalListGraph:
             dot.render(save_to, format='svg', view=view)
         elif args.save_format == 'png':
             dot.render(save_to, format='png', view=view)
+        
+        print(f"subgraph saved to {save_to} tasks: {len(subgraph)}")
 
 
 def process_subgraph(args):
@@ -269,7 +295,15 @@ def generate_subgraphs(graph):
 
 def generate_graph():
     print("Generating graph...")
+
+    # find the minimum and maximum execution time
+    all_execution_times = [round(float(task[task_finish_timestamp]) - float(task[task_start_timestamp]), 4) for task in task_info.values()]
+    log_all_execution_times = [np.log(time + 1) for time in all_execution_times]
+
     graph = OrthogonalListGraph()
+    graph.min_time = min(log_all_execution_times)
+    graph.max_time = max(log_all_execution_times)
+
     input_to_tasks = {}
 
     for task_id, task in task_info.items():
@@ -300,6 +334,7 @@ if __name__ == '__main__':
     parser.add_argument('--no-files', action='store_true')
     parser.add_argument('--no-weight', action='store_true')
     parser.add_argument('--hash-filename', action='store_true')
+    parser.add_argument('--color-scale', type=str, default='local')
     parser.add_argument('--task-node-label', type=str, default='task-id')
     parser.add_argument('--save-format', type=str, default='svg')
     args = parser.parse_args()
