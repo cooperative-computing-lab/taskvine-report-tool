@@ -22,8 +22,8 @@ const colors = {
         'highlight': 'orange',
     },
     'waiting-retrieval-on-worker': {
-        'normal': '#40909f',
-        'highlight': '#bed380',
+        'normal': '#cc5a12',
+        'highlight': 'orange',
     },
     'failed-tasks': {
         'normal': '#ad2c23',
@@ -44,6 +44,7 @@ export function plotExecutionDetails() {
     const taskFailedOnWorker = window.taskFailedOnWorker;
 
     let margin = calculateMargin();
+
     console.log('execution details margin', margin);
 
     const svgWidth = svgContainer.clientWidth - margin.left - margin.right;
@@ -125,6 +126,16 @@ export function plotExecutionDetails() {
                 .attr('fill', function(d) {
                     return d.is_recovery_task === true ? colors['recovery-tasks'].normal : colors['regular-tasks'].normal;
                 });
+            g.append('rect')
+                .attr('class', 'waiting-retrieval-on-worker')
+                .attr('x', d => xScale(+d.time_worker_end - window.minTime))
+                .attr('y', d => yScale(d.worker_id + '-' + d.core_id))
+                .attr('width', d => xScale(+d.when_retrieved) - xScale(+d.time_worker_end))
+                .attr('height', yScale.bandwidth())
+                .attr('fill', function(d) {
+                    return d.is_recovery_task === true ? colors['recovery-tasks'].normal : colors['waiting-retrieval-on-worker'].normal;
+                });
+
         })
         .on('mouseover', function(event, d) {
             d3.select(this).selectAll('rect').each(function() {
