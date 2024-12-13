@@ -5,7 +5,6 @@ window.xTickFormat = ".0f";
 window.xTickFontSize = "12px";
 window.yTickFontSize = "12px";
 
-
 async function loadAllCSVData() {
     try {
         const [
@@ -54,11 +53,13 @@ async function loadAllCSVData() {
         window.time_manager_end = window.managerInfo.time_end;
         window.when_first_task_start_commit = window.managerInfo.when_first_task_start_commit;
         window.when_last_task_done = window.managerInfo.when_last_task_done
+        window.when_first_worker_connect = window.managerInfo.when_first_worker_connect;
+        window.when_last_worker_disconnect = window.managerInfo.when_last_worker_disconnect
 
-        // 2 set of time
-        // window.minTime = window.time_manager_start;
-        window.minTime = window.when_first_task_start_commit;
-        window.maxTime = window.time_manager_end;
+        window.minTime = window.when_first_worker_connect;
+        window.maxTime = window.when_last_worker_disconnect;
+
+        // window.minTime = window.when_first_task_start_commit;
         // window.maxTime = window.when_last_task_done;
 
     } catch (error) {
