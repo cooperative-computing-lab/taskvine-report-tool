@@ -24,11 +24,11 @@ def plot_task_states_over_time(show=True):
             print(f"File {manager_info_path} or {task_path} does not exist.")
             continue
 
-        manager_info_df = pd.read_csv(manager_info_path)
         task_df = pd.read_csv(task_path)
 
-        time_start = manager_info_df['time_start'].min()
-        time_end = manager_info_df['time_end'].min()
+        worker_summary_df = pd.read_csv(WORKER_SUBMARY_CSV_FILES[i])
+        time_start = worker_summary_df['time_connected'].min()
+        time_end = worker_summary_df['time_disconnected'].max()
         time_range = np.arange(time_start, time_end, step=1)
 
         ready_counts = []
