@@ -4,7 +4,7 @@ from _config import *
 PLOT_SETTINGS["ready_line_color"] = "#099652"
 PLOT_SETTINGS["committing_line_color"] = "#8327cf"
 PLOT_SETTINGS["running_line_color"] = "#5581b0"
-PLOT_SETTINGS["waiting_retrieval_line_color"] = "#be612a"
+PLOT_SETTINGS["retrieving_line_color"] = "#be612a"
 
 
 def plot_task_states_over_time(show=True):
@@ -34,7 +34,7 @@ def plot_task_states_over_time(show=True):
         ready_counts = []
         committing_counts = []
         running_counts = []
-        waiting_retrieval_counts = []
+        retrieving_counts = []
 
         for current_time in time_range:
             ready_tasks = task_df[
@@ -52,7 +52,7 @@ def plot_task_states_over_time(show=True):
                 (task_df['time_worker_end'] > current_time) &
                 task_df['time_worker_start'].notna() & task_df['time_worker_end'].notna()
             ]
-            waiting_retrieval_tasks = task_df[
+            retrieving_tasks = task_df[
                 (task_df['time_worker_end'] <= current_time) &
                 (task_df['when_done'] > current_time) &
                 task_df['time_worker_end'].notna() & task_df['when_done'].notna()
@@ -61,19 +61,19 @@ def plot_task_states_over_time(show=True):
             ready_counts.append(len(ready_tasks))
             committing_counts.append(len(committing_tasks))
             running_counts.append(len(running_tasks))
-            waiting_retrieval_counts.append(len(waiting_retrieval_tasks))
+            retrieving_counts.append(len(retrieving_tasks))
         
         if not args.no_ready:
-            local_max_y = max(max(ready_counts), max(committing_counts), max(running_counts), max(waiting_retrieval_counts))
+            local_max_y = max(max(ready_counts), max(committing_counts), max(running_counts), max(retrieving_counts))
         else:
-            local_max_y = max(max(committing_counts), max(running_counts), max(waiting_retrieval_counts))
+            local_max_y = max(max(committing_counts), max(running_counts), max(retrieving_counts))
         global_max_y = max(global_max_y, local_max_y)
 
-        task_counts.append((time_range, ready_counts, committing_counts, running_counts, waiting_retrieval_counts))
+        task_counts.append((time_range, ready_counts, committing_counts, running_counts, retrieving_counts))
 
     lines = []
     labels = []
-    for i, (time_range, ready_counts, committing_counts, running_counts, waiting_retrieval_counts) in enumerate(task_counts):
+    for i, (time_range, ready_counts, committing_counts, running_counts, retrieving_counts) in enumerate(task_counts):
         ax = fig.add_subplot(gs[0, i])
         if not args.no_ready:
             ax.plot(time_range - time_range[0], ready_counts, label="Ready Tasks",
@@ -88,10 +88,10 @@ def plot_task_states_over_time(show=True):
                 linewidth=PLOT_SETTINGS["worker_disk_usage_line_width"],
                 alpha=PLOT_SETTINGS["plot_alpha"],
                 color=PLOT_SETTINGS["running_line_color"])
-        ax.plot(time_range - time_range[0], waiting_retrieval_counts, label="Waiting Retrieval Tasks",
+        ax.plot(time_range - time_range[0], retrieving_counts, label="Retrieving Tasks",
                 linewidth=PLOT_SETTINGS["worker_disk_usage_line_width"],
                 alpha=PLOT_SETTINGS["plot_alpha"],
-                color=PLOT_SETTINGS["waiting_retrieval_line_color"])
+                color=PLOT_SETTINGS["retrieving_line_color"])
         
         ax.set_ylim(0, global_max_y * 1.1)
         ax.set_title(LOG_TITLES[i], fontsize=PLOT_SETTINGS['title_fontsize'])

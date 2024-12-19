@@ -22,10 +22,11 @@ PLOT_SETTINGS = {
     "label_fontsize": 18,
     "annotate_fontsize": 18,
     "tick_fontsize": 14,
+    "legend_fontsize": 14,
 
     "worker_disk_usage_line_width": 1.2,
     "individual_disk_usage_line_width": 0.6,
-    "plot_alpha": 0.8,
+    "plot_alpha": 0.7,
     "color_secondary": "g",
     "yticks_count": 5,
     "xticks_count": 5,
@@ -49,6 +50,7 @@ ROOT_PATH = '../logs'
 #LOGS = ['small_original', 'small_unlimited_1', 'small_unlimited_2', 'small_unlimited_3', 'small_unlimited_all']
 #LOG_TITLES = ['Original', 'unlimited_1', 'unlimited_2', 'unlimited_3', 'unlimited_all']
 
+# LOGS = ['1w16c', '2w16c', '3w16c', '4w16c', '8w16c']
 LOGS = ['t1']
 # LOG_TITLES = ['big_unlimited_1', 'big_unlimited_2', 'big_unlimited_3', 'unlimited_all']
 LOG_TITLES = LOGS
@@ -59,6 +61,8 @@ DISK_USAGE_CSV_FILES = [os.path.join(ROOT_PATH, log, 'vine-logs', 'worker_disk_u
 FILE_INFO_CSV_FILES = [os.path.join(ROOT_PATH, log, 'vine-logs', 'file_info.csv') for log in LOGS]
 MANAGER_INFO_CSV_FILES = [os.path.join(ROOT_PATH, log, 'vine-logs', 'manager_info.csv') for log in LOGS]
 TASK_DONE_CSV_FILES = [os.path.join(ROOT_PATH, log, 'vine-logs', 'task_done.csv') for log in LOGS]
+TASK_CSV_FILES = [os.path.join(ROOT_PATH, log, 'vine-logs', 'task.csv') for log in LOGS]
+WORKER_SUBMARY_CSV_FILES = [os.path.join(ROOT_PATH, log, 'vine-logs', 'worker_summary.csv') for log in LOGS]
 
 # change this if you want to set the title of the logs
 
