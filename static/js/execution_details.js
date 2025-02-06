@@ -17,12 +17,16 @@ const colors = {
         'normal': 'lightblue',
         'highlight': '#72bbb0',
     },
-    'regular-tasks': {
+    'running-tasks': {
         'normal': 'steelblue',
         'highlight': 'orange',
     },
-    'waiting-retrieval-on-worker': {
+    'retrieving-tasks': {
         'normal': '#cc5a12',
+        'highlight': 'orange',
+    },
+    'committing-tasks': {
+        'normal': '#8327cf',
         'highlight': 'orange',
     },
     'failed-tasks': {
@@ -117,34 +121,47 @@ export function plotExecutionDetails() {
         .append('g')
         .each(function(d) {
             var g = d3.select(this);
+        /*
             g.append('rect')
-                .attr('class', 'regular-tasks')
+                .attr('class', 'committing-tasks')
+                .attr('x', d => xScale(+d.when_running - window.minTime))
+                .attr('y', d => yScale(d.worker_id + '-' + d.core_id))
+                .attr('width', d => xScale(+d.time_worker_start) - xScale(+d.when_running))
+                .attr('height', yScale.bandwidth())
+                .attr('fill', function(d) {
+                    return colors['committing-tasks'].normal;
+                });
+        */
+            g.append('rect')
+                .attr('class', 'running-tasks')
                 .attr('x', d => xScale(+d.time_worker_start - window.minTime))
                 .attr('y', d => yScale(d.worker_id + '-' + d.core_id))
                 .attr('width', d => xScale(+d.time_worker_end) - xScale(+d.time_worker_start))
                 .attr('height', yScale.bandwidth())
                 .attr('fill', function(d) {
-                    return d.is_recovery_task === true ? colors['recovery-tasks'].normal : colors['regular-tasks'].normal;
+                    return d.is_recovery_task === true ? colors['recovery-tasks'].normal : colors['running-tasks'].normal;
                 });
+        /*
             g.append('rect')
-                .attr('class', 'waiting-retrieval-on-worker')
+                .attr('class', 'retrieving-tasks')
                 .attr('x', d => xScale(+d.time_worker_end - window.minTime))
                 .attr('y', d => yScale(d.worker_id + '-' + d.core_id))
-                .attr('width', d => xScale(+d.when_retrieved) - xScale(+d.time_worker_end))
+                .attr('width', d => xScale(+d.when_done) - xScale(+d.time_worker_end))
                 .attr('height', yScale.bandwidth())
                 .attr('fill', function(d) {
-                    return d.is_recovery_task === true ? colors['recovery-tasks'].normal : colors['waiting-retrieval-on-worker'].normal;
+                    return colors['retrieving-tasks'].normal;
                 });
-
+        */
+        
         })
         .on('mouseover', function(event, d) {
             d3.select(this).selectAll('rect').each(function() {
-                if (this.classList.contains('waiting-to-execute-on-worker')) {
-                    d3.select(this).attr('fill', colors['waiting-to-execute-on-worker'].highlight);
-                } else if (this.classList.contains('regular-tasks')) {
-                    d3.select(this).attr('fill', colors['regular-tasks'].highlight);
-                } else if (this.classList.contains('waiting-retrieval-on-worker')) {
-                    d3.select(this).attr('fill', colors['waiting-retrieval-on-worker'].highlight);
+                if (this.classList.contains('committing-tasks')) {
+                    d3.select(this).attr('fill', colors['committing-tasks'].highlight);
+                } else if (this.classList.contains('running-tasks')) {
+                    d3.select(this).attr('fill', colors['running-tasks'].highlight);
+                } else if (this.classList.contains('retrieving-tasks')) {
+                    d3.select(this).attr('fill', colors['retrieving-tasks'].highlight);
                 }
             });
 
@@ -163,14 +180,14 @@ export function plotExecutionDetails() {
             tooltip.style.visibility = 'hidden';
             // restore color
             d3.select(this).selectAll('rect').each(function() {
-                if (this.classList.contains('waiting-to-execute-on-worker')) {
-                    d3.select(this).attr('fill', colors['waiting-to-execute-on-worker'].normal);
-                } else if (this.classList.contains('regular-tasks')) {
+                if (this.classList.contains('committing-tasks')) {
+                    d3.select(this).attr('fill', colors['committing-tasks'].normal);
+                } else if (this.classList.contains('running-tasks')) {
                     d3.select(this).attr('fill', function(d) {
-                        return d.is_recovery_task === "True" ? colors['recovery-tasks'].normal : colors['regular-tasks'].normal;
+                        return d.is_recovery_task === "True" ? colors['recovery-tasks'].normal : colors['running-tasks'].normal;
                     });
-                } else if (this.classList.contains('waiting-retrieval-on-worker')) {
-                    d3.select(this).attr('fill', colors['waiting-retrieval-on-worker'].normal);
+                } else if (this.classList.contains('retrieving-tasks')) {
+                    d3.select(this).attr('fill', colors['retrieving-tasks'].normal);
                 }
             });
         });
@@ -319,7 +336,7 @@ function handleDownloadClick() {
 }
 
 function setLegend() {
-    var legendCell = d3.select("#legend-regular-tasks");
+    var legendCell = d3.select("#legend-running-tasks");
     legendCell.selectAll('*').remove();
     const cellWidth = legendCell.node().offsetWidth;
     const cellHeight = legendCell.node().offsetHeight;
@@ -330,7 +347,7 @@ function setLegend() {
     var rectX = 0;
     var rectY = (svgHeight - rectHeight) / 2;
 
-    legendCell = d3.select("#legend-regular-tasks");
+    legendCell = d3.select("#legend-running-tasks");
     legendCell.selectAll('*').remove();
     var svg = legendCell
         .append("svg")
@@ -341,7 +358,7 @@ function setLegend() {
         .attr("height", rectHeight)
         .attr("x", rectX)
         .attr("y", rectY)
-        .attr("fill", colors['regular-tasks'].normal);
+        .attr("fill", colors['running-tasks'].normal);
 
     legendCell = d3.select("#legend-failed-tasks");
     legendCell.selectAll('*').remove();

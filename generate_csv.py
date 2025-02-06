@@ -24,9 +24,6 @@ task_finish_timestamp = 'time_worker_end'
 ############################################################################################################
 # Helper functions
 def datestring_to_timestamp(datestring):
-    if manager_info['time_zone_offset_hours'] is None:
-        print("Warning: time_zone_offset_hours is not set")
-        exit(1)
     tz_custom = timezone(timedelta(hours=manager_info['time_zone_offset_hours']))
     datestring_custom = datetime.strptime(datestring, "%Y/%m/%d %H:%M:%S.%f").replace(tzinfo=tz_custom)
     unix_timestamp = float(datestring_custom.timestamp())
@@ -41,9 +38,6 @@ def datestring_to_timestamp(datestring):
     return unix_timestamp
 
 def timestamp_to_datestring(unix_timestamp):
-    if manager_info['time_zone_offset_hours'] is None:
-        print("Warning: time_zone_offset_hours is not set")
-        exit(1)
     tz_custom = timezone(timedelta(hours=manager_info['time_zone_offset_hours']))
     datestring_custom = datetime.fromtimestamp(unix_timestamp, tz=tz_custom).strftime("%Y/%m/%d %H:%M:%S.%f")
     return datestring_custom
@@ -57,6 +51,10 @@ def set_time_zone(datestring):
         tz_datestring = utc_datestring.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(tz)).strftime('%Y-%m-%d %H:%M')
         if mgr_start_datesting == tz_datestring:
             manager_info['time_zone_offset_hours'] = int(pytz.timezone(tz).utcoffset(datetime.now()).total_seconds() / 3600)
+    
+    if manager_info['time_zone_offset_hours'] is None:
+        print("Warning: time_zone_offset_hours is not set")
+        exit(1)
             
 def get_worker_ip_port_by_hash(worker_address_hash_map, worker_hash):
     # worker_address_hash_map: {(ip, port): hash}
@@ -246,11 +244,14 @@ def parse_txn():
                     if task_id in task_try_count:
                         task = task_info[(task_id, task_try_count[task_id])]
                         task['when_retrieved'] = timestamp
+
                         task['retrieved_status'] = status
                         task['time_worker_start'] = resources_retrieved.get("time_worker_start", [None])[0]
                         task['time_worker_end'] = resources_retrieved.get("time_worker_end", [None])[0]
                         task['size_output_mgr'] = resources_retrieved.get("size_output_mgr", [None])[0]
                         task['execution_time'] = task['time_worker_end'] - task['time_worker_start']
+                        if task['when_retrieved'] < task['time_worker_end']:
+                            print(f"taskid: {task['task_id']} end: {task['time_worker_end']}, retrieved: {task['when_retrieved']}")
                     else:
                         library = library_info[task_id]
                         library['when_retrieved'] = timestamp
@@ -564,6 +565,9 @@ def parse_debug():
                 timestamp = datestring_to_timestamp(datestring)
                 has_idx = parts.index("has")
                 task_id = int(parts[has_idx - 1])
+                # a temporary hack
+                if task_id < 0:
+                    continue
                 task_info[(task_id, task_try_count[task_id])]['when_input_transfer_ready'] = timestamp
 
             if "cache-update" in parts:

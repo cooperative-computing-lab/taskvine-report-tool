@@ -51,7 +51,7 @@ ROOT_PATH = '../logs'
 #LOG_TITLES = ['Original', 'unlimited_1', 'unlimited_2', 'unlimited_3', 'unlimited_all']
 
 # LOGS = ['1w16c', '2w16c', '3w16c', '4w16c', '8w16c']
-LOGS = ['t1']
+LOGS = ['t3']
 # LOG_TITLES = ['big_unlimited_1', 'big_unlimited_2', 'big_unlimited_3', 'unlimited_all']
 LOG_TITLES = LOGS
 
