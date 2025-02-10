@@ -12,28 +12,19 @@ def plot_accumulated_disk_usage(show=True, add_peak_line_and_text=True, plot_fil
 
     axes = []
 
-    max_disk_usage_global_mb = 0
-    max_file_count_global = 0
+    global_max_disk_usage_gb = get_global_max_disk_usage_gb()
+    global_max_file_count = get_global_max_file_count()
 
-    for csv_file in DISK_USAGE_CSV_FILES:
-        if not os.path.exists(csv_file):
-            continue
-        df = pd.read_csv(csv_file)
-        df['adjusted_time'] = df['when_stage_in_or_out'] - df['when_stage_in_or_out'].min()
-        df = df.sort_values(by='adjusted_time')
-        df['accumulated_disk_usage_mb'] = df['size(MB)'].cumsum()
-        df['file_count'] = df['size(MB)'].apply(lambda x: 1 if x > 0 else (-1 if x < 0 else 0)).cumsum()
-        max_disk_usage_global_mb = max(max_disk_usage_global_mb, df['accumulated_disk_usage_mb'].max())
-        max_file_count_global = max(max_file_count_global, df['file_count'].max())
-
-    max_disk_usage_global_gb = max_disk_usage_global_mb / 1024
+    global_max_execution_time = get_global_max_execution_time()
 
     for i, csv_file in enumerate(DISK_USAGE_CSV_FILES):
         if not os.path.exists(csv_file):
             continue
 
+        min_time, max_time = WORKFLOW_TIME_SCALES[i]
+
         df = pd.read_csv(csv_file)
-        df['adjusted_time'] = df['when_stage_in_or_out'] - df['when_stage_in_or_out'].min()
+        df['adjusted_time'] = df['when_stage_in_or_out'] - min_time
         df = df.sort_values(by='adjusted_time')
         df['size(GB)'] = df['size(MB)'] / 1024
         df['accumulated_disk_usage_gb'] = df['size(GB)'].cumsum()
@@ -52,10 +43,13 @@ def plot_accumulated_disk_usage(show=True, add_peak_line_and_text=True, plot_fil
                           color=PLOT_SETTINGS["line_color"],
                           linewidth=PLOT_SETTINGS["worker_disk_usage_line_width"],
                           alpha=PLOT_SETTINGS["plot_alpha"], label='ASC')
+
         ax1.set_xlabel('Time (s)', fontsize=PLOT_SETTINGS["label_fontsize"])
+        ax1.set_xlim(0, global_max_execution_time * 1.1)
+
         ax1.set_ylabel('ASC (GB)', fontsize=PLOT_SETTINGS["label_fontsize"])
         ax1.tick_params(axis='y', labelsize=PLOT_SETTINGS["tick_fontsize"])
-        ax1.set_ylim(0, max_disk_usage_global_gb * 1.1)
+        ax1.set_ylim(0, global_max_disk_usage_gb * 1.1)
 
         if add_peak_line_and_text:
             ax1.axhline(y=max_disk_usage_gb, color='red', linestyle='--', linewidth=1)
@@ -72,6 +66,8 @@ def plot_accumulated_disk_usage(show=True, add_peak_line_and_text=True, plot_fil
             all_texts = []
         
         ax1.tick_params(axis='x', labelsize=PLOT_SETTINGS["tick_fontsize"])
+        ax1.set_title(LOG_TITLES[i], fontsize=PLOT_SETTINGS["title_fontsize"])
+        ax1.grid(visible=True, linestyle='--', linewidth=PLOT_SETTINGS["grid_linewidth"], alpha=PLOT_SETTINGS["grid_alpha"])
 
         handles = [line1]
         labels = [line1.get_label()]
@@ -86,7 +82,7 @@ def plot_accumulated_disk_usage(show=True, add_peak_line_and_text=True, plot_fil
                             linestyle='--', alpha=PLOT_SETTINGS["plot_alpha"], label='AFC')
             ax2.set_ylabel('AFC', fontsize=PLOT_SETTINGS["label_fontsize"])
             ax2.tick_params(axis='y', labelsize=PLOT_SETTINGS["tick_fontsize"])
-            ax2.set_ylim(0, max_file_count_global * 1.1)
+            ax2.set_ylim(0, global_max_file_count * 1.1)
 
             if add_peak_line_and_text:
                 ax2.axhline(y=max_file_count, color='red', linestyle='--', linewidth=1)
@@ -103,9 +99,6 @@ def plot_accumulated_disk_usage(show=True, add_peak_line_and_text=True, plot_fil
             handles.append(line2)
             labels.append(line2.get_label())
             ax2.grid(visible=False)
-
-        ax1.set_title(LOG_TITLES[i], fontsize=PLOT_SETTINGS["title_fontsize"])
-        ax1.grid(visible=True, linestyle='--', linewidth=PLOT_SETTINGS["grid_linewidth"], alpha=PLOT_SETTINGS["grid_alpha"])
 
         if add_peak_line_and_text:
             adjust_text(all_texts, autoalign='xy', only_move={'points': 'y', 'text': 'y'}, ax=ax1)

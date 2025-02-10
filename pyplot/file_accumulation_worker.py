@@ -11,24 +11,18 @@ def plot_individual_worker_disk_usage(add_peak_line_and_text=True, show=True):
     gs = GridSpec(1, num_logs, figure=fig, wspace=0.3, left=0.15, right=0.9, top=0.9, bottom=0.1)
     axes = []
 
-    y_max_global_mb = 0
-    for csv_file in DISK_USAGE_CSV_FILES:
-        if not os.path.exists(csv_file):
-            print(f"File {csv_file} does not exist.")
-            continue
-        df = pd.read_csv(csv_file)
-        y_max_global_mb = max(y_max_global_mb, np.ceil(df['disk_usage(MB)'].max()))
-
-    # y_max_global_mb = get_adjusted_max(y_max_global_mb, step=100)
-    y_max_global_gb = y_max_global_mb / 1024 * 1.1
+    global_max_disk_usage_gb = get_worker_max_disk_usage_gb()
+    global_max_execution_time = get_global_max_execution_time()
 
     for i, csv_file in enumerate(DISK_USAGE_CSV_FILES):
         if not os.path.exists(csv_file):
             continue
 
+        min_time, max_time = WORKFLOW_TIME_SCALES[i]
+
         df = pd.read_csv(csv_file)
         df['worker_id'] = df['worker_id'].astype(str)
-        df['adjusted_time'] = df['when_stage_in_or_out'] - df['when_stage_in_or_out'].min()
+        df['adjusted_time'] = df['when_stage_in_or_out'] - min_time
 
         ax = fig.add_subplot(gs[0, i])
         axes.append(ax)
@@ -51,12 +45,13 @@ def plot_individual_worker_disk_usage(add_peak_line_and_text=True, show=True):
                         color='red', fontsize=PLOT_SETTINGS['annotate_fontsize'], ha='center', va='bottom')
 
         ax.set_title(LOG_TITLES[i], fontsize=PLOT_SETTINGS["title_fontsize"])
+
         ax.set_xlabel('Time (s)', fontsize=PLOT_SETTINGS["label_fontsize"])
+        ax.set_xlim(0, global_max_execution_time * 1.1)
+
         ax.set_ylabel('WSC (GB)', fontsize=PLOT_SETTINGS["label_fontsize"])
-        ax.set_ylim(0, y_max_global_gb)
-        ax.set_yticks(np.linspace(0, y_max_global_gb, PLOT_SETTINGS["yticks_count"]))
-        ax.set_xlim(0, df['adjusted_time'].max() + 200)
-        ax.set_xticks(np.linspace(0, df['adjusted_time'].max() + 200, 4))
+        ax.set_ylim(0, global_max_disk_usage_gb * 1.1)
+
         ax.grid(visible=True, linestyle='--', linewidth=0.3, alpha=PLOT_SETTINGS["grid_alpha"])
         ax.tick_params(axis='both', labelsize=PLOT_SETTINGS["tick_fontsize"])
 
