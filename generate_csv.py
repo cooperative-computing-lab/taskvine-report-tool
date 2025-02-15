@@ -684,7 +684,7 @@ def parse_debug():
                             failed_transfer_source_hash = worker_info[worker_hash]['peer_transfers'][filename]['source'][-i]
                             failed_transfer_source_ip, failed_transfer_source_port = worker_info[failed_transfer_source_hash]['worker_ip'], worker_info[failed_transfer_source_hash]['worker_port']
                             failed_transfer_source = f"{failed_transfer_source_ip}:{failed_transfer_source_port}"
-                            failed_transfer_sources[failed_transfer_source] += 1
+                            failed_transfer_sources[failed_transfer_source] += failed_count
                             # get the start time and waiting time of the failed transfer
                             failed_transfer_start_time = worker_when_start_stage_in[-i]
                             failed_transfer_waiting_time = round(timestamp - failed_transfer_start_time, 4)
@@ -1204,5 +1204,9 @@ if __name__ == '__main__':
     # for function calls
     generate_library_summary()
 
-    for failed_transfer_source, count in failed_transfer_sources.items():
-        print(f"{failed_transfer_source}: {count}")
+    # rank by the failed transfer count and print the same information
+    sorted_failed_transfer_sources = sorted(failed_transfer_sources.items(), key=lambda x: x[1], reverse=True)
+    for failed_transfer_source, count in sorted_failed_transfer_sources:
+        worker_ip, worker_port = failed_transfer_source.split(':')
+        worker_hash = worker_ip_port_to_hash[(worker_ip, worker_port)]
+        print(f"id: {worker_info[worker_hash]['worker_id']}, ip: {worker_info[worker_hash]['worker_ip']}, port: {worker_info[worker_hash]['worker_port']}, count: {count}")
