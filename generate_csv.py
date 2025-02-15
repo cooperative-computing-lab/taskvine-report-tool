@@ -685,8 +685,11 @@ def parse_debug():
                             failed_transfer_start_time = worker_when_start_stage_in[-i]
                             failed_transfer_waiting_time = round(timestamp - failed_transfer_start_time, 4)
 
-                            # 
-                            print(f"  == {i}: source: {failed_transfer_source}, cache_level: {worker_info[worker_hash]['peer_transfers'][filename]['cache_level'][-i]}, after {failed_transfer_waiting_time} seconds")
+                            # get the cache level of the failed transfer
+                            failed_transfer_cache_level = worker_info[worker_hash]['peer_transfers'][filename]['cache_level'][-i]
+
+                            # print the information
+                            print(f"  == {i}: source: {failed_transfer_source}, cache_level: {failed_transfer_cache_level}, after {failed_transfer_waiting_time} seconds")
 
                 # this indicates the fully lost file, update the producer's when_output_fully_lost if any
                 if filename not in file_info:
