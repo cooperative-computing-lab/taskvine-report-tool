@@ -17,13 +17,16 @@ import numpy as np
 
 # initialize the global variables
 task_info, task_try_count, library_info, worker_info, manager_info, file_info, category_info, manager_disk_usage = {}, {}, {}, {}, {}, {}, {}, {}
-worker_address_hash_map = {}
+worker_ip_port_to_hash = {}
+worker_ip_transfer_port_to_hash = {}
 task_start_timestamp = 'time_worker_start'
 task_finish_timestamp = 'time_worker_end'
 
 ############################################################################################################
 # Helper functions
 def datestring_to_timestamp(datestring):
+    if manager_info['time_zone_offset_hours'] is None:
+        set_time_zone(datestring)
     tz_custom = timezone(timedelta(hours=manager_info['time_zone_offset_hours']))
     datestring_custom = datetime.strptime(datestring, "%Y/%m/%d %H:%M:%S.%f").replace(tzinfo=tz_custom)
     unix_timestamp = float(datestring_custom.timestamp())
@@ -51,28 +54,24 @@ def set_time_zone(datestring):
         tz_datestring = utc_datestring.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(tz)).strftime('%Y-%m-%d %H:%M')
         if mgr_start_datesting == tz_datestring:
             manager_info['time_zone_offset_hours'] = int(pytz.timezone(tz).utcoffset(datetime.now()).total_seconds() / 3600)
+            break
     
     if manager_info['time_zone_offset_hours'] is None:
         print("Warning: time_zone_offset_hours is not set")
         exit(1)
-            
-def get_worker_ip_port_by_hash(worker_address_hash_map, worker_hash):
-    # worker_address_hash_map: {(ip, port): hash}
-    workers_by_ip_port = []
-    for k, v in worker_address_hash_map.items():
-        if v == worker_hash:
-            workers_by_ip_port.append(k[0] + ":" + k[1])
-    return workers_by_ip_port
 
-def worker_ipport_to_hash(worker_ip_port_string):
-    if worker_ip_port_string.startswith('('):
-        content = re.search(r'\((.*?)\)', worker_ip_port_string).group(1)
-    else:
-        content = worker_ip_port_string
-    worker_ip, worker_port = content.split(':')
-    return worker_address_hash_map[(worker_ip, worker_port)]
+def extract_ip_port_from_url(url_string):
+    IP_PORT_PATTERN = re.compile(r"(\d+\.\d+\.\d+\.\d+):(\d+)")
+    match = IP_PORT_PATTERN.search(url_string)
+    if match:
+        return match.group(1), match.group(2)
+    return None, None
 
-def update_file_size(filename, size_in_mb):
+def extract_worker_hash(url_string):
+    worker_ip, worker_port = extract_ip_port_from_url(url_string)
+    return worker_ip_port_to_hash[(worker_ip, worker_port)]
+
+def ensure_file_info(filename, size_in_mb):
     if filename not in file_info:
         file_info[filename] = {
             'size(MB)': 0,
@@ -85,6 +84,7 @@ def update_file_size(filename, size_in_mb):
     else:
         if file_info[filename]['size(MB)'] != size_in_mb:
             raise ValueError(f"file {filename} size mismatch: {file_info[filename]['size(MB)']} vs {size_in_mb}")
+
 
 ############################################################################################################
 
@@ -159,8 +159,8 @@ def parse_txn():
                         'size_output_mgr': None,
                         'cores_requested': resources_requested.get("cores", [0, ""])[0],
                         'gpus_requested': resources_requested.get("gpus", [0, ""])[0],
-                        'memory_requested(MB)': resources_requested.get("memory", [0, ""])[0],
-                        'disk_requested(MB)': resources_requested.get("disk", [0, ""])[0],
+                        'memory_requested_mb': resources_requested.get("memory", [0, ""])[0],
+                        'disk_requested_mb': resources_requested.get("disk", [0, ""])[0],
                         'retrieved_status': None,
                         'done_status': None,
                         'done_code': None,
@@ -219,8 +219,8 @@ def parse_txn():
                             'size_input_mgr': resources_allocated["size_input_mgr"][0],
                             'cores_requested': resources_allocated.get("cores", [0, ""])[0],
                             'gpus_requested': resources_allocated.get("gpus", [0, ""])[0],
-                            'memory_requested(MB)': resources_allocated.get("memory", [0, ""])[0],
-                            'disk_requested(MB)': resources_allocated.get("disk", [0, ""])[0],
+                            'memory_requested_mb': resources_allocated.get("memory", [0, ""])[0],
+                            'disk_requested_mb': resources_allocated.get("disk", [0, ""])[0],
                         }
                         library_info[task_id] = library
                 if status == 'WAITING_RETRIEVAL':
@@ -296,6 +296,7 @@ def parse_txn():
                             'worker_machine_name': None,
                             'worker_ip': None,
                             'worker_port': None,
+                            'transfer_port': None,
                             'tasks_completed': [],
                             'tasks_failed': [],
                             'num_tasks_completed': 0,
@@ -303,7 +304,7 @@ def parse_txn():
                             'cores': None,
                             'memory(MB)': None,
                             'disk(MB)': None,
-                            'disk_update': {},
+                            'peer_transfers': {},
                         }
                     else:
                         worker_info[obj_id]['time_connected'].append(timestamp)
@@ -457,8 +458,8 @@ def parse_debug():
             total_lines += 1
 
     # put a file on a worker
-    putting_file = False
-    putting_filename = None
+    putting_file_name = None
+    putting_to_worker_hash = None
 
     # send task info to a worker
     sending_task_id = None
@@ -472,97 +473,96 @@ def parse_debug():
         for line in file:
             pbar.update(1)
             parts = line.strip().split(" ")
-
-            if "manager" in parts and "start" in parts:
-                datestring = parts[0] + " " + parts[1]
-                set_time_zone(datestring)
+            datestring = parts[0] + " " + parts[1]
+            timestamp = datestring_to_timestamp(datestring)
 
             if "info" in parts and "worker-id" in parts:
                 worker_id_id = parts.index("worker-id")
                 worker_hash = parts[worker_id_id + 1]
                 worker_machine_name = parts[worker_id_id - 3]
                 worker_ip, worker_port = parts[worker_id_id - 2][1:-2].split(':')
-                worker_address_hash_map[(worker_ip, worker_port)] = worker_hash
+                worker_ip_port_to_hash[(worker_ip, worker_port)] = worker_hash
                 if worker_hash in worker_info:
                     worker_info[worker_hash]['worker_machine_name'] = worker_machine_name
                     worker_info[worker_hash]['worker_ip'] = worker_ip
                     worker_info[worker_hash]['worker_port'] = worker_port
+                continue
+
+            if "transfer-port" in parts:
+                transfer_port_idx = parts.index("transfer-port")
+                transfer_port = parts[transfer_port_idx + 1]
+                worker_hash = extract_worker_hash(parts[transfer_port_idx - 1])
+                if worker_info[worker_hash]['transfer_port'] is not None:
+                    raise ValueError(f"Transfer port is already set for worker {worker_hash}")
+                worker_info[worker_hash]['transfer_port'] = transfer_port
+                worker_ip_transfer_port_to_hash[(worker_ip, transfer_port)] = worker_hash
+                continue
 
             if "put" in parts:
-                putting_file = True
-                continue
-            if putting_file:
-                if "file" in parts and parts[parts.index("file") - 1].endswith(':'):
-                    file_id = parts.index("file")
-                    worker_hash = worker_ipport_to_hash(parts[file_id - 1])
-                    putting_filename = parts[file_id + 1]
-                    size_in_mb = int(parts[file_id + 2]) / 2**20
+                put_idx = parts.index("put")
+                putting_to_worker_hash = extract_worker_hash(parts[put_idx - 1])
 
-                    datestring = parts[0] + " " + parts[1]
-                    timestamp = datestring_to_timestamp(datestring)
-                    if (timestamp > manager_info['time_end']):
-                        print(f"Warning: put start time {timestamp} of file {putting_filename} is after manager end time {manager_info['time_end']}, probably a time zone issue")
-                    if timestamp < manager_info['time_start']:
-                        if abs(timestamp - manager_info['time_start']) < 1:
-                            # manager_info['time_start'] is more accurate
-                            timestamp = worker_info[worker_hash]['time_connected'][0]
-                        elif timestamp == 0:
-                            # we have a special file with start time 0
-                            timestamp = worker_info[worker_hash]['time_connected'][0]
-                        else:
-                            print(f"Warning: put start time {timestamp} of file {putting_filename} on worker {worker_hash} is before manager start time {manager_info['time_start']}")
-                    # this is the first time the file is cached on this worker
-                    # assume the start time is the same as the stage in time if put by the manager
-                    if putting_filename not in worker_info[worker_hash]['disk_update']:
-                        worker_info[worker_hash]['disk_update'][putting_filename] = {
-                            'size(MB)': size_in_mb,
-                            'when_start_stage_in': [timestamp],
-                            'when_stage_in': [],
-                            'when_stage_out': [],
-                        }
-                        update_file_size(putting_filename, size_in_mb)
-                    else:
-                        worker_info[worker_hash]['disk_update'][putting_filename]['when_start_stage_in'].append(timestamp)
-                elif "received" in parts:
-                    if putting_filename is None:
-                        raise ValueError("putting_filename is None")
-                    received_id = parts.index("received")
-                    worker_hash = worker_ipport_to_hash(parts[received_id - 1])
-                    datestring = parts[0] + " " + parts[1]
-                    timestamp = datestring_to_timestamp(datestring)
-                    if putting_filename not in worker_info[worker_hash]['disk_update']:
-                        raise ValueError(f"file {putting_filename} not in worker {worker_hash}")
-                    worker_info[worker_hash]['disk_update'][putting_filename]['when_stage_in'].append(timestamp)
-                    putting_file = False
-                    putting_filename = None
+                putting_file_name = parts[put_idx + 1]
+                putting_file_cache_level = parts[put_idx + 2]
+                putting_file_size_mb = int(parts[put_idx + 3]) / 2**20
+
+                # this is the first time the file is cached on this worker
+                if putting_file_name not in worker_info[putting_to_worker_hash]['peer_transfers']:
+                    worker_info[putting_to_worker_hash]['peer_transfers'][putting_file_name] = {
+                        'size(MB)': putting_file_size_mb,
+                        'when_start_stage_in': [timestamp],
+                        'when_stage_in': [],
+                        'when_stage_out': [],
+                        'source': ['manager'],
+                        'cache_level': [putting_file_cache_level],
+                    }
+                    ensure_file_info(putting_file_name, putting_file_size_mb)
+                else:
+                    worker_info[putting_to_worker_hash]['peer_transfers'][putting_file_name]['when_start_stage_in'].append(timestamp)
+                continue
+
+            if "received" in parts:
+                worker_info[putting_to_worker_hash]['peer_transfers'][putting_file_name]['when_stage_in'].append(timestamp)
+                putting_file_name = None
+                putting_to_worker_hash = None
+                continue
 
             if "puturl" in parts or "puturl_now" in parts:
                 puturl_id = parts.index("puturl") if "puturl" in parts else parts.index("puturl_now")
-                url_source = parts[puturl_id + 1]
-                worker_hash = worker_ipport_to_hash(parts[puturl_id - 1])
-                filename = parts[puturl_id + 2]
-                cache_level = parts[puturl_id + 3]
-                size_in_mb = int(parts[puturl_id + 4]) / 2**20
-                datestring = parts[0] + " " + parts[1]
-                timestamp = datestring_to_timestamp(datestring)
+                
+                source_worker_ip, source_worker_port = extract_ip_port_from_url(parts[puturl_id + 1])
+                source_worker_hash = worker_ip_transfer_port_to_hash[(source_worker_ip, source_worker_port)]
+                to_worker_hash = extract_worker_hash(parts[puturl_id - 1])
 
-                # update disk usage
-                if filename not in worker_info[worker_hash]['disk_update']:
+                filename = parts[puturl_id + 2]
+                file_cache_level = parts[puturl_id + 3]
+                size_in_mb = int(parts[puturl_id + 4]) / 2**20
+
+                # check if the source worker really has the file
+                if source_worker_hash not in worker_info:
+                    raise ValueError(f"source worker {source_worker_hash} not found")
+                if filename not in worker_info[source_worker_hash]['peer_transfers']:
+                    raise ValueError(f"source worker {source_worker_hash} does not have the file {filename}")
+
+                # update data transfer
+                if filename not in worker_info[to_worker_hash]['peer_transfers']:
                     # this is the first time the file is cached on this worker
-                    worker_info[worker_hash]['disk_update'][filename] = {
+                    worker_info[to_worker_hash]['peer_transfers'][filename] = {
                         'size(MB)': size_in_mb,
                         'when_start_stage_in': [timestamp],
                         'when_stage_in': [],
                         'when_stage_out': [],
+                        'source': [source_worker_hash],
+                        'cache_level': [file_cache_level],
                     }
-                    update_file_size(filename, size_in_mb)
+                    ensure_file_info(filename, size_in_mb)
                 else:
                     # already cached previously, start a new cache here
-                    worker_info[worker_hash]['disk_update'][filename]['when_start_stage_in'].append(timestamp)
+                    worker_info[to_worker_hash]['peer_transfers'][filename]['when_start_stage_in'].append(timestamp)
+                    worker_info[to_worker_hash]['peer_transfers'][filename]['source'].append(source_worker_hash)
+                    worker_info[to_worker_hash]['peer_transfers'][filename]['cache_level'].append(file_cache_level)
 
             if "has" in parts and "a" in parts and "ready" in parts and "transfer" in parts:
-                datestring = parts[0] + " " + parts[1]
-                timestamp = datestring_to_timestamp(datestring)
                 has_idx = parts.index("has")
                 task_id = int(parts[has_idx - 1])
                 # a temporary hack
@@ -582,13 +582,13 @@ def parse_debug():
                 cache_update_id = parts.index("cache-update")
                 filename = parts[cache_update_id + 1]
                 file_type = parts[cache_update_id + 2]
-                cache_level = parts[cache_update_id + 3]
+                file_cache_level = parts[cache_update_id + 3]
 
                 size_in_mb = int(parts[cache_update_id + 4]) / 2**20
                 wall_time = float(parts[cache_update_id + 6]) / 1e6
                 start_time = float(parts[cache_update_id + 7]) / 1e6
 
-                worker_hash = worker_ipport_to_hash(parts[cache_update_id - 1])
+                worker_hash = extract_worker_hash(parts[cache_update_id - 1])
 
                 # start time should be after the manager start time
                 if start_time < manager_info['time_start']:
@@ -598,19 +598,21 @@ def parse_debug():
                     else:
                         print(f"Warning: cache-update start time {start_time} is before manager start time {manager_info['time_start']}")
 
-                # update disk usage
-                if filename not in worker_info[worker_hash]['disk_update']:
+                # update data transfer
+                if filename not in worker_info[worker_hash]['peer_transfers']:
                     # this is the first time the file is cached on this worker
-                    worker_info[worker_hash]['disk_update'][filename] = {
+                    worker_info[worker_hash]['peer_transfers'][filename] = {
                         'size(MB)': size_in_mb,
                         'when_start_stage_in': [start_time],
                         'when_stage_in': [start_time + wall_time],
                         'when_stage_out': [],
+                        'source': ['X'],
+                        'cache_level': [file_cache_level],
                     }
-                    update_file_size(filename, size_in_mb)
+                    ensure_file_info(filename, size_in_mb)
                 else:
-                    # the start time has been indicated in the puturl message, so we don't need to update it here
-                    worker_info[worker_hash]['disk_update'][filename]['when_stage_in'].append(start_time + wall_time)
+                    # This file was put by the manager, the start time has been indicated in the puturl message, so we don't need to update it here
+                    worker_info[worker_hash]['peer_transfers'][filename]['when_stage_in'].append(start_time + wall_time)
 
             if "task" in parts and "tx" in parts and "to" in parts and parts.index("task") == len(parts) - 2:
                 # this is a library task
@@ -631,50 +633,64 @@ def parse_debug():
                     task_info[(sending_task_id, task_try_id)]['gpus_requested'] = gpus_requested
                 elif "memory" in parts:
                     memory_requested = int(float(parts[parts.index("memory") + 1]))
-                    task_info[(sending_task_id, task_try_id)]['memory_requested(MB)'] = memory_requested
+                    task_info[(sending_task_id, task_try_id)]['memory_requested_mb'] = memory_requested
                 elif "disk" in parts:
                     disk_requested = int(float(parts[parts.index("disk") + 1]))
-                    task_info[(sending_task_id, task_try_id)]['disk_requested(MB)'] = disk_requested
+                    task_info[(sending_task_id, task_try_id)]['disk_requested_mb'] = disk_requested
                 continue
 
             if ("infile" in parts or "outfile" in parts) and "needs" not in parts:
-                file_id = parts.index("infile") if "infile" in parts else parts.index("outfile")
-                worker_hash = worker_ipport_to_hash(parts[file_id - 1])
-                manager_site_name = parts[file_id + 2]
+                file_idx = parts.index("infile") if "infile" in parts else parts.index("outfile")
+                worker_hash = extract_worker_hash(parts[file_idx - 1])
+                manager_site_name = parts[file_idx + 2]
 
-                # update disk usage
-                if manager_site_name in worker_info[worker_hash]['disk_update']:
-                    del worker_info[worker_hash]['disk_update'][manager_site_name]
+                # update data transfer
+                if manager_site_name in worker_info[worker_hash]['peer_transfers']:
+                    del worker_info[worker_hash]['peer_transfers'][manager_site_name]
             
             if "unlink" in parts:
                 unlink_id = parts.index("unlink")
                 filename = parts[unlink_id + 1]
                 worker_ip, worker_port = parts[unlink_id - 1][1:-2].split(':')
-                datestring = parts[0] + " " + parts[1]
-                timestamp = datestring_to_timestamp(datestring)
-                worker_hash = worker_address_hash_map[(worker_ip, worker_port)]
+                worker_hash = worker_ip_port_to_hash[(worker_ip, worker_port)]
                 worker_id = worker_info[worker_hash]['worker_id']
 
                 if filename not in file_info:
-                    print(f"Warning: file {filename} not in file_info. This means the debug log is broken.")
-                    continue
-                if filename not in worker_info[worker_hash]['disk_update']:
-                    print(f"Warning: file {filename} not in worker {worker_hash}")
-                    continue
-                worker_when_start_stage_in = worker_info[worker_hash]['disk_update'][filename]['when_start_stage_in']
-                worker_when_stage_in = worker_info[worker_hash]['disk_update'][filename]['when_stage_in']
-                worker_when_stage_out = worker_info[worker_hash]['disk_update'][filename]['when_stage_out']
+                    raise ValueError(f"unlink file {filename} not in file_info. This means the debug log is broken.")
+                if filename not in worker_info[worker_hash]['peer_transfers']:
+                    raise ValueError(f"unlink file {filename} not in worker {worker_hash}")
+                
+                worker_when_start_stage_in = worker_info[worker_hash]['peer_transfers'][filename]['when_start_stage_in']
+                worker_when_start_stage_in = worker_info[worker_hash]['peer_transfers'][filename]['when_start_stage_in']
+                worker_when_stage_in = worker_info[worker_hash]['peer_transfers'][filename]['when_stage_in']
+                worker_when_stage_out = worker_info[worker_hash]['peer_transfers'][filename]['when_stage_out']
                 worker_when_stage_out.append(timestamp)
 
                 # in some case when using puturl or puturl_now, we may fail to receive the cache-update message, use the start time as the stage in time
                 if len(worker_when_start_stage_in) != len(worker_when_stage_in):
-                    for i in range(len(worker_when_start_stage_in) - len(worker_when_stage_in)):
-                        worker_when_stage_in.append(worker_when_start_stage_in[len(worker_when_start_stage_in) - i - 1])
+                    worker_ip, worker_port = worker_info[worker_hash]['worker_ip'], worker_info[worker_hash]['worker_port']
+                    # in this case, some files are put by the manager, either puturl or puturl_now, but eventually that file didn't go to the worker
+                    # theoretically, there should be only 1 failed count
+                    failed_count = len(worker_when_start_stage_in) - len(worker_when_stage_in)
+                    failed_when_start_stage_in = worker_when_start_stage_in[-failed_count]
+                    if failed_count > 0:
+                        print(f"Warning: unlink file {filename} on {worker_ip}:{worker_port} failed to be transferred, failed_count: {failed_count}")
+                        for i in range(1, failed_count + 1):
+                            # get the source of the failed transfer
+                            failed_transfer_source_hash = worker_info[worker_hash]['peer_transfers'][filename]['source'][-i]
+                            failed_transfer_source_ip, failed_transfer_source_port = worker_info[failed_transfer_source_hash]['worker_ip'], worker_info[failed_transfer_source_hash]['worker_port']
+                            failed_transfer_source = f"{failed_transfer_source_ip}:{failed_transfer_source_port}"
+
+                            # get the start time and waiting time of the failed transfer
+                            failed_transfer_start_time = worker_when_start_stage_in[-i]
+                            failed_transfer_waiting_time = round(timestamp - failed_transfer_start_time, 4)
+
+                            # 
+                            print(f"  == {i}: source: {failed_transfer_source}, cache_level: {worker_info[worker_hash]['peer_transfers'][filename]['cache_level'][-i]}, after {failed_transfer_waiting_time} seconds")
 
                 # this indicates the fully lost file, update the producer's when_output_fully_lost if any
                 if filename not in file_info:
-                    print(f"Warning: file {filename} not in file_info")
-                    continue
+                    raise ValueError(f"unlink file {filename} not in file_info")
                 if len(worker_when_stage_out) == len(worker_when_stage_in) and len(file_info[filename]['producers']) != 0:
                     producers = file_info[filename]['producers']
                     i = len(producers) - 1
@@ -699,9 +715,6 @@ def parse_debug():
             
             # get an output file from a worker
             if "Receiving" in parts and "file" in parts:
-                # timestamp
-                datestring = parts[0] + " " + parts[1]
-                timestamp = datestring_to_timestamp(datestring)
                 # filename
                 receiving_idx = parts.index("Receiving")
                 target_filepath = parts[receiving_idx + 2]
@@ -711,7 +724,7 @@ def parse_debug():
                 # size
                 size_in_mb = int(parts[receiving_idx + 4]) / 2**20
                 # source worker
-                worker_hash = worker_ipport_to_hash(parts[parts.index("from") + 1])
+                worker_hash = extract_worker_hash(parts[parts.index("from") + 1])
                 # update manager_disk_usage
                 if target_filename in file_info:
                     print(f"Warning: file {target_filename} already exists")
@@ -719,7 +732,6 @@ def parse_debug():
                     'id': len(manager_disk_usage),
                     'time_stage_in': timestamp,
                     'size(MB)': size_in_mb,
-                    'from_worker': worker_hash,
                 }
 
         pbar.close()
@@ -733,31 +745,30 @@ def parse_debug():
     manager_disk_usage_df.to_csv(os.path.join(dirname, 'manager_disk_usage.csv'))
 
     for worker_hash, worker in worker_info.items():
-        for filename, worker_disk_update in worker['disk_update'].items():
-            len_stage_in = len(worker_disk_update['when_stage_in'])
-            len_stage_out = len(worker_disk_update['when_stage_out'])
+        for filename, worker_peer_transfers in worker['peer_transfers'].items():
+            len_stage_in = len(worker_peer_transfers['when_stage_in'])
+            len_stage_out = len(worker_peer_transfers['when_stage_out'])
             if len_stage_in < len_stage_out:
-                worker_disk_update['when_stage_out'] = worker_disk_update['when_stage_out'][:len_stage_in]
+                worker_peer_transfers['when_stage_out'] = worker_peer_transfers['when_stage_out'][:len_stage_in]
                 len_stage_out = len_stage_in
             if filename not in file_info:
-                print(f"Warning: file {filename} not in file_info")
-                continue
-                # raise ValueError(f"file {filename} not in file_info")
+                raise ValueError(f"file {filename} not in file_info")
             # add the worker holding information
             for i in range(len_stage_out):
                 worker_holding = {
                     'worker_hash': worker_hash,
-                    'time_stage_in': worker_disk_update['when_stage_in'][i],
-                    'time_stage_out': worker_disk_update['when_stage_out'][i],
+                    'time_stage_in': worker_peer_transfers['when_stage_in'][i],
+                    'time_stage_out': worker_peer_transfers['when_stage_out'][i],
                 }
                 file_info[filename]['worker_holding'].append(worker_holding)
+
             # in case some files are not staged out, consider the manager end time as the stage out time
             if len_stage_out < len_stage_in:
                 print(f"Warning: file {filename} stage out less than stage in for worker {worker_hash}, stage_in: {len_stage_in}, stage_out: {len_stage_out}")
                 for i in range(len_stage_in - len_stage_out):
                     worker_holding = {
                         'worker_hash': worker_hash,
-                        'time_stage_in': worker_disk_update['when_stage_in'][len_stage_in - i - 1],
+                        'time_stage_in': worker_peer_transfers['when_stage_in'][len_stage_in - i - 1],
                         'time_stage_out': manager_info['time_end'],
                     }
                     file_info[filename]['worker_holding'].append(worker_holding)
@@ -967,7 +978,7 @@ def generate_other_statistics(task_df, file_info_df, worker_summary_df):
 
     # total size of files transferred
     manager_info['size_of_all_files(MB)'] = round(file_info_df['size(MB)'].sum(), 4)
-    # peak disk usage among all workers
+    # peak data transfer among all workers
     manager_info['cluster_peak_disk_usage(MB)'] = round(worker_summary_df['peak_disk_usage(MB)'].max(), 4)
     # convert into csv format
     manager_info_df = pd.DataFrame([manager_info])
@@ -1102,14 +1113,14 @@ def generate_worker_disk_usage():
         worker_id = worker['worker_id']
         current_cached_files = 0
         history_cached_files = 0
-        for filename, disk_update in worker['disk_update'].items():
+        for filename, peer_transfers in worker['peer_transfers'].items():
             # Initial checks for disk update logs
-            len_in = len(disk_update['when_stage_in'])
-            len_out = len(disk_update['when_stage_out'])
+            len_in = len(peer_transfers['when_stage_in'])
+            len_out = len(peer_transfers['when_stage_out'])
 
             # Preparing row data
-            for event_time, disk_increment in zip(disk_update['when_stage_in'] + disk_update['when_stage_out'],
-                                                 [disk_update['size(MB)']] * len_in + [-disk_update['size(MB)']] * len_out):
+            for event_time, disk_increment in zip(peer_transfers['when_stage_in'] + peer_transfers['when_stage_out'],
+                                                 [peer_transfers['size(MB)']] * len_in + [-peer_transfers['size(MB)']] * len_out):
 
                 if event_time < manager_info['time_start']:
                     if abs(event_time - manager_info['time_start']) < 1:
@@ -1141,10 +1152,10 @@ def generate_worker_disk_usage():
     if not worker_disk_usage_df.empty:
         worker_disk_usage_df = worker_disk_usage_df[worker_disk_usage_df['when_stage_in_or_out'] > 0]
         worker_disk_usage_df.sort_values(by=['worker_id', 'when_stage_in_or_out'], ascending=[True, True], inplace=True)
-        # normal worker disk usage
+        # normal worker data transfer
         worker_disk_usage_df['disk_usage(MB)'] = worker_disk_usage_df.groupby('worker_id')['size(MB)'].cumsum()
         worker_disk_usage_df['disk_usage(%)'] = worker_disk_usage_df['disk_usage(MB)'] / worker_disk_usage_df['worker_hash'].map(lambda x: worker_info[x]['disk(MB)'])
-        # only consider the accumulated disk usage (exclude the stage-out files)
+        # only consider the accumulated data transfer (exclude the stage-out files)
         worker_disk_usage_df['positive_size(MB)'] = worker_disk_usage_df['size(MB)'].apply(lambda x: x if x > 0 else 0)
         worker_disk_usage_df['disk_usage_accumulation(MB)'] = worker_disk_usage_df.groupby('worker_id')['positive_size(MB)'].cumsum()
         worker_disk_usage_df['disk_usage_accumulation(%)'] = worker_disk_usage_df['disk_usage_accumulation(MB)'] / worker_disk_usage_df['worker_hash'].map(lambda x: worker_info[x]['disk(MB)'])
