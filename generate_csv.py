@@ -6,6 +6,7 @@ import pandas as pd
 from datetime import datetime
 import re
 from tqdm import tqdm
+from collections import defaultdict
 import json
 from bitarray import bitarray # type: ignore
 from tqdm import tqdm
@@ -19,6 +20,9 @@ import numpy as np
 task_info, task_try_count, library_info, worker_info, manager_info, file_info, category_info, manager_disk_usage = {}, {}, {}, {}, {}, {}, {}, {}
 worker_ip_port_to_hash = {}
 worker_ip_transfer_port_to_hash = {}
+
+failed_transfer_sources = defaultdict(int)
+
 task_start_timestamp = 'time_worker_start'
 task_finish_timestamp = 'time_worker_end'
 
@@ -680,7 +684,7 @@ def parse_debug():
                             failed_transfer_source_hash = worker_info[worker_hash]['peer_transfers'][filename]['source'][-i]
                             failed_transfer_source_ip, failed_transfer_source_port = worker_info[failed_transfer_source_hash]['worker_ip'], worker_info[failed_transfer_source_hash]['worker_port']
                             failed_transfer_source = f"{failed_transfer_source_ip}:{failed_transfer_source_port}"
-
+                            failed_transfer_sources[failed_transfer_source] += 1
                             # get the start time and waiting time of the failed transfer
                             failed_transfer_start_time = worker_when_start_stage_in[-i]
                             failed_transfer_waiting_time = round(timestamp - failed_transfer_start_time, 4)
@@ -1199,3 +1203,6 @@ if __name__ == '__main__':
 
     # for function calls
     generate_library_summary()
+
+    for failed_transfer_source, count in failed_transfer_sources.items():
+        print(f"{failed_transfer_source}: {count}")
