@@ -1,5 +1,5 @@
 from _config import *
-
+from _tools import *
 
 def plot_accumulated_disk_usage(show=True, add_peak_line_and_text=True, plot_file_count=True):
     num_logs = len(LOGS)

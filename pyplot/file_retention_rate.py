@@ -1,5 +1,5 @@
 from _config import *
-
+from _tools import *
 
 def generate_file_retention_time_csv(file_info_csv, file_retention_time_csv):
     file_info_df = pd.read_csv(file_info_csv)
@@ -32,7 +32,7 @@ def generate_file_retention_time_csv(file_info_csv, file_retention_time_csv):
     file_retention_time_df.to_csv(file_retention_time_csv, index=False)
 
 
-def plot_file_retention_time(show=True, x_unit='index'):
+def plot_file_retention_time(show=True, x_unit='time', y_axis='file_index'):
     sns.set_theme(style="whitegrid", rc={'axes.grid': True, 'grid.alpha': PLOT_SETTINGS['grid_alpha']})
     
     num_logs = len(LOGS)
@@ -56,7 +56,6 @@ def plot_file_retention_time(show=True, x_unit='index'):
         max_file_size = max(max_file_size, df['size(MB)'].max())
 
     max_file_index = get_adjusted_max(len(df), step=10000)
-    max_FRR = 1
 
     for i, csv_file in enumerate(FILE_INFO_CSV_FILES):
         file_retention_time_csv = csv_file.replace('file_info.csv', 'file_retention_time.csv')
@@ -65,17 +64,17 @@ def plot_file_retention_time(show=True, x_unit='index'):
         ax = fig.add_subplot(gs[0, i])
         axs.append(ax)
         
-        if x_unit == 'index':
-            x_values = range(len(df))
-            x_label = 'File Index'
-        elif x_unit == 'size':
-            x_values = df['size(MB)']
-            x_label = 'File Size (MB)'
+        x_values = df['file_retention_time']
+        x_label = 'Time'
+
+        # Use file index as y-axis
+        y_values = range(len(df))
+        y_label = 'File Index'
 
         sns.scatterplot(
             ax=ax, 
             x=x_values,
-            y='file_retention_rate', 
+            y=y_values, 
             data=df,
             s=PLOT_SETTINGS["dot_size"],
             alpha=PLOT_SETTINGS["plot_alpha"], 
@@ -86,17 +85,14 @@ def plot_file_retention_time(show=True, x_unit='index'):
         ax.set_title(LOG_TITLES[i], fontsize=PLOT_SETTINGS["title_fontsize"])
 
         ax.set_xlabel(x_label, fontsize=PLOT_SETTINGS["label_fontsize"])
-        ax.set_ylabel('FRR (%)', fontsize=PLOT_SETTINGS["label_fontsize"])
+        ax.set_ylabel(y_label, fontsize=PLOT_SETTINGS["label_fontsize"])
 
-        if x_unit == 'index':
-            ax.set_xlim(-1, max_file_index)
-        elif x_unit == 'size':
-            ax.set_xlim(-1, max_file_size)
+        ax.set_xlim(0, df['file_retention_time'].max())
         ax.set_xticks(np.linspace(0, ax.get_xlim()[1], 4))
 
-        ax.set_ylim(0, max_FRR * 1.1)
-        ax.set_yticks(np.linspace(0, max_FRR, PLOT_SETTINGS["yticks_count"]))
-        
+        ax.set_ylim(-1, max_file_index)
+        ax.set_yticks(np.linspace(0, max_file_index, PLOT_SETTINGS["yticks_count"]))
+
         ax.tick_params(axis='both', labelsize=PLOT_SETTINGS["tick_fontsize"])
         ax.grid(visible=True, linestyle='--', linewidth=0.3, alpha=PLOT_SETTINGS["grid_alpha"])
     
@@ -108,6 +104,10 @@ def plot_file_retention_time(show=True, x_unit='index'):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('--by_rate', action='store_true', help='Plot by file retention rate if set, otherwise by file retention time')
     args = parser.parse_args()
 
-    plot_file_retention_time(show=True, x_unit='index')
+    # Determine y_axis based on the --by_rate flag
+    y_axis = 'file_index'  # Now using file index for y-axis
+
+    plot_file_retention_time(show=True, x_unit='time', y_axis=y_axis)
