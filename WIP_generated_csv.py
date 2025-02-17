@@ -53,7 +53,7 @@ class ManagerInfo:
         self.worker_info = {}      # key: (ip, port), value: WorkerInfo
 
         # peer transfer info
-        self.caching_transfers = {}      # key: filename, value: PeerTransfer
+        self.peer_transfers = {}      # key: filename, value: PeerTransfer
 
         self.set_time_zone()
 
@@ -112,10 +112,10 @@ class ManagerInfo:
             self.worker_info[worker_entry] = WorkerInfo(worker_ip, worker_port, self)
         return self.worker_info[worker_entry]
 
-    def ensure_caching_transfer_entry(self, filename: str):
-        if filename not in self.caching_transfers:
-            self.caching_transfers[filename] = PeerTransfer(filename, self)
-        return self.caching_transfers[filename]
+    def ensure_peer_transfer_entry(self, filename: str):
+        if filename not in self.peer_transfers:
+            self.peer_transfers[filename] = PeerTransfer(filename, self)
+        return self.peer_transfers[filename]
 
     def add_task(self, task: TaskInfo):
         assert isinstance(task, TaskInfo)
@@ -131,10 +131,24 @@ class ManagerInfo:
             raise ValueError(f"worker {worker.ip}:{worker.port} already exists")
         self.worker_info[worker_entry] = worker
 
-    def find_worker_by_ip_transfer_port(self, ip: str, transfer_port: int):
+    def find_worker_by_ip_transfer_port(self, ip: str, transfer_port: int, timestamp: float):
+        matched_worker = None
         for worker in self.worker_info.values():
             if worker.ip == ip and worker.transfer_port == transfer_port:
-                return worker
+                if matched_worker:
+                    print(f"multiple workers have the same ip and transfer port: {transfer_port}")
+                    print(f"worker 1: {matched_worker.ip}:{matched_worker.port}")
+                    print(f"worker 2: {worker.ip}:{worker.port}")
+                    raise ValueError(f"multiple workers have the same ip and transfer port: {transfer_port}")
+                
+                # check if the worker is connected at the timestamp
+                if len(worker.time_connected) == len(worker.time_disconnected):
+                    continue
+                if worker.time_connected[-1] <= timestamp:
+                    matched_worker = worker
+
+        if matched_worker:
+            return matched_worker
         raise ValueError(f"worker {ip}:{transfer_port} not found")
     
     def parse_transactions(self):
@@ -176,7 +190,6 @@ class ManagerInfo:
                         resources_allocated = json.loads(info.split(' ', 3)[-1])
                         task.time_commit_start = float(resources_allocated["time_commit_start"][0])
                         task.time_commit_end = float(resources_allocated["time_commit_end"][0])
-                        task.size_input_mgr = float(resources_allocated["size_input_mgr"][0])
                         continue
                     if status == 'WAITING_RETRIEVAL':
                         continue
@@ -194,7 +207,6 @@ class ManagerInfo:
                         raise ValueError(f"LIBRARY SENT is not supported yet")
                     if status == 'STARTED':
                         raise ValueError(f"LIBRARY STARTED is not supported yet")          
-
 
     def parse_debug(self):
         self.current_try_id = defaultdict(int)
@@ -254,17 +266,17 @@ class ManagerInfo:
                     putting_file_name = parts[put_idx + 1]
 
                     # this is the first time the file is sent to this worker
-                    caching_transfer = worker.ensure_caching_transfer(putting_file_name)
-                    caching_transfer.set_size_mb(int(parts[put_idx + 3]) / 2**20)
-                    caching_transfer.set_cache_level(parts[put_idx + 2])
-                    caching_transfer.append_when_start_stage_in(timestamp)
-                    caching_transfer.append_source('manager')
-                    caching_transfer.append_destination((worker.ip, worker.port))
+                    peer_transfer = worker.ensure_peer_transfer(putting_file_name)
+                    peer_transfer.set_size_mb(int(parts[put_idx + 3]) / 2**20)
+                    peer_transfer.set_cache_level(parts[put_idx + 2])
+                    peer_transfer.append_when_start_stage_in(timestamp)
+                    peer_transfer.append_source('manager')
+                    peer_transfer.append_destination((worker.ip, worker.port))
                     continue
 
                 if "received" in parts:
-                    caching_transfer = worker.caching_transfers[putting_file_name]
-                    caching_transfer.append_when_stage_in(timestamp)
+                    peer_transfer = worker.peer_transfers[putting_file_name]
+                    peer_transfer.append_when_stage_in(timestamp)
                     putting_file_name = None
                     continue
 
@@ -296,20 +308,22 @@ class ManagerInfo:
                     size_in_mb = int(parts[puturl_id + 4]) / 2**20
                     
                     source_ip, source_transfer_port = WorkerInfo.extract_ip_port_from_string(parts[puturl_id + 1])
-                    source_worker = self.find_worker_by_ip_transfer_port(source_ip, source_transfer_port)
+                    source_worker = self.find_worker_by_ip_transfer_port(source_ip, source_transfer_port, timestamp)
                     dest_ip, dest_port = WorkerInfo.extract_ip_port_from_string(parts[puturl_id - 1])
                     dest_worker = self.worker_info[(dest_ip, dest_port)]
 
                     # check if the source worker really has the file
-                    if filename not in source_worker.caching_transfers:
-                        raise ValueError(f"source worker {source_ip}:{source_port} does not have the file {putting_file_name}")
+                    if filename not in source_worker.peer_transfers:
+                        print(source_worker.peer_transfers.keys())
+                        print(line)
+                        raise ValueError(f"source worker {source_worker.ip}:{source_worker.port} does not have the file {filename}")
                     
-                    caching_transfer = dest_worker.ensure_caching_transfer(filename)
-                    caching_transfer.set_size_mb(size_in_mb)
-                    caching_transfer.set_cache_level(file_cache_level)
-                    caching_transfer.append_when_start_stage_in(timestamp)
-                    caching_transfer.append_source(source_worker.hash)
-                    caching_transfer.append_destination((dest_ip, dest_port))
+                    peer_transfer = dest_worker.ensure_peer_transfer(filename)
+                    peer_transfer.set_size_mb(size_in_mb)
+                    peer_transfer.set_cache_level(file_cache_level)
+                    peer_transfer.append_when_start_stage_in(timestamp)
+                    peer_transfer.append_source(source_worker.hash)
+                    peer_transfer.append_destination((dest_ip, dest_port))
 
                 if "tx to" in line and "task" in parts:
                     task_idx = parts.index("task")
@@ -451,28 +465,28 @@ class ManagerInfo:
                     # start_time = float(parts[cache_update_id + 7]) / 1e6
 
                     # if this is a task-generated file, it is the first time the file is cached on this worker, otherwise we only update the stage in time
-                    if filename not in worker.caching_transfers:
-                        caching_transfer = worker.ensure_caching_transfer(filename)
-                        caching_transfer.set_size_mb(size_in_mb)
-                        caching_transfer.set_cache_level(file_cache_level)
-                        caching_transfer.append_when_start_stage_in(timestamp)      # todo: if task-generated file, the start time should be the time_worker_end of the related task
-                        caching_transfer.append_source('TASK')                      # todo: if task-generated file, the source should be the task id
-                        caching_transfer.append_destination((worker.ip, worker.port))
+                    if filename not in worker.peer_transfers:
+                        peer_transfer = worker.ensure_peer_transfer(filename)
+                        peer_transfer.set_size_mb(size_in_mb)
+                        peer_transfer.set_cache_level(file_cache_level)
+                        peer_transfer.append_when_start_stage_in(timestamp)      # todo: if task-generated file, the start time should be the time_worker_end of the related task
+                        peer_transfer.append_source('TASK')                      # todo: if task-generated file, the source should be the task id
+                        peer_transfer.append_destination((worker.ip, worker.port))
                     else:
-                        caching_transfer = worker.caching_transfers[filename]
+                        peer_transfer = worker.peer_transfers[filename]
 
-                    caching_transfer.append_when_stage_in(timestamp)                # the file stage-in time is the current timestamp
-                
+                    peer_transfer.append_when_stage_in(timestamp)                # the file stage-in time is the current timestamp
+
                 if "unlink" in parts:
                     unlink_id = parts.index("unlink")
                     filename = parts[unlink_id + 1]
                     ip, port = WorkerInfo.extract_ip_port_from_string(parts[unlink_id - 1])
                     worker = self.worker_info[(ip, port)]
-                    caching_transfer = worker.caching_transfers[filename]
-                    caching_transfer.append_when_stage_out(timestamp)
+                    peer_transfer = worker.peer_transfers[filename]
+                    peer_transfer.append_when_stage_out(timestamp)
 
-                    assert len(caching_transfer.source) == len(caching_transfer.destination) == len(caching_transfer.cache_level) == len(caching_transfer.when_start_stage_in)
-                    failed_stage_in_count = len(caching_transfer.when_start_stage_in) - len(caching_transfer.when_stage_in)
+                    assert len(peer_transfer.source) == len(peer_transfer.destination) == len(peer_transfer.cache_level) == len(peer_transfer.when_start_stage_in)
+                    failed_stage_in_count = len(peer_transfer.when_start_stage_in) - len(peer_transfer.when_stage_in)
 
                     # in some case when using puturl or puturl_now, we may fail to receive the cache-update message, use the start time as the stage in time
                     if failed_stage_in_count > 0:
@@ -481,9 +495,9 @@ class ManagerInfo:
                         print(f"Warning: unlink file {filename} on {ip}:{port} failed to be transferred, failed_count: {failed_stage_in_count}")
                         for i in range(1, failed_stage_in_count + 1):
                             # get the source of the failed transfer
-                            source = caching_transfer.source[-i]
-                            cache_level = caching_transfer.cache_level[-i]
-                            when_start_stage_in = caching_transfer.when_start_stage_in[-i]
+                            source = peer_transfer.source[-i]
+                            cache_level = peer_transfer.cache_level[-i]
+                            when_start_stage_in = peer_transfer.when_start_stage_in[-i]
                             when_stage_out = timestamp
                             print(f"  == {i}: source: {source}, cache_level: {cache_level}, after {round(when_stage_out - when_start_stage_in, 4)} seconds")
                     else:
@@ -510,18 +524,18 @@ class ManagerInfo:
                     file_path_mgr = parts[file_idx + 1]
                     if file_path_mgr.split('/')[-2] != "outputs":
                         print(f"Waring: receiving a file but not in outputs folder: {file_path_mgr}")
-                    # size
+
                     file_name_mgr = file_path_mgr.split('/')[-1]
                     file_size_mb = int(parts[file_idx + 3]) / 2**20
                     source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[parts.index("from") + 1])
                     source_worker = self.worker_info[(source_ip, source_port)]
 
-                    caching_transfer = self.ensure_caching_transfer_entry(file_name_mgr)
-                    caching_transfer.set_size_mb(file_size_mb)
-                    caching_transfer.append_when_start_stage_in(timestamp)
-                    caching_transfer.append_when_stage_in(timestamp)
-                    caching_transfer.append_source((source_ip, source_port))
-                    caching_transfer.append_destination('MANAGER')
+                    peer_transfer = self.ensure_peer_transfer_entry(file_name_mgr)
+                    peer_transfer.set_size_mb(file_size_mb)
+                    peer_transfer.append_when_start_stage_in(timestamp)
+                    peer_transfer.append_when_stage_in(timestamp)
+                    peer_transfer.append_source((source_ip, source_port))
+                    peer_transfer.append_destination('MANAGER')
                     continue
 
                 if "manager end" in line:
