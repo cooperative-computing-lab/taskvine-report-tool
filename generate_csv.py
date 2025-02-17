@@ -53,6 +53,7 @@ def set_time_zone(datestring):
     mgr_start_datesting = datetime.strptime(datestring, "%Y/%m/%d %H:%M:%S.%f").strftime("%Y-%m-%d %H:%M")
 
     formatted_timestamp = int(manager_info['time_start'])
+
     utc_datestring = datetime.fromtimestamp(formatted_timestamp, timezone.utc)
     for tz in pytz.all_timezones:
         tz_datestring = utc_datestring.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(tz)).strftime('%Y-%m-%d %H:%M')
@@ -129,8 +130,8 @@ def parse_txn():
                         task['when_next_ready'] = timestamp
                         # reset the coremap for the new try
                         for i in task['core_id']:
-                            worker_coremap[task['worker_committed']][i] = 0
-                        worker_info[task['worker_committed']]['tasks_failed'].append(task_id)
+                            worker_coremap[task['committed_worker_hash']][i] = 0
+                        worker_info[task['committed_worker_hash']]['tasks_failed'].append(task_id)
                         task_try_count[task_id] += 1
                     task_category = info.split()[0]
                     try_id = task_try_count[task_id]
@@ -157,7 +158,7 @@ def parse_txn():
 
                         'when_output_fully_lost': None,
 
-                        'worker_committed': None,
+                        'committed_worker_hash': None,
 
                         'size_input_mgr': None,
                         'size_output_mgr': None,
@@ -165,7 +166,7 @@ def parse_txn():
                         'gpus_requested': resources_requested.get("gpus", [0, ""])[0],
                         'memory_requested_mb': resources_requested.get("memory", [0, ""])[0],
                         'disk_requested_mb': resources_requested.get("disk", [0, ""])[0],
-                        'retrieved_status': None,
+                        'current_status_mgr': None,
                         'done_status': None,
                         'done_code': None,
                         'category': task_category,
@@ -173,8 +174,8 @@ def parse_txn():
 
                         'input_files': [],
                         'output_files': [],
-                        'size_input_files(MB)': 0,
-                        'size_output_files(MB)': 0,
+                        'size_input_files_mb': 0,
+                        'size_output_files_mb': 0,
                         'critical_parent': None,                # task_id of the most recent ready parent
                         'critical_input_file': None,            # input file that took the shortest time to use
                         'critical_input_file_wait_time': 0,     # wait time from when the input file was ready to when it was used
@@ -196,7 +197,7 @@ def parse_txn():
                         task = task_info[(task_id, try_id)]
                         worker_hash = info.split()[0]
                         task['when_running'] = timestamp
-                        task['worker_committed'] = worker_hash
+                        task['committed_worker_hash'] = worker_hash
                         task['time_commit_start'] = float(resources_allocated["time_commit_start"][0])
                         task['time_commit_end'] = float(resources_allocated["time_commit_end"][0])
                         task['size_input_mgr'] = float(resources_allocated["size_input_mgr"][0])
@@ -218,7 +219,7 @@ def parse_txn():
                             'when_sent': None,
                             'when_started': None,
                             'when_retrieved': None,
-                            'worker_committed': info.split(' ', 3)[0],
+                            'committed_worker_hash': info.split(' ', 3)[0],
                             'worker_id': -1,
                             'size_input_mgr': resources_allocated["size_input_mgr"][0],
                             'cores_requested': resources_allocated.get("cores", [0, ""])[0],
@@ -231,7 +232,7 @@ def parse_txn():
                     if task_id in task_try_count:
                         task = task_info[(task_id, task_try_count[task_id])]
                         task['when_waiting_retrieval'] = timestamp
-                        worker_hash = task['worker_committed']
+                        worker_hash = task['committed_worker_hash']
                         for core in task['core_id']:
                             worker_coremap[worker_hash][core] = 0
                 if status == 'RETRIEVED':
@@ -249,7 +250,7 @@ def parse_txn():
                         task = task_info[(task_id, task_try_count[task_id])]
                         task['when_retrieved'] = timestamp
 
-                        task['retrieved_status'] = status
+                        task['current_status_mgr'] = status
                         task['time_worker_start'] = resources_retrieved.get("time_worker_start", [None])[0]
                         task['time_worker_end'] = resources_retrieved.get("time_worker_end", [None])[0]
                         task['size_output_mgr'] = resources_retrieved.get("size_output_mgr", [None])[0]
@@ -263,7 +264,8 @@ def parse_txn():
                     done_info = info.split() if info else []
                     if task_id in task_try_count:
                         task = task_info[(task_id, task_try_count[task_id])]
-                        worker_hash = task['worker_committed']
+                        worker_hash = task['committed_worker_hash']
+                        task['current_status_mgr'] = status
                         task['when_done'] = timestamp
                         task['done_status'] = done_info[0] if len(done_info) > 0 else None
                         task['done_code'] = done_info[1] if len(done_info) > 1 else None
@@ -306,8 +308,8 @@ def parse_txn():
                             'num_tasks_completed': 0,
                             'num_tasks_failed': 0,
                             'cores': None,
-                            'memory(MB)': None,
-                            'disk(MB)': None,
+                            'memory_mb': None,
+                            'disk_mb': None,
                             'peer_transfers': {},
                         }
                     else:
@@ -321,8 +323,8 @@ def parse_txn():
                     resources = json.loads(info)
                     cores, memory, disk = resources.get("cores", [0, ""])[0], resources.get("memory", [0, ""])[0], resources.get("disk", [0, ""])[0]
                     worker_info[obj_id]['cores'] = cores
-                    worker_info[obj_id]['memory(MB)'] = memory
-                    worker_info[obj_id]['disk(MB)'] = disk
+                    worker_info[obj_id]['memory_mb'] = memory
+                    worker_info[obj_id]['disk_mb'] = disk
                     # for calculating task core_id
                     worker_coremap[obj_id] = bitarray(cores + 1)
                     worker_coremap[obj_id].setall(0)
@@ -626,31 +628,34 @@ def parse_debug():
                 continue
             if sending_task_id:
                 task_try_id = sending_task_try_id[sending_task_id]
+                task_entry = (sending_task_id, task_try_id)
                 if "end" in parts:
                     sending_task_try_id[sending_task_id] += 1
                     sending_task_id = None
                 elif "cores" in parts:
                     cores_requested = int(float(parts[parts.index("cores") + 1]))
-                    task_info[(sending_task_id, task_try_id)]['cores_requested'] = cores_requested
+                    task_info[task_entry]['cores_requested'] = cores_requested
                 elif "gpus" in parts:
                     gpus_requested = int(float(parts[parts.index("gpus") + 1]))
-                    task_info[(sending_task_id, task_try_id)]['gpus_requested'] = gpus_requested
+                    task_info[task_entry]['gpus_requested'] = gpus_requested
                 elif "memory" in parts:
                     memory_requested = int(float(parts[parts.index("memory") + 1]))
-                    task_info[(sending_task_id, task_try_id)]['memory_requested_mb'] = memory_requested
+                    task_info[task_entry]['memory_requested_mb'] = memory_requested
                 elif "disk" in parts:
                     disk_requested = int(float(parts[parts.index("disk") + 1]))
-                    task_info[(sending_task_id, task_try_id)]['disk_requested_mb'] = disk_requested
+                    task_info[task_entry]['disk_requested_mb'] = disk_requested
+                elif "infile" in parts:
+                    if task_info[task_entry]['input_files']:
+                        raise ValueError(f"task {sending_task_id} has multiple input files")
+                    task_info[task_entry]['input_files'].append(parts[parts.index("infile") + 1])
+                elif "outfile" in parts:
+                    if task_info[task_entry]['output_files']:
+                        raise ValueError(f"task {sending_task_id} has multiple output files")
+                    task_info[task_entry]['output_files'].append(parts[parts.index("outfile") + 1])
+                elif "category" in parts:
+                    task_info[task_entry]['category'] = parts[parts.index("category") + 1]
                 continue
 
-            if ("infile" in parts or "outfile" in parts) and "needs" not in parts:
-                file_idx = parts.index("infile") if "infile" in parts else parts.index("outfile")
-                worker_hash = extract_worker_hash(parts[file_idx - 1])
-                manager_site_name = parts[file_idx + 2]
-
-                # update data transfer
-                if manager_site_name in worker_info[worker_hash]['peer_transfers']:
-                    del worker_info[worker_hash]['peer_transfers'][manager_site_name]
             
             if "unlink" in parts:
                 unlink_id = parts.index("unlink")
@@ -784,7 +789,7 @@ def parse_debug():
     manager_info['total_workers'] = len(worker_info)
     active_workers = set()
     for task in task_info.values():
-        active_workers.add(task['worker_committed'])
+        active_workers.add(task['committed_worker_hash'])
     worker_info = {worker_hash: worker for worker_hash, worker in worker_info.items() if worker_hash in active_workers}
     worker_info = {k: v for k, v in sorted(worker_info.items(), key=lambda item: item[1]['time_connected'])}
     manager_info['active_workers'] = len(worker_info)
@@ -795,11 +800,11 @@ def parse_debug():
         worker['worker_id'] = worker_id
         worker_id += 1
     for task in task_info.values():
-        if task['worker_committed']:
-            task['worker_id'] = worker_info[task['worker_committed']]['worker_id']
+        if task['committed_worker_hash']:
+            task['worker_id'] = worker_info[task['committed_worker_hash']]['worker_id']
     for library in library_info.values():
-        if library['worker_committed']:
-            library['worker_id'] = worker_info[library['worker_committed']]['worker_id']
+        if library['committed_worker_hash']:
+            library['worker_id'] = worker_info[library['committed_worker_hash']]['worker_id']
     
     with open(os.path.join(dirname, 'worker_info.json'), 'w') as f:
         json.dump(worker_info, f, indent=4)
@@ -886,8 +891,8 @@ def generate_worker_summary(worker_disk_usage_df):
             'time_disconnected': info['time_disconnected'],
             'lifetime(s)': 0,
             'cores': info['cores'],
-            'memory(MB)': info['memory(MB)'],
-            'disk(MB)': info['disk(MB)'],
+            'memory_mb': info['memory_mb'],
+            'disk_mb': info['disk_mb'],
             'tasks_completed': info['tasks_completed'],
             'tasks_failed': info['tasks_failed'],
             'num_tasks_completed': 0,
@@ -1036,7 +1041,7 @@ def generate_task_df():
 
         # if the when_next_ready is na, that means the manager exited before the task was ready, set it to the worker end time
         if pd.isna(task['when_next_ready']):
-            worker = worker_info[task['worker_committed']]
+            worker = worker_info[task['committed_worker_hash']]
             for i in range(len(worker['time_connected'])):
                 if len(worker['time_disconnected']) != len(worker['time_connected']):
                     # worker is still connected
@@ -1046,8 +1051,8 @@ def generate_task_df():
                         task['when_next_ready'] = worker['time_disconnected'][i]
         
         # calculate the total size of input and output files
-        task['size_input_files(MB)'] = calculate_total_size_of_files(task['input_files'])
-        task['size_output_files(MB)'] = calculate_total_size_of_files(task['output_files'])
+        task['size_input_files_mb'] = calculate_total_size_of_files(task['input_files'])
+        task['size_output_files_mb'] = calculate_total_size_of_files(task['output_files'])
         # calculate the critical parent
         parents = []
         for input_file in task['input_files']:
@@ -1161,11 +1166,11 @@ def generate_worker_disk_usage():
         worker_disk_usage_df.sort_values(by=['worker_id', 'when_stage_in_or_out'], ascending=[True, True], inplace=True)
         # normal worker data transfer
         worker_disk_usage_df['disk_usage(MB)'] = worker_disk_usage_df.groupby('worker_id')['size(MB)'].cumsum()
-        worker_disk_usage_df['disk_usage(%)'] = worker_disk_usage_df['disk_usage(MB)'] / worker_disk_usage_df['worker_hash'].map(lambda x: worker_info[x]['disk(MB)'])
+        worker_disk_usage_df['disk_usage(%)'] = worker_disk_usage_df['disk_usage(MB)'] / worker_disk_usage_df['worker_hash'].map(lambda x: worker_info[x]['disk_mb'])
         # only consider the accumulated data transfer (exclude the stage-out files)
         worker_disk_usage_df['positive_size(MB)'] = worker_disk_usage_df['size(MB)'].apply(lambda x: x if x > 0 else 0)
         worker_disk_usage_df['disk_usage_accumulation(MB)'] = worker_disk_usage_df.groupby('worker_id')['positive_size(MB)'].cumsum()
-        worker_disk_usage_df['disk_usage_accumulation(%)'] = worker_disk_usage_df['disk_usage_accumulation(MB)'] / worker_disk_usage_df['worker_hash'].map(lambda x: worker_info[x]['disk(MB)'])
+        worker_disk_usage_df['disk_usage_accumulation(%)'] = worker_disk_usage_df['disk_usage_accumulation(MB)'] / worker_disk_usage_df['worker_hash'].map(lambda x: worker_info[x]['disk_mb'])
         worker_disk_usage_df.drop('positive_size(MB)', axis=1, inplace=True)
 
         worker_disk_usage_df.to_csv(os.path.join(dirname, 'worker_disk_usage.csv'), index=False)
@@ -1209,4 +1214,4 @@ if __name__ == '__main__':
     for failed_transfer_source, count in sorted_failed_transfer_sources:
         worker_ip, worker_port = failed_transfer_source.split(':')
         worker_hash = worker_ip_port_to_hash[(worker_ip, worker_port)]
-        print(f"id: {worker_info[worker_hash]['worker_id']}, ip: {worker_info[worker_hash]['worker_ip']}, port: {worker_info[worker_hash]['worker_port']}, count: {count}")
+        print(f"id: {worker_info[worker_hash]['worker_id']}, worker: {worker_ip}:{worker_port}, count: {count}")
