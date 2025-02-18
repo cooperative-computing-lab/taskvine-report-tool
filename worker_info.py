@@ -1,13 +1,15 @@
 import json
 import re
 from bitarray import bitarray
-from peer_transfer import PeerTransfer
 from task_info import TaskInfo
+
+
 class WorkerInfo:
     def __init__(self, ip: str, port: int, manager_info):
         self.manager_info = manager_info
 
         # basic info
+        self.worker_id = None
         self.ip = ip
         self.port = port
         self.hash = None
@@ -24,9 +26,6 @@ class WorkerInfo:
         # task info
         self.tasks_completed = []
         self.tasks_failed = []
-
-        # data transfer info
-        self.peer_transfers = {}
 
     def add_connection(self, timestamp: float):
         self.time_connected.append(timestamp)
@@ -90,13 +89,9 @@ class WorkerInfo:
         if self.disk_mb and disk_mb != self.disk_mb:
             raise ValueError(f"disk mismatch for worker {self.ip}:{self.port}")
         self.disk_mb = disk_mb
-
-    def ensure_peer_transfer(self, filename: str):
-        if filename not in self.peer_transfers:
-            self.peer_transfers[filename] = PeerTransfer(filename)
-        return self.peer_transfers[filename]
     
-    def print_worker_info(self):
+    def print_info(self):
+        print("worker_id: ", self.worker_id)
         print("ip: ", self.ip)
         print("port: ", self.port)
         print("hash: ", self.hash)
@@ -108,7 +103,7 @@ class WorkerInfo:
         print("disk_mb: ", self.disk_mb)
         print("time_connected: ", self.time_connected)
         print("time_disconnected: ", self.time_disconnected)
-        
+        print("\n")
         
     @staticmethod
     def extract_ip_port_from_string(string):

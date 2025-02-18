@@ -16,7 +16,7 @@ import pytz
 import numpy as np
 from worker_info import WorkerInfo
 from task_info import TaskInfo
-from peer_transfer import PeerTransfer
+from file_info import FileInfo
 
 
 ############################################################################################################
@@ -53,7 +53,7 @@ class ManagerInfo:
         self.worker_info = {}      # key: (ip, port), value: WorkerInfo
 
         # peer transfer info
-        self.peer_transfers = {}      # key: filename, value: PeerTransfer
+        self.peer_transfers = {}      # key: filename, value: FileInfo
 
         self.set_time_zone()
 
@@ -114,7 +114,7 @@ class ManagerInfo:
 
     def ensure_peer_transfer_entry(self, filename: str):
         if filename not in self.peer_transfers:
-            self.peer_transfers[filename] = PeerTransfer(filename, self)
+            self.peer_transfers[filename] = FileInfo(filename, self)
         return self.peer_transfers[filename]
 
     def add_task(self, task: TaskInfo):

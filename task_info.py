@@ -39,7 +39,6 @@ class TaskInfo:
         self.gpus_requested = None
         self.memory_requested_mb = None
         self.disk_requested_mb = None
-        self.recent_status = None
         self.execution_time = None
 
     def set_done_code(self, done_code):
@@ -156,5 +155,5 @@ class TaskInfo:
         print("gpus_requested: ", self.gpus_requested)
         print("memory_requested_mb: ", self.memory_requested_mb)
         print("disk_requested_mb: ", self.disk_requested_mb)
-        print("recent_status: ", self.recent_status)
         print("execution_time: ", self.execution_time)
+        print("\n")
