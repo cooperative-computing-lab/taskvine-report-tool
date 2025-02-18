@@ -16,7 +16,6 @@ import pytz
 import numpy as np
 from worker_info import WorkerInfo
 from task_info import TaskInfo
-from peer_transfer import PeerTransfer
 from file_info import FileInfo
 
 
@@ -49,9 +48,6 @@ class ManagerInfo:
         # workers
         self.workers = {}      # key: (ip, port), value: WorkerInfo
         self.ip_transfer_port_to_worker = {}     # key: (ip, transfer_port), value: WorkerInfo
-
-        # peer transfers
-        self.peer_transfers = {}      # key: filename, value: PeerTransfer
 
         # files
         self.files = {}      # key: filename, value: FileInfo
@@ -112,6 +108,11 @@ class ManagerInfo:
         if worker_entry not in self.workers:
             self.workers[worker_entry] = WorkerInfo(worker_ip, worker_port, self)
         return self.workers[worker_entry]
+    
+    def ensure_file_info_entry(self, filename: str, size_mb: int):
+        if filename not in self.files:
+            self.files[filename] = FileInfo(filename, size_mb)
+        return self.files[filename]
 
     def add_task(self, task: TaskInfo):
         assert isinstance(task, TaskInfo)
@@ -204,9 +205,8 @@ class ManagerInfo:
                 total_lines += 1
 
         # put a file on a worker
-        putting_file_name = None
-        # send a file from a worker
-        sending_back_filename = None
+        putting_transfer_event = None
+        getting_transfer_event = None
 
         # receiving resources info from a worker
         receiving_resources_from_worker = None
@@ -253,31 +253,25 @@ class ManagerInfo:
                     put_idx = parts.index("put")
                     ip, port = WorkerInfo.extract_ip_port_from_string(parts[put_idx - 1])
                     worker = self.workers[(ip, port)]
-                    putting_file_name = parts[put_idx + 1]
-                    
+                    filename = parts[put_idx + 1]
+
                     file_cache_level = parts[put_idx + 2]
                     file_size_mb = int(parts[put_idx + 3]) / 2**20
 
-                    # this is the first time the file is sent to this worker
-                    peer_transfer = worker.ensure_peer_transfer(putting_file_name)
-                    peer_transfer.set_size_mb(file_size_mb)
-                    peer_transfer.append_cache_level(file_cache_level)
-                    if putting_file_name.startswith('buffer'):
-                        peer_transfer.append_type(4)
-                    elif putting_file_name.startswith('file'):
-                        peer_transfer.append_type(1)
+                    if filename.startswith('buffer'):
+                        file_type = 4
+                    elif filename.startswith('file'):
+                        file_type = 1
                     else:
-                        raise ValueError(f"unknown file type: {putting_file_name}")
-                    peer_transfer.append_when_start_stage_in(timestamp)
-                    peer_transfer.append_source('manager')
-                    peer_transfer.append_destination((worker.ip, worker.port))
-                    continue
+                        raise ValueError(f"pending file type: {filename}")
 
+                    file = self.ensure_file_info_entry(filename, file_size_mb)
+                    putting_transfer_event = file.start_new_transfer('manager', (worker.ip, worker.port), timestamp, 'manager_put', file_type, file_cache_level)
+                    continue
                 if "received" in parts:
-                    peer_transfer = worker.peer_transfers[putting_file_name]
-                    peer_transfer.append_when_stage_in(timestamp)
-                    peer_transfer.append_received_status("worker_received")
-                    putting_file_name = None
+                    putting_transfer_event.set_time_stage_in(timestamp)
+                    putting_transfer_event.set_state("worker_received")
+                    putting_transfer_event = None
                     continue
 
                 if "resources" in parts:
@@ -311,16 +305,13 @@ class ManagerInfo:
                     dest_ip, dest_port = WorkerInfo.extract_ip_port_from_string(parts[puturl_id - 1])
                     dest_worker = self.workers[(dest_ip, dest_port)]
 
-                    # check if the source worker really has the file
-                    if filename not in source_worker.peer_transfers:
-                        raise ValueError(f"source worker {source_worker.ip}:{source_worker.port} does not have the file {filename}")
-                    peer_transfer = dest_worker.ensure_peer_transfer(filename)
-                    peer_transfer.set_size_mb(size_in_mb)
-                    peer_transfer.append_cache_level(file_cache_level)
-                    peer_transfer.append_type(2)
-                    peer_transfer.append_when_start_stage_in(timestamp)
-                    peer_transfer.append_source((source_worker.ip, source_worker.port))
-                    peer_transfer.append_destination((dest_ip, dest_port))
+                    if "puturl" in parts:
+                        transfer_event = 'puturl'
+                    else:
+                        transfer_event = 'puturl_now'
+
+                    file = self.ensure_file_info_entry(filename, size_in_mb)
+                    file.start_new_transfer((source_worker.ip, source_worker.port), (dest_worker.ip, dest_worker.port), timestamp, transfer_event, 2, file_cache_level)
 
                 if "tx to" in line and "task" in parts:
                     task_idx = parts.index("task")
@@ -391,7 +382,7 @@ class ManagerInfo:
                         worker.tasks_failed.append(task)
                         worker.reap_task(task)
                     else:
-                        raise ValueError(f"unknown state change: {line}")
+                        raise ValueError(f"pending state change: {line}")
                     continue
 
                 if "complete" in parts:
@@ -452,19 +443,23 @@ class ManagerInfo:
                     size_in_mb = int(parts[cache_update_id + 4]) / 2**20
 
                     # if this is a task-generated file, it is the first time the file is cached on this worker, otherwise we only update the stage in time
-                    if filename not in worker.peer_transfers:
-                        peer_transfer = worker.ensure_peer_transfer(filename)
-                        peer_transfer.set_size_mb(size_in_mb)
-                        peer_transfer.append_cache_level(file_cache_level)
-                        peer_transfer.append_type(file_type)
-                        peer_transfer.append_when_start_stage_in(timestamp)      # todo: if task-generated file, the start time should be the time_worker_end of the related task
-                        peer_transfer.append_source('TASK')                      # todo: if task-generated file, the source should be the task id
-                        peer_transfer.append_destination((worker.ip, worker.port))
-                    else:
-                        peer_transfer = worker.peer_transfers[filename]
+                    file = self.ensure_file_info_entry(filename, size_in_mb)
 
-                    peer_transfer.append_when_stage_in(timestamp)                # the file stage-in time is the current timestamp
-                    peer_transfer.append_received_status("cache-update")
+                    # find all pending transfers on the destination
+                    pending_transfers_on_destination = file.get_transfers_on_destination(worker.ip, 'pending')
+
+                    # if there are pending transfers on the destination, the file was transferred by other sources
+                    if pending_transfers_on_destination:
+                        for transfer in pending_transfers_on_destination:
+                            transfer.set_time_stage_in(timestamp)
+                            transfer.set_state("cache_update")
+                    # otherwise, the file is created by the current task
+                    else:
+                        # todo: the start stage in time should be the time when the task ends on the worker
+                        transfer = file.start_new_transfer('Task', (worker.ip, worker.port), timestamp, 'task_created', file_type, file_cache_level)
+                        transfer.set_time_stage_in(timestamp)
+                        transfer.set_state("cache_update")
+
                     continue
                     
                 if "cache-invalid" in parts:
@@ -472,8 +467,9 @@ class ManagerInfo:
                     ip, port = WorkerInfo.extract_ip_port_from_string(parts[cache_invalid_id - 1])
                     worker = self.workers[(ip, port)]
                     filename = parts[cache_invalid_id + 1]
-                    peer_transfer = worker.peer_transfers[filename]
-                    peer_transfer.append_received_status("cache-invalid")
+
+                    file = self.files[filename]
+                    file.cache_invalid_on_destination(timestamp, (ip, port))
                     continue
 
                 if "unlink" in parts:
@@ -481,14 +477,13 @@ class ManagerInfo:
                     filename = parts[unlink_id + 1]
                     ip, port = WorkerInfo.extract_ip_port_from_string(parts[unlink_id - 1])
                     worker = self.workers[(ip, port)]
-                    peer_transfer = worker.peer_transfers[filename]
-                    peer_transfer.append_when_stage_out(timestamp)
 
-                    assert len(peer_transfer.source) == len(peer_transfer.destination) == len(peer_transfer.cache_level) == len(peer_transfer.when_start_stage_in)
+                    file = self.files[filename]
+                    file.unlink_on_destination(timestamp, (ip, port))
 
                     """
                     # This part is handled in initialize_files()
-                    failed_stage_in_count = len(peer_transfer.when_start_stage_in) - len(peer_transfer.when_stage_in)
+                    failed_stage_in_count = len(file_transfer.when_start_stage_in) - len(file_transfer.when_stage_in)
 
                     # in some case when using puturl or puturl_now, we may fail to receive the cache-update message, use the start time as the stage in time
                     if failed_stage_in_count > 0:
@@ -497,9 +492,9 @@ class ManagerInfo:
                         print(f"Warning: unlink file {filename} on {ip}:{port} failed to be transferred, failed_count: {failed_stage_in_count}")
                         for i in range(1, failed_stage_in_count + 1):
                             # get the source of the failed transfer
-                            source = peer_transfer.source[-i]
-                            cache_level = peer_transfer.cache_level[-i]
-                            when_start_stage_in = peer_transfer.when_start_stage_in[-i]
+                            source = file_transfer.source[-i]
+                            cache_level = file_transfer.cache_level[-i]
+                            when_start_stage_in = file_transfer.when_start_stage_in[-i]
                             when_stage_out = timestamp
                             print(f"  - {i}: source: {source}, cache_level: {cache_level}, after {round(when_stage_out - when_start_stage_in, 4)} seconds")
                     else:
@@ -522,34 +517,26 @@ class ManagerInfo:
                 
                 # get an output file from a worker
                 if "sending back" in line:
-                    assert sending_back_filename is None
-                    sending_back_filename = parts[parts.index("to") + 1]
+                    assert getting_transfer_event is None
+                    getting_transfer_event = True
                     continue
-                if sending_back_filename and "get" in parts:
+                if getting_transfer_event and "get" in parts:
                     continue
-                if sending_back_filename and "file" in parts and "Receiving" not in parts:
+                if getting_transfer_event and "file" in parts and "Receiving" not in parts:
+                    continue
+                if getting_transfer_event and "Receiving file" in line:
                     file_idx = parts.index("file")
-                    continue
-                if sending_back_filename and "Receiving file" in line:
-                    file_idx = parts.index("file")
-                    assert sending_back_filename == parts[file_idx + 1]
+                    filename = parts[file_idx + 1]
                     file_size_mb = int(parts[parts.index("(size:") + 1]) / 2**20
                     source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[parts.index("from") + 1])
-                    if sending_back_filename not in self.peer_transfers:
-                        self.peer_transfers[sending_back_filename] = PeerTransfer(sending_back_filename)
-                    peer_transfer = self.peer_transfers[sending_back_filename]
-                    peer_transfer.set_size_mb(file_size_mb)
-                    peer_transfer.append_source((source_ip, source_port))
-                    peer_transfer.append_destination('MANAGER')
-                    peer_transfer.append_when_start_stage_in(timestamp)
-                    peer_transfer.append_type(1)
-                    peer_transfer.append_cache_level(1)
+
+                    file = self.ensure_file_info_entry(filename, file_size_mb)
+                    getting_transfer_event = file.start_new_transfer((source_ip, source_port), 'manager', timestamp, 'manager_get', 1, 1)
                     continue
-                if sending_back_filename and "sent" in parts:
-                    peer_transfer = self.peer_transfers[sending_back_filename]
-                    peer_transfer.append_when_stage_in(timestamp)
-                    peer_transfer.append_received_status("manager_received")
-                    sending_back_filename = None
+                if getting_transfer_event and "sent" in parts:
+                    getting_transfer_event.set_time_stage_in(timestamp)
+                    getting_transfer_event.set_state("manager_received")
+                    getting_transfer_event = None
                     continue
 
                 if "manager end" in line:
@@ -580,31 +567,31 @@ class ManagerInfo:
                 self.files[filename].producers.add(task.task_id)
         
         for worker in self.workers.values():
-            for filename, peer_transfer in worker.peer_transfers.items():
+            for filename, file_transfer in worker.file_transfers.items():
                 if filename not in self.files:
                     raise ValueError(f"file {filename} not in files")
                 file_info = self.files[filename]
-                file_info.size_in_mb = peer_transfer.size_mb
+                file_info.size_in_mb = file_transfer.size_mb
 
-                holding_count = len(peer_transfer.when_stage_in)
+                holding_count = len(file_transfer.when_stage_in)
                 for i in range(holding_count):
                     worker_id = worker.worker_id
-                    time_when_stage_in = peer_transfer.when_stage_in[i]
-                    time_when_stage_out = peer_transfer.when_stage_out[i]
+                    time_when_stage_in = file_transfer.when_stage_in[i]
+                    time_when_stage_out = file_transfer.when_stage_out[i]
                     holding_time = time_when_stage_out - time_when_stage_in
                     file_info.worker_holding.append([worker_id, time_when_stage_in, time_when_stage_out, holding_time])
 
-                # some transfers may failed out of no reason, set the received_status to "unknown"
-                if len(peer_transfer.received_status) < len(peer_transfer.when_start_stage_in):
-                    for i in range(len(peer_transfer.when_start_stage_in) - len(peer_transfer.received_status)):
-                        peer_transfer.received_status.append("unknown")
+                # some transfers may failed out of no reason, set the state to "pending"
+                if len(file_transfer.state) < len(file_transfer.when_start_stage_in):
+                    for i in range(len(file_transfer.when_start_stage_in) - len(file_transfer.state)):
+                        file_transfer.state.append("pending")
 
-                for i in range(len(peer_transfer.received_status)):
-                    received_status = peer_transfer.received_status[i]
-                    if received_status == "unknown":
-                        time_start_stage_in = peer_transfer.when_start_stage_in[i]
-                        source = f"{peer_transfer.source[i][0]}:{peer_transfer.source[i][1]}"
-                        dest = f"{peer_transfer.destination[i][0]}:{peer_transfer.destination[i][1]}"
+                for i in range(len(file_transfer.state)):
+                    state = file_transfer.state[i]
+                    if state == "pending":
+                        time_start_stage_in = file_transfer.when_start_stage_in[i]
+                        source = f"{file_transfer.source[i][0]}:{file_transfer.source[i][1]}"
+                        dest = f"{file_transfer.destination[i][0]}:{file_transfer.destination[i][1]}"
                         # find the worker disconnected time
                         matched_disconnected_time = None
                         for time_connected, time_disconnected in zip(worker.time_connected, worker.time_disconnected):
@@ -612,21 +599,27 @@ class ManagerInfo:
                                 matched_disconnected_time = time_disconnected
                                 break
                         if matched_disconnected_time is None:
-                            raise ValueError(f"no worker disconnected time found for file {peer_transfer.filename}")
+                            raise ValueError(f"no worker disconnected time found for file {file_transfer.filename}")
                         pending_time = round(matched_disconnected_time - time_start_stage_in, 4)
-                        print(f"Warning: file {peer_transfer.filename} received status is {received_status}, dest: {dest}, source: {source}, after {pending_time} seconds the dest worker is disconnected")
+                        print(f"Warning: file {file_transfer.filename} received status is {state}, dest: {dest}, source: {source}, event: {file_transfer.event[i]}, after pending {pending_time} seconds")
+
+                        # if the file was not staged out, set the stage out time to the worker disconnected time
+                        try:
+                            file_transfer.when_stage_out[i]
+                        except IndexError:
+                            file_transfer.append_when_stage_out(matched_disconnected_time)
                         continue
-                    if received_status == "cache-invalid":
+                    if state == "cache_invalid":
                         continue
-                    elif received_status == "cache-update" or received_status == "worker_received":
+                    elif state == "cache_update" or state == "worker_received":
                         worker_id = worker.worker_id
-                        time_stage_in = peer_transfer.when_stage_in[i]
-                        time_stage_out = peer_transfer.when_stage_out[i]
+                        time_stage_in = file_transfer.when_stage_in[i]
+                        time_stage_out = file_transfer.when_stage_out[i]
                         holding_time = time_stage_out - time_stage_in
                         file_info.worker_holding.append([worker_id, time_stage_in, time_stage_out, holding_time])
                         continue
                     else:
-                        raise ValueError(f"unknown received status: {received_status}")
+                        raise ValueError(f"pending received status: {state}")
 
 """
         # manager_disk_usage can be immediately transferred to manager_disk_usage_df
@@ -638,11 +631,11 @@ class ManagerInfo:
         manager_disk_usage_df.to_csv(os.path.join(dirname, 'manager_disk_usage.csv'))
 
         for worker_hash, worker in worker_info.items():
-            for filename, worker_peer_transfers in worker['peer_transfers'].items():
-                len_stage_in = len(worker_peer_transfers['when_stage_in'])
-                len_stage_out = len(worker_peer_transfers['when_stage_out'])
+            for filename, worker_file_transfers in worker['file_transfers'].items():
+                len_stage_in = len(worker_file_transfers['when_stage_in'])
+                len_stage_out = len(worker_file_transfers['when_stage_out'])
                 if len_stage_in < len_stage_out:
-                    worker_peer_transfers['when_stage_out'] = worker_peer_transfers['when_stage_out'][:len_stage_in]
+                    worker_file_transfers['when_stage_out'] = worker_file_transfers['when_stage_out'][:len_stage_in]
                     len_stage_out = len_stage_in
                 if filename not in file_info:
                     raise ValueError(f"file {filename} not in file_info")
@@ -650,8 +643,8 @@ class ManagerInfo:
                 for i in range(len_stage_out):
                     worker_holding = {
                         'worker_hash': worker_hash,
-                        'time_stage_in': worker_peer_transfers['when_stage_in'][i],
-                        'time_stage_out': worker_peer_transfers['when_stage_out'][i],
+                        'time_stage_in': worker_file_transfers['when_stage_in'][i],
+                        'time_stage_out': worker_file_transfers['when_stage_out'][i],
                     }
                     file_info[filename]['worker_holding'].append(worker_holding)
 
@@ -661,7 +654,7 @@ class ManagerInfo:
                     for i in range(len_stage_in - len_stage_out):
                         worker_holding = {
                             'worker_hash': worker_hash,
-                            'time_stage_in': worker_peer_transfers['when_stage_in'][len_stage_in - i - 1],
+                            'time_stage_in': worker_file_transfers['when_stage_in'][len_stage_in - i - 1],
                             'time_stage_out': manager_info['time_end'],
                         }
                         file_info[filename]['worker_holding'].append(worker_holding)
