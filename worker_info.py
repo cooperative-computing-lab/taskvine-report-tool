@@ -26,7 +26,7 @@ class WorkerInfo:
         self.tasks_failed = []
 
         # data transfer info
-        self.caching_transfers = {}
+        self.peer_transfers = {}
 
     def add_connection(self, timestamp: float):
         self.time_connected.append(timestamp)
@@ -91,10 +91,24 @@ class WorkerInfo:
             raise ValueError(f"disk mismatch for worker {self.ip}:{self.port}")
         self.disk_mb = disk_mb
 
-    def ensure_caching_transfer(self, filename: str):
-        if filename not in self.caching_transfers:
-            self.caching_transfers[filename] = PeerTransfer(filename, self.manager_info)
-        return self.caching_transfers[filename]
+    def ensure_peer_transfer(self, filename: str):
+        if filename not in self.peer_transfers:
+            self.peer_transfers[filename] = PeerTransfer(filename)
+        return self.peer_transfers[filename]
+    
+    def print_worker_info(self):
+        print("ip: ", self.ip)
+        print("port: ", self.port)
+        print("hash: ", self.hash)
+        print("machine_name: ", self.machine_name)
+        print("transfer_port: ", self.transfer_port)
+        print("cores: ", self.cores)
+        print("gpus: ", self.gpus)
+        print("memory_mb: ", self.memory_mb)
+        print("disk_mb: ", self.disk_mb)
+        print("time_connected: ", self.time_connected)
+        print("time_disconnected: ", self.time_disconnected)
+        
         
     @staticmethod
     def extract_ip_port_from_string(string):
