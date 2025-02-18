@@ -19,10 +19,6 @@ from task_info import TaskInfo
 from peer_transfer import PeerTransfer
 
 
-############################################################################################################
-
-    
-
 class ManagerInfo:
     def __init__(self, runtime_template):
         self.ip = None
@@ -46,12 +42,12 @@ class ManagerInfo:
         self.tasks_done = None
 
         # task info
-        self.task_info = {}        # key: (task_id, task_try_id), value: TaskInfo
+        self.tasks = {}        # key: (task_id, task_try_id), value: TaskInfo
         self.current_try_id = {}   # key: task_id, value: task_try_id
 
         # worker info
-        self.worker_info = {}      # key: (ip, port), value: WorkerInfo
-        self.ip_transfer_port_to_worker = {} # key: (ip, transfer_port), value: WorkerInfo
+        self.workers = {}      # key: (ip, port), value: WorkerInfo
+        self.ip_transfer_port_to_worker = {}     # key: (ip, transfer_port), value: WorkerInfo
 
         # peer transfer info
         self.peer_transfers = {}      # key: filename, value: PeerTransfer
@@ -109,23 +105,23 @@ class ManagerInfo:
     
     def ensure_worker_entry(self, worker_ip: str, worker_port: int):
         worker_entry = (worker_ip, worker_port)
-        if worker_entry not in self.worker_info:
-            self.worker_info[worker_entry] = WorkerInfo(worker_ip, worker_port, self)
-        return self.worker_info[worker_entry]
+        if worker_entry not in self.workers:
+            self.workers[worker_entry] = WorkerInfo(worker_ip, worker_port, self)
+        return self.workers[worker_entry]
 
     def add_task(self, task: TaskInfo):
         assert isinstance(task, TaskInfo)
         task_entry = (task.task_id, task.task_try_id)
-        if task_entry in self.task_info:
+        if task_entry in self.tasks:
             raise ValueError(f"task {task.task_id} already exists")
-        self.task_info[task_entry] = task
+        self.tasks[task_entry] = task
 
     def add_worker(self, worker: WorkerInfo):
         assert isinstance(worker, WorkerInfo)
         worker_entry = (worker.ip, worker.port)
-        if worker_entry in self.worker_info:
+        if worker_entry in self.workers:
             raise ValueError(f"worker {worker.ip}:{worker.port} already exists")
-        self.worker_info[worker_entry] = worker
+        self.workers[worker_entry] = worker
 
     def add_ip_transfer_port_to_worker(self, ip: str, transfer_port: int, worker: WorkerInfo):
         # if there is an existing worker, it must had disconnected
@@ -167,12 +163,12 @@ class ManagerInfo:
                     if status == 'READY':
                         task_id = int(obj_id)
                         self.current_try_id[task_id] += 1
-                        assert (task_id, self.current_try_id[task_id]) in self.task_info
+                        assert (task_id, self.current_try_id[task_id]) in self.tasks
                         continue
                     task_id = int(obj_id)
                     task_entry = (task_id, self.current_try_id[task_id])
 
-                    task = self.task_info[task_entry]
+                    task = self.tasks[task_entry]
                     if status == 'RUNNING':
                         resources_allocated = json.loads(info.split(' ', 3)[-1])
                         task.time_commit_start = float(resources_allocated["time_commit_start"][0])
@@ -236,7 +232,7 @@ class ManagerInfo:
                 if "removed" in parts:
                     release_idx = parts.index("removed")
                     ip, port = WorkerInfo.extract_ip_port_from_string(parts[release_idx - 1])
-                    worker = self.worker_info[(ip, port)]
+                    worker = self.workers[(ip, port)]
                     worker.add_disconnection(timestamp)
                     continue
 
@@ -244,7 +240,7 @@ class ManagerInfo:
                     transfer_port_idx = parts.index("transfer-port")
                     transfer_port = int(parts[transfer_port_idx + 1])
                     ip, port = WorkerInfo.extract_ip_port_from_string(parts[transfer_port_idx - 1])
-                    worker = self.worker_info[(ip, port)]
+                    worker = self.workers[(ip, port)]
                     worker.set_transfer_port(transfer_port)
                     self.add_ip_transfer_port_to_worker(ip, transfer_port, worker)
                     continue
@@ -252,7 +248,7 @@ class ManagerInfo:
                 if "put" in parts:
                     put_idx = parts.index("put")
                     ip, port = WorkerInfo.extract_ip_port_from_string(parts[put_idx - 1])
-                    worker = self.worker_info[(ip, port)]
+                    worker = self.workers[(ip, port)]
                     putting_file_name = parts[put_idx + 1]
                     
                     file_cache_level = parts[put_idx + 2]
@@ -264,7 +260,7 @@ class ManagerInfo:
                     peer_transfer.append_cache_level(file_cache_level)
                     if putting_file_name.startswith('buffer'):
                         peer_transfer.append_type(4)
-                    elif putting_file_name.startswith('file-meta'):
+                    elif putting_file_name.startswith('file'):
                         peer_transfer.append_type(1)
                     else:
                         raise ValueError(f"unknown file type: {putting_file_name}")
@@ -282,7 +278,7 @@ class ManagerInfo:
                 if "resources" in parts:
                     resources_idx = parts.index("resources")
                     worker_ip, worker_port = WorkerInfo.extract_ip_port_from_string(parts[resources_idx - 1])
-                    receiving_resources_from_worker = self.worker_info[(worker_ip, worker_port)]
+                    receiving_resources_from_worker = self.workers[(worker_ip, worker_port)]
                     continue
                 if receiving_resources_from_worker and "cores" in parts:
                     receiving_resources_from_worker.set_cores(int(float(parts[parts.index("cores") + 1])))
@@ -308,7 +304,7 @@ class ManagerInfo:
                     source_ip, source_transfer_port = WorkerInfo.extract_ip_port_from_string(parts[puturl_id + 1])
                     source_worker = self.find_worker_by_ip_transfer_port(source_ip, source_transfer_port)
                     dest_ip, dest_port = WorkerInfo.extract_ip_port_from_string(parts[puturl_id - 1])
-                    dest_worker = self.worker_info[(dest_ip, dest_port)]
+                    dest_worker = self.workers[(dest_ip, dest_port)]
 
                     # check if the source worker really has the file
                     if filename not in source_worker.peer_transfers:
@@ -325,12 +321,12 @@ class ManagerInfo:
                     task_idx = parts.index("task")
                     sending_task_id = int(parts[task_idx + 1])
                     sending_task_try_id = self.current_try_id[sending_task_id]
-                    sending_task = self.task_info[(sending_task_id, sending_task_try_id)]
+                    sending_task = self.tasks[(sending_task_id, sending_task_try_id)]
                     worker_ip, worker_port = WorkerInfo.extract_ip_port_from_string(parts[task_idx - 1])
                     sending_task.set_worker_ip_port(worker_ip, worker_port)
                     continue
                 if sending_task_id:
-                    task = self.task_info[(sending_task_id, self.current_try_id[sending_task_id])]
+                    task = self.tasks[(sending_task_id, self.current_try_id[sending_task_id])]
                     if "end" in parts:
                         sending_task_id = None
                     elif "cores" in parts:
@@ -360,18 +356,18 @@ class ManagerInfo:
                         continue
 
                     task_entry = (task_id, self.current_try_id[task_id])
-                    task = self.task_info[task_entry]
+                    task = self.tasks[task_entry]
                     if "READY (1) to RUNNING (2)" in line:                  # as expected 
                         task.when_running = timestamp
                         # update the coremap
                         worker_entry = (task.worker_ip, task.worker_port)
-                        worker = self.worker_info[worker_entry]
+                        worker = self.workers[worker_entry]
                         worker.run_task(task)
                     elif "RUNNING (2) to WAITING_RETRIEVAL (3)" in line:    # as expected
                         task.when_waiting_retrieval = timestamp
                         # update the coremap
                         worker_entry = (task.worker_ip, task.worker_port)
-                        worker = self.worker_info[worker_entry]
+                        worker = self.workers[worker_entry]
                         worker.reap_task(task)
                     elif "WAITING_RETRIEVAL (3) to RETRIEVED (4)" in line:  # as expected
                         task.when_retrieved = timestamp
@@ -386,7 +382,7 @@ class ManagerInfo:
                         self.add_task(new_task)
                         # update the worker's tasks_failed
                         worker_entry = (task.worker_ip, task.worker_port)
-                        worker = self.worker_info[worker_entry]
+                        worker = self.workers[worker_entry]
                         worker.tasks_failed.append(task)
                         worker.reap_task(task)
                     else:
@@ -396,18 +392,18 @@ class ManagerInfo:
                 if "complete" in parts:
                     complete_idx = parts.index("complete")
                     worker_ip, worker_port = WorkerInfo.extract_ip_port_from_string(parts[complete_idx - 1])
-                    worker = self.worker_info[(worker_ip, worker_port)]
+                    worker = self.workers[(worker_ip, worker_port)]
                     task_status = int(parts[complete_idx + 1])
                     exit_status = int(parts[complete_idx + 2])
                     output_length = int(parts[complete_idx + 3])
                     bytes_sent = int(parts[complete_idx + 4])
-                    time_worker_start = float(parts[complete_idx + 5]) / 1e6
-                    time_worker_end = float(parts[complete_idx + 6]) / 1e6
+                    time_worker_start = round(float(parts[complete_idx + 5]) / 1e6, 2)
+                    time_worker_end = round(float(parts[complete_idx + 6]) / 1e6, 2)
                     sandbox_used = int(parts[complete_idx + 7])
                     task_id = int(parts[complete_idx + 8])
 
                     task_entry = (task_id, self.current_try_id[task_id])
-                    task = self.task_info[task_entry]
+                    task = self.tasks[task_entry]
                     task.set_task_status(task_status)
                     task.set_exit_status(exit_status)
                     task.set_output_length(output_length)
@@ -421,7 +417,7 @@ class ManagerInfo:
                     stdout_idx = parts.index("stdout")
                     task_id = int(parts[stdout_idx + 1])
                     task_entry = (task_id, self.current_try_id[task_id])
-                    task = self.task_info[task_entry]
+                    task = self.tasks[task_entry]
                     stdout_size_mb = int(parts[stdout_idx + 2]) / 2**20
                     task.set_stdout_size_mb(stdout_size_mb)
                     continue
@@ -437,13 +433,13 @@ class ManagerInfo:
                         self.current_try_id[task_id] = 1    # this is the first try
 
                     task_entry = (task_id, self.current_try_id[task_id])
-                    self.task_info[task_entry].when_input_transfer_ready = timestamp
+                    self.tasks[task_entry].when_input_transfer_ready = timestamp
 
                 if "cache-update" in parts:
                     # cache-update cachename, &type, &cache_level, &size, &mtime, &transfer_time, &start_time, id
                     cache_update_id = parts.index("cache-update")
                     ip, port = WorkerInfo.extract_ip_port_from_string(parts[cache_update_id - 1])
-                    worker = self.worker_info[(ip, port)]
+                    worker = self.workers[(ip, port)]
 
                     filename = parts[cache_update_id + 1]
                     file_type = parts[cache_update_id + 2]
@@ -468,7 +464,7 @@ class ManagerInfo:
                     unlink_id = parts.index("unlink")
                     filename = parts[unlink_id + 1]
                     ip, port = WorkerInfo.extract_ip_port_from_string(parts[unlink_id - 1])
-                    worker = self.worker_info[(ip, port)]
+                    worker = self.workers[(ip, port)]
                     peer_transfer = worker.peer_transfers[filename]
                     peer_transfer.append_when_stage_out(timestamp)
 
@@ -494,14 +490,14 @@ class ManagerInfo:
                 if "Submitted" in parts and "recovery" in parts and "task" in parts:
                     task_id = int(parts[parts.index("task") + 1])
                     task_try_id = self.current_try_id[task_id]
-                    task = self.task_info[(task_id, task_try_id)]
+                    task = self.tasks[(task_id, task_try_id)]
                     task['is_recovery_task'] = True
 
                 if "exhausted" in parts and "resources" in parts:
                     exhausted_idx = parts.index("exhausted")
                     task_id = int(parts[exhausted_idx - 1])
                     task_try_id = self.current_try_id[task_id]
-                    task = self.task_info[(task_id, task_try_id)]
+                    task = self.tasks[(task_id, task_try_id)]
                     task.exhausted_resources = True
                 
                 # get an output file from a worker
@@ -542,8 +538,6 @@ class ManagerInfo:
 
     def generate_manager_disk_usage_csv(self):
         manager_disk_usage = {}
-
-
         pass
 
 """
