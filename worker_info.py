@@ -5,9 +5,7 @@ from task_info import TaskInfo
 
 
 class WorkerInfo:
-    def __init__(self, ip: str, port: int, manager_info):
-        self.manager_info = manager_info
-
+    def __init__(self, ip: str, port: int):
         # basic info
         self.id = None
         self.ip = ip

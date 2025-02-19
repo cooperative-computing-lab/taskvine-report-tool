@@ -198,8 +198,7 @@ class DataParser:
                         continue
 
                 if event_type == 'WORKER':
-                    if not obj_id.startswith('worker'):
-                        raise ValueError(f"worker {obj_id} is not a worker")
+                    pass
                 
                 if event_type == 'LIBRARY':
                     if status == 'SENT':
@@ -238,16 +237,22 @@ class DataParser:
                     self.manager.set_time_start(timestamp)
                     continue
 
-                if "info" in parts and "worker-id" in parts:
+                if "worker" in parts and "connected" in parts:
                     # this is the first time a worker is connected to the manager
-                    info_idx = parts.index("info")
-                    ip, port =  WorkerInfo.extract_ip_port_from_string(parts[info_idx - 1])
-                    worker = WorkerInfo(ip, port, self)
-                    worker.set_hash(parts[info_idx + 2])
-                    worker.set_machine_name(parts[info_idx - 2])
+                    worker_idx = parts.index("worker")
+                    ip, port = WorkerInfo.extract_ip_port_from_string(parts[worker_idx + 1])
+                    worker = WorkerInfo(ip, port)
                     worker.add_connection(timestamp)
                     self.add_worker(worker)
                     self.manager.set_when_first_worker_connect(timestamp)
+                    continue
+
+                if "info" in parts and "worker-id" in parts:
+                    info_idx = parts.index("info")
+                    ip, port =  WorkerInfo.extract_ip_port_from_string(parts[info_idx - 1])
+                    worker = self.workers[(ip, port)]
+                    worker.set_hash(parts[info_idx + 2])
+                    worker.set_machine_name(parts[info_idx - 2])
                     continue
 
                 if "removed" in parts:
@@ -299,7 +304,14 @@ class DataParser:
                 if putting_transfer_event:
                     continue
 
-                if "resources" in parts:
+                if "exhausted resources on" in line:
+                    exhausted_idx = parts.index("exhausted")
+                    task_id = int(parts[exhausted_idx - 1])
+                    worker_ip, worker_port = WorkerInfo.extract_ip_port_from_string(parts[exhausted_idx + 4])
+                    task = self.tasks[(task_id, self.current_try_id[task_id])]
+                    continue
+
+                if "resources" in parts and line.endswith("resources\n"):
                     resources_idx = parts.index("resources")
                     worker_ip, worker_port = WorkerInfo.extract_ip_port_from_string(parts[resources_idx - 1])
                     receiving_resources_from_worker = self.workers[(worker_ip, worker_port)]
@@ -395,26 +407,35 @@ class DataParser:
                         task.committed_worker_hash = worker.hash
                         worker.run_task(task)
                     elif "RUNNING (2) to WAITING_RETRIEVAL (3)" in line:    # as expected
-                        task.when_waiting_retrieval = timestamp
+                        task.set_when_waiting_retrieval(timestamp)
                         # update the coremap
                         worker_entry = (task.worker_ip, task.worker_port)
                         worker = self.workers[worker_entry]
                         worker.reap_task(task)
                     elif "WAITING_RETRIEVAL (3) to RETRIEVED (4)" in line:  # as expected
-                        task.when_retrieved = timestamp
+                        task.set_when_retrieved(timestamp)
                     elif "RETRIEVED (4) to DONE (5)" in line:               # as expected
                         worker_entry = (task.worker_ip, task.worker_port)
                         worker = self.workers[worker_entry]
-                        task.when_done = timestamp
+                        task.set_when_done(timestamp)
                         self.manager.set_when_last_task_done(timestamp)
-                        task.when_next_ready = "NO_MORE_TRY"
                         worker.tasks_completed.append(task)
                     elif "WAITING_RETRIEVAL (3) to READY (1)" in line or \
                          "RUNNING (2) to READY (1)" in line:                # task failure
                         # new task entry
                         self.current_try_id[task_id] += 1
                         new_task = TaskInfo(task_id, self.current_try_id[task_id], self)
-                        task.when_next_ready = timestamp
+                        # skip if the task status was set by a complete message
+                        if not task.task_status:
+                            task.set_when_failure_happens(timestamp)
+                            worker_entry = (task.worker_ip, task.worker_port)
+                            worker = self.workers[worker_entry]
+                            # it is that the worker disconnected
+                            if len(worker.time_connected) == len(worker.time_disconnected):
+                                task.set_task_status(15 << 3)
+                            # otherwise, we do not know the reason
+                            else:
+                                task.set_task_status(4 << 3)
                         new_task.set_when_ready(timestamp)
                         self.add_task(new_task)
                         # update the worker's tasks_failed
@@ -436,15 +457,24 @@ class DataParser:
                     bytes_sent = int(parts[complete_idx + 4])
                     time_worker_start = round(float(parts[complete_idx + 5]) / 1e6, 2)
                     time_worker_end = round(float(parts[complete_idx + 6]) / 1e6, 2)
-                    sandbox_used = int(parts[complete_idx + 7])
-                    task_id = int(parts[complete_idx + 8])
-
+                    sandbox_used = None
+                    try:
+                        task_id = int(parts[complete_idx + 8])
+                        sandbox_used = int(parts[complete_idx + 7])
+                    except:
+                        task_id = int(parts[complete_idx + 7])
+                        
                     task_entry = (task_id, self.current_try_id[task_id])
                     task = self.tasks[task_entry]
+                    
                     task.set_task_status(task_status)
+                    if task_status != 0:
+                        task.set_when_failure_happens(timestamp)
+                    
                     task.set_exit_status(exit_status)
                     task.set_output_length(output_length)
                     task.set_bytes_sent(bytes_sent)
+
                     task.set_time_worker_start(time_worker_start)
                     task.set_time_worker_end(time_worker_end)
                     task.set_sandbox_used(sandbox_used)
@@ -462,10 +492,6 @@ class DataParser:
                 if "has" in parts and "a" in parts and "ready" in parts and "transfer" in parts:
                     has_idx = parts.index("has")
                     task_id = int(parts[has_idx - 1])
-                    # a temporary hack
-                    if task_id < 0:
-                        print(f"Warning: task id {task_id} is negative")
-                        continue
                     if task_id not in self.current_try_id:
                         self.current_try_id[task_id] = 1    # this is the first try
 
@@ -528,11 +554,11 @@ class DataParser:
                     file.unlink_on_destination(timestamp, (ip, port))
                     continue
                     
-                if "Submitted" in parts and "recovery" in parts and "task" in parts:
+                if "Submitted recovery task" in line:
                     task_id = int(parts[parts.index("task") + 1])
                     task_try_id = self.current_try_id[task_id]
                     task = self.tasks[(task_id, task_try_id)]
-                    task['is_recovery_task'] = True
+                    task.is_recovery_task = True
                     continue
 
                 if "exhausted" in parts and "resources" in parts:
@@ -568,10 +594,25 @@ class DataParser:
                     continue
 
                 if "manager end" in line:
+                    self.manager.set_time_end(timestamp)
+                    # in case some files were not transferred
                     for filename in list(self.transferred_filenames):
                         file = self.files[filename]
                         file.manager_removed_on_destination(timestamp, "manager")
-                    self.manager.set_time_end(timestamp)
+                    for task in self.tasks.values():
+                        # some tasks were retrieved but not done because the manager was terminated by the user
+                        if task.when_done is None and task.when_retrieved is not None:
+                            task.set_when_done(timestamp)
+                        # in case some tasks were not failed
+                        if task.task_status == 0:
+                            task.set_when_failure_happens("N/A")
+                        else:
+                            # it was running but failed
+                            if task.when_running is not None:
+                                assert task.when_failure_happens is not None
+                            # not dispatched at all
+                            else:
+                                pass
 
             pbar.close()
 

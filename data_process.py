@@ -47,8 +47,13 @@ class DataProcessor:
     def generate_task_info_csv(self):
         rows = []
         for task in self.tasks.values():
+            if task.worker_ip is None and task.worker_port is None:
+                # this means a task was not dispatched at all
+                continue
             # assume each task uses 1 core as of now
-            assert len(task.core_id) == 1
+            if len(task.core_id) != 1:
+                raise ValueError(f"task {task.task_id} uses {len(task.core_id)} cores")
+
             row = {
                 'task_id': task.task_id,
                 'task_try_id': task.task_try_id,
@@ -74,7 +79,7 @@ class DataProcessor:
                 'when_waiting_retrieval': task.when_waiting_retrieval,
                 'when_retrieved': task.when_retrieved,
                 'when_done': task.when_done,
-                'when_next_ready': task.when_next_ready,
+                'when_failure_happens': task.when_failure_happens,
 
                 'worker_ip': task.worker_ip,
                 'worker_port': task.worker_port,

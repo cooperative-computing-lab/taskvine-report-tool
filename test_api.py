@@ -27,8 +27,8 @@ def test_execution_details_api(base_url="http://localhost:9122", runtime_templat
             print(f"Error: {data['error']}")
             return
         
-        if 'taskDone' in data:
-            print(f"Successful Tasks: {len(data['taskDone'])}")
+        if 'tasksDone' in data:
+            print(f"Successful Tasks: {len(data['tasksDone'])}")
         else:
             print("No successful tasks")
         
@@ -58,7 +58,7 @@ def test_execution_details_api(base_url="http://localhost:9122", runtime_templat
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--runtime-template', help='Specific runtime template to query')
+    parser.add_argument('runtime_template', help='Specific runtime template to query')
     parser.add_argument('--port', default=9122, help='Port number')
     args = parser.parse_args()
     

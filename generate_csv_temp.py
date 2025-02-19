@@ -21,8 +21,6 @@ from file_info import FileInfo
 
 ############################################################################################################
 
-    
-
 class ManagerInfo:
     def __init__(self, runtime_template):
         self.ip = None
@@ -314,7 +312,7 @@ class ManagerInfo:
                         task.when_done = timestamp
                     elif "WAITING_RETRIEVAL (3) to READY (1)" in line or \
                          "RUNNING (2) to READY (1)" in line:                # task failure
-                        task.when_next_ready = timestamp
+                        task.when_failure_happens = timestamp
                         # new task entry
                         self.current_try_id[task_id] += 1
                         new_task = TaskInfo(task_id, self.current_try_id[task_id], self)
