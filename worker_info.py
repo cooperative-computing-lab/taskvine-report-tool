@@ -9,7 +9,7 @@ class WorkerInfo:
         self.manager_info = manager_info
 
         # basic info
-        self.worker_id = None
+        self.id = None
         self.ip = ip
         self.port = port
         self.hash = None
@@ -28,10 +28,10 @@ class WorkerInfo:
         self.tasks_failed = []
 
     def add_connection(self, timestamp: float):
-        self.time_connected.append(timestamp)
+        self.time_connected.append(float(timestamp))
 
     def add_disconnection(self, timestamp: float):
-        self.time_disconnected.append(timestamp)
+        self.time_disconnected.append(float(timestamp))
         assert len(self.time_connected) == len(self.time_disconnected)
 
     def set_hash(self, hash: str):
@@ -91,7 +91,7 @@ class WorkerInfo:
         self.disk_mb = disk_mb
     
     def print_info(self):
-        print("worker_id: ", self.worker_id)
+        print("id: ", self.id)
         print("ip: ", self.ip)
         print("port: ", self.port)
         print("hash: ", self.hash)

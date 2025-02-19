@@ -29,7 +29,6 @@ class TaskInfo:
         self.when_retrieved = None
         self.when_done = None
         self.when_next_ready = None
-        self.when_output_fully_lost = None
 
         # worker info
         self.worker_ip, self.worker_port = None, None
@@ -40,6 +39,12 @@ class TaskInfo:
         self.memory_requested_mb = None
         self.disk_requested_mb = None
         self.execution_time = None
+
+    def set_when_ready(self, when_ready):
+        when_ready = float(when_ready)
+        if self.when_ready and when_ready != self.when_ready:
+            raise ValueError(f"when_ready mismatch for task {self.task_id}")
+        self.when_ready = when_ready
 
     def set_done_code(self, done_code):
         if self.done_code and done_code != self.done_code:
@@ -62,6 +67,7 @@ class TaskInfo:
         self.sandbox_used = sandbox_used
 
     def set_task_status(self, task_status):
+        task_status = int(task_status)
         if self.task_status and task_status != self.task_status:
             raise ValueError(f"task_status mismatch for task {self.task_id}")
         self.task_status = task_status
@@ -87,7 +93,7 @@ class TaskInfo:
         if self.time_worker_end and time_worker_end != self.time_worker_end:
             raise ValueError(f"time_worker_end mismatch for task {self.task_id}")
         self.time_worker_end = time_worker_end
-        self.execution_time = self.time_worker_end - self.time_worker_start
+        self.execution_time = round(float(self.time_worker_end) - float(self.time_worker_start), 2)
 
     def set_worker_ip_port(self, worker_ip, worker_port):
         if self.worker_ip and worker_ip != self.worker_ip:
