@@ -41,31 +41,24 @@ def get_execution_details():
             task_df = pd.read_csv(task_info_path)
             
             # Filter successful tasks
-            successful_tasks = task_df[task_df['when_done'].notna() & (task_df['when_done'] > 0)].copy()
-            data['taskDone'] = successful_tasks[[
+            done_tasks = task_df[task_df['when_done'].notna() & (task_df['when_done'] > 0)].copy()
+            data['tasksDone'] = done_tasks[[
                 'task_id', 'worker_ip', 'worker_port', 'worker_id', 'core_id', 'is_recovery_task', 'task_status', 'category',
                 'when_ready', 'when_running', 'time_worker_start', 'time_worker_end', 'when_waiting_retrieval', 'when_retrieved', 'when_done',
             ]].to_dict(orient='records')
             # assert that there is no None in the data
-            assert not any(d.get(k) is None for d in data['taskDone'] for k in d.keys())
+            assert not any(d.get(k) is None for d in data['tasksDone'] for k in d.keys())
 
-            # Forsaken tasks (task_status == 40)
-            forsaken_tasks = task_df[task_df['task_status'] == 40].copy()
-            data['taskForsaken'] = forsaken_tasks[[
-                'task_id', 'worker_ip', 'worker_port', 'worker_id', 'core_id', 'is_recovery_task', 'task_status', 'category',
-                'when_ready', 'when_running', 'time_worker_start', 'when_next_ready',
-            ]].to_dict(orient='records')
-            
-            # Filter failed tasks
+            # Failed tasks (task_status != 0)
             failed_tasks = task_df[task_df['when_done'].isna()].copy()
-            data['taskFailedOnWorker'] = failed_tasks[[
-                'task_id', 'worker_ip', 'worker_port', 'worker_id', 'core_id', 'when_running',
-                'when_next_ready', 'when_ready'
+            data['failedTasks'] = failed_tasks[[
+                'task_id', 'worker_ip', 'worker_port', 'worker_id', 'core_id', 'is_recovery_task', 'task_status', 'category',
+                'when_ready', 'when_running', 'when_next_ready',
             ]].to_dict(orient='records')
             # convert the None to "None"
-            data['taskFailedOnWorker'] = [
+            data['failedTasks'] = [
                 {k: "None" if v is None else v for k, v in d.items()}
-                for d in data['taskFailedOnWorker']
+                for d in data['failedTasks']
             ]
         else:
             print(f"{task_info_path} not found")
