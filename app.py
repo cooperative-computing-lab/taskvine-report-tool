@@ -286,8 +286,12 @@ def get_worker_transfers():
 @app.route('/api/runtime-templates-list')
 def get_runtime_templates_list():
     log_folders = [name for name in os.listdir(LOGS_DIR) if os.path.isdir(os.path.join(LOGS_DIR, name))]
-    log_folders_sorted = sorted(log_folders)
-    return jsonify(log_folders_sorted)
+    # for each log folder, we need to check if there is 'vine-logs' folder under it
+    for log_folder in log_folders:
+        if os.path.exists(os.path.join(LOGS_DIR, log_folder, 'vine-logs')):
+            log_folders.remove(log_folder)
+    log_folders = sorted(log_folders)
+    return jsonify(log_folders)
 
 @app.route('/api/change-runtime-template')
 def change_runtime_template():
