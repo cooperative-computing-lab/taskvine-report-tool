@@ -4,6 +4,7 @@ import argparse
 import ast
 import pandas as pd
 from typing import Dict, Any
+from pathlib import Path
 from collections import defaultdict
 import json
 from data_parse import DataParser
@@ -31,7 +32,7 @@ class TemplateState:
         self.manager, self.workers, self.files, self.tasks = self.data_parser.restore_from_checkpoint()
 
     def change_runtime_template(self, runtime_template):
-        runtime_template = runtime_template.split('/')[-1]
+        runtime_template = Path(runtime_template).name
         runtime_template = os.path.join(os.getcwd(), LOGS_DIR, runtime_template)
         self.runtime_template = runtime_template
         self.data_parser = DataParser(runtime_template)
@@ -47,7 +48,7 @@ class TemplateState:
                 return jsonify({'error': 'No runtime templates found'}), 404
             runtime_template = all_templates[-1]
 
-        if not self.runtime_template or runtime_template.split('/')[-1] != self.runtime_template.split('/')[-1]:
+        if not self.runtime_template or Path(runtime_template).name != Path(self.runtime_template).name:
             self.change_runtime_template(runtime_template)
 
 
