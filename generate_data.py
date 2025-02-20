@@ -1,6 +1,7 @@
 import argparse
 import os
 from data_parse import DataParser
+from pathlib import Path
 from data_process import DataProcessor
 
 
@@ -13,7 +14,7 @@ if __name__ == '__main__':
     parser.add_argument('--restore', action='store_true', help='restore from checkpoint')
     args = parser.parse_args()
 
-    runtime_template = args.runtime_template.split('/')[-1]
+    runtime_template = Path(args.runtime_template).name
     runtime_template = os.path.join(os.getcwd(), 'logs', runtime_template)
 
     print(f"=== parsing data for {runtime_template}")
