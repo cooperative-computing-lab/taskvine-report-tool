@@ -301,6 +301,9 @@ def get_worker_transfers():
 def render_log_page(runtime_template):
     log_folders = [name for name in os.listdir(LOGS_DIR) if os.path.isdir(os.path.join(LOGS_DIR, name))]
     log_folders_sorted = sorted(log_folders)
+    print(f"runtime_template = {runtime_template}")
+    print(f"template_manager.runtime_template = {template_manager.runtime_template}")
+    print(f"log folders = {log_folders}")
     if runtime_template != template_manager.runtime_template:
         template_manager.change_runtime_template(runtime_template)
     return render_template('index.html', log_folders=log_folders_sorted)
