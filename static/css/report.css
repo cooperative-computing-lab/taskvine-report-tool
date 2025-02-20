@@ -474,6 +474,7 @@ table.dataTable thead th {
     gap: 15px;
     margin-bottom: 5px;
     padding: 0 8px;
+    height: 18rem;
 }
 
 .section-title {
@@ -482,6 +483,9 @@ table.dataTable thead th {
     color: #2c3e50;
     letter-spacing: 0.5px;
     border-bottom: 2px solid #eee;
+    white-space: nowrap;
+    height: 6rem;
+    line-height: 6rem;
 }
 
 .section-buttons {

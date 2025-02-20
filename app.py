@@ -60,10 +60,6 @@ app = Flask(__name__)
 @app.route('/api/execution-details')
 def get_execution_details():
     try:
-        # Get the runtime_template from query parameters or use the most recent one
-        runtime_template = request.args.get('runtime_template')
-        template_manager.ensure_runtime_template(runtime_template)
-
         data: Dict[str, Any] = {}
 
         data['xMin'] = 0
