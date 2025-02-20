@@ -46,6 +46,15 @@ class TemplateState:
         self.change_runtime_template(runtime_template)
 
 
+def all_subfolders_exists(parent: str, folder_names: list[str]) -> bool:
+    parent_path = Path(parent).resolve()
+    for folder_name in folder_names:
+        target_path = parent_path / folder_name
+        if not target_path.is_dir():
+            return False
+    return True
+
+
 app = Flask(__name__)
 
 @app.route('/api/execution-details')
@@ -286,12 +295,14 @@ def get_worker_transfers():
 @app.route('/api/runtime-templates-list')
 def get_runtime_templates_list():
     log_folders = [name for name in os.listdir(LOGS_DIR) if os.path.isdir(os.path.join(LOGS_DIR, name))]
+    valid_runtime_templates = []
     # for each log folder, we need to check if there is 'vine-logs' folder under it
     for log_folder in log_folders:
-        if os.path.exists(os.path.join(LOGS_DIR, log_folder, 'vine-logs')):
-            log_folders.remove(log_folder)
-    log_folders = sorted(log_folders)
-    return jsonify(log_folders)
+        if all_subfolders_exists(os.path.join(LOGS_DIR, log_folder), ['vine-logs', 'pkl-files']):
+            valid_runtime_templates.append(log_folder)
+    valid_runtime_templates = sorted(valid_runtime_templates)
+    print('valid_runtime_templates', valid_runtime_templates)
+    return jsonify(valid_runtime_templates)
 
 @app.route('/api/change-runtime-template')
 def change_runtime_template():
