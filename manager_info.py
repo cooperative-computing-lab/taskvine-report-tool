@@ -27,6 +27,8 @@ class ManagerInfo:
         self.size_of_all_files_mb = None
         self.cluster_peak_disk_usage_mb = None
         self.lifetime_s = None
+        self.time_start_human = None
+        self.time_end_human = None
 
     def set_time_start(self, time_start):
         self.time_start = float(time_start)
