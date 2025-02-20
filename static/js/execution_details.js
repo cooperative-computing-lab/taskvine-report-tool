@@ -557,8 +557,9 @@ function handleDownloadClick() {
 
 async function initialize() {
     try {
-        const runtimeTemplate =  window.logName;
-        const url = `/api/execution-details?runtime_template=${runtimeTemplate}`;
+        svgElement.selectAll('*').remove();
+
+        const url = `/api/execution-details`;
         const response = await fetch(url);
         const data = await response.json();
         

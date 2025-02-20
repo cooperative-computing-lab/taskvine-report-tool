@@ -23,29 +23,50 @@ const state = {
 
 async function initialize() {
     try {
-        const response = await fetch(`/api/storage-consumption?runtime_template=${window.logName}`);
-        const data = await response.json();
-        
-        if (!data || !data.worker_storage_consumption) {
-            console.error("No storage consumption data available");
-            return;
+        d3.select('#storage-consumption').selectAll('*').remove();
+        state.worker_storage_consumption = null;
+
+        let retries = 0;
+        const maxRetries = 5;
+        const retryDelay = 2000;
+
+        while (retries < maxRetries) {
+            try {
+                const response = await fetch(`/api/storage-consumption`);
+                const data = await response.json();
+
+                if (data && data.worker_storage_consumption) {
+                    state.worker_storage_consumption = data.worker_storage_consumption;
+                    state.file_size_unit = data.file_size_unit;
+                    state.xMin = data.xMin;
+                    state.xMax = data.xMax;
+                    state.yMin = data.yMin;
+                    state.yMax = data.yMax;
+                    state.xTickValues = data.xTickValues;
+                    state.yTickValues = data.yTickValues;
+                    state.tickFontSize = data.tickFontSize;
+
+                    plotStorageConsumption();
+                    setupZoomAndScroll('#storage-consumption', '#storage-consumption-container');
+
+                    buttonDownload.addEventListener('click', () => downloadSVG('storage-consumption'));
+                    buttonReset.addEventListener('click', () => plotStorageConsumption());
+                    return;
+                }
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    console.log('Request timed out, retrying...');
+                } else {
+                    throw error;
+                }
+            }
+
+            retries++;
+            if (retries < maxRetries) {
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
+            }
         }
-
-        state.worker_storage_consumption = data.worker_storage_consumption;
-        state.file_size_unit = data.file_size_unit;
-        state.xMin = data.xMin;
-        state.xMax = data.xMax;
-        state.yMin = data.yMin;
-        state.yMax = data.yMax;
-        state.xTickValues = data.xTickValues;
-        state.yTickValues = data.yTickValues;
-        state.tickFontSize = data.tickFontSize;
-
-        plotStorageConsumption();
-        setupZoomAndScroll('#storage-consumption', '#storage-consumption-container');
-
-        buttonDownload.addEventListener('click', () => downloadSVG('storage-consumption'));
-        buttonReset.addEventListener('click', () => plotStorageConsumption());
+        console.warn('Failed to get storage consumption data after multiple retries');
     } catch (error) {
         console.error('Error:', error);
     }

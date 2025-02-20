@@ -1,48 +1,48 @@
-import { fetchCSVData } from './tools.js';
+const logSelector = document.getElementById('log-selector');
 
-// Some global variables
-window.xTickFormat = ".0f";
-window.xTickFontSize = "12px";
-window.yTickFontSize = "12px";
 
-async function handleLogChange() {
-    window.logName = this.value;
+async function initializeLogViewer() {
+    try {
+        const response = await fetch('/api/runtime-templates-list');
+        const logFolders = await response.json();
+        
+        logSelector.innerHTML = '';
+        
+        logFolders.forEach(folder => {
+            const option = document.createElement('option');
+            option.value = folder;
+            option.textContent = folder;
+            logSelector.appendChild(option);
+        });
 
-    // update the url
-    history.pushState({}, '', `/logs/${window.logName}`);
+        logSelector.addEventListener('change', handleLogChange);
 
-    // remove all the svgs
-    var svgs = d3.selectAll('svg');
-    svgs.each(function() {
-        d3.select(this).selectAll('*').remove();
-    });
-
-    // hidden some divs
-    const headerTips = document.getElementsByClassName('error-tip');
-    for (let i = 0; i < headerTips.length; i++) {
-        headerTips[i].style.display = 'none';
+        if (logSelector.options.length > 0) {
+            logSelector.selectedIndex = 0;
+            logSelector.dispatchEvent(new Event('change'));
+        }
+    } catch (error) {
+        console.error('Error initializing log viewer:', error);
     }
-
-    document.dispatchEvent(new Event('dataLoaded'));
 }
 
-window.addEventListener('load', function() {
-    const logSelector = document.getElementById('log-selector');
+async function handleLogChange() {
+    try {
+        document.querySelectorAll('.error-tip').forEach(tip => {
+            tip.style.visibility = 'hidden';
+        });
 
-    // Get the log name from the URL (in case of refresh)
-    const currentPath = location.pathname;
-    const currentLogName = currentPath.split('/')[2];
-
-    if (currentLogName) {
-        window.logName = currentLogName;
-        logSelector.value = currentLogName;
+        const response = await fetch(`/api/change-runtime-template?runtime_template=${logSelector.value}`);
+        const result = await response.json();
+        
+        if (result.success) {
+            document.dispatchEvent(new Event('dataLoaded'));
+        } else {
+            console.error('Failed to change runtime template');
+        }
+    } catch (error) {
+        console.error('Error changing runtime template:', error);
     }
-    
-    // Bind the change event listener to logSelector
-    logSelector.addEventListener('change', handleLogChange);
+}
 
-    // Initialize the report iframe if the logSelector has an initial value
-    if (logSelector.value) {
-        logSelector.dispatchEvent(new Event('change'));
-    }
-});
+document.addEventListener('DOMContentLoaded', initializeLogViewer);
