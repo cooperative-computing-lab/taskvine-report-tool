@@ -17,10 +17,16 @@ async function initializeLogViewer() {
 
         logSelector.addEventListener('change', handleLogChange);
 
-        if (logSelector.options.length > 0) {
+        // Restore previously selected log folder from localStorage
+        const savedFolder = localStorage.getItem('selectedLogFolder');
+        if (savedFolder && logFolders.includes(savedFolder)) {
+            logSelector.value = savedFolder;
+        } else if (logSelector.options.length > 0) {
             logSelector.selectedIndex = 0;
-            logSelector.dispatchEvent(new Event('change'));
         }
+
+        // Trigger change event to load the selected log
+        logSelector.dispatchEvent(new Event('change'));
     } catch (error) {
         console.error('Error initializing log viewer:', error);
     }
@@ -31,6 +37,9 @@ async function handleLogChange() {
         document.querySelectorAll('.error-tip').forEach(tip => {
             tip.style.visibility = 'hidden';
         });
+
+        // Save current selection to localStorage
+        localStorage.setItem('selectedLogFolder', logSelector.value);
 
         const response = await fetch(`/api/change-runtime-template?runtime_template=${logSelector.value}`);
         const result = await response.json();
