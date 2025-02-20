@@ -3,6 +3,7 @@ import { fetchFile } from './tools.js';
 const factoryDescriptionContainer = document.getElementById('factory-description-container');
 
 function fillMgrDescription() {
+    return;
     var time_zone_offset_hours;
     if (window.managerInfo.time_zone_offset_hours >= 0) {
         time_zone_offset_hours = '+' + window.managerInfo.time_zone_offset_hours + ':00';

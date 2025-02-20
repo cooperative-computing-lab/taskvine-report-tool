@@ -187,9 +187,9 @@ export function getTaskInnerHTML(taskData) {
         Worker ID: ${taskData.worker_id}<br>
         Graph ID: ${taskData.graph_id}<br>
         Input Files: ${taskData.input_files}<br>
-        Size of Input Files: ${taskData['size_input_files(MB)']}MB<br>
+        Size of Input Files: ${taskData['size_input_files_mb']}MB<br>
         Output Files: ${taskData.output_files}<br>
-        Size of Output Files: ${taskData['size_output_files(MB)']}MB<br>
+        Size of Output Files: ${taskData['size_output_files_mb']}MB<br>
         Critical Input File: ${taskData.critical_input_file}<br>
         Wait Time for Critical Input File: ${taskData.critical_input_file_wait_time}<br>
         Category: ${taskData.category.replace(/^<|>$/g, '')}<br>

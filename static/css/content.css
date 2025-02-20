@@ -1,4 +1,3 @@
-
 html {
     font-size: 4px;
     overflow: hidden;
@@ -9,23 +8,47 @@ body {
     overflow: hidden;
     -webkit-font-smoothing: antialiased; /* Chrome, Safari */
     -moz-osx-font-smoothing: grayscale;  /* Firefox */
+    display: flex;
+    height: 100%;
+    margin: 0;
 }
 
+/* Enable scrolling for main content area */
 #content {
     position: absolute;
     left: 14%;
     overflow: hidden;
-    padding: 10px 20px 0px 20px;
+    padding: 20px;
     width: 86%;
-    height: 100%;
+    height: 100vh;
     box-sizing: border-box;
     overflow-x: hidden;         
     transition: top 0.5s ease;
+    flex: 1;
+    overflow-y: auto;
 }
 
 .iframe-style {
     width: 100%;
     height: 100%;
     border: none;
+}
+
+/* Prevent scrollbars on body and html */
+html, body {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;  /* Prevent double scrollbars */
+}
+
+/* Set main layout to flex */
+body {
+    display: flex;
+}
+
+/* Fix sidebar position */
+#sidebar {
+    height: 100vh;
+    overflow-y: auto;  /* Allow scrolling if sidebar content is too long */
 }
 

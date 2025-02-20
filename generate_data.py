@@ -16,6 +16,7 @@ if __name__ == '__main__':
     runtime_template = args.runtime_template.split('/')[-1]
     runtime_template = os.path.join(os.getcwd(), 'logs', runtime_template)
 
+    print(f"=== parsing data for {runtime_template}")
     data_parser = DataParser(runtime_template)
 
     if not args.restore:
@@ -24,5 +25,6 @@ if __name__ == '__main__':
 
     manager, workers, files, tasks = data_parser.restore_from_checkpoint()
 
+    print(f"=== processing data for {runtime_template}")
     data_processor = DataProcessor(runtime_template, manager, workers, files, tasks)
     data_processor.generate_data()

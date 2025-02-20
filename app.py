@@ -4,6 +4,7 @@ import argparse
 import ast
 import pandas as pd
 from typing import Dict, Any
+from collections import defaultdict
 import json
 from data_parse import DataParser
 
@@ -23,6 +24,8 @@ class TemplateState:
 
         self.MIN_TIME = None
         self.MAX_TIME = None
+
+        self.tick_size = 12
 
     def restore_from_checkpoint(self):
         self.manager, self.workers, self.files, self.tasks = self.data_parser.restore_from_checkpoint()
@@ -55,17 +58,17 @@ def get_execution_details():
     try:
         # Get the runtime_template from query parameters or use the most recent one
         runtime_template = request.args.get('runtime_template')
-        global_state.ensure_runtime_template(runtime_template)
+        template_manager.ensure_runtime_template(runtime_template)
         
         data: Dict[str, Any] = {}
 
         data['xMin'] = 0
-        data['xMax'] = global_state.MAX_TIME - global_state.MIN_TIME
+        data['xMax'] = template_manager.MAX_TIME - template_manager.MIN_TIME
 
         # tasks information
         data['doneTasks'] = []
         data['failedTasks'] = []
-        for task in global_state.tasks.values():
+        for task in template_manager.tasks.values():
             if task.task_status == 0:
                 done_task_info = {
                     'task_id': task.task_id,
@@ -76,13 +79,13 @@ def get_execution_details():
                     'is_recovery_task': task.is_recovery_task,
                     'task_status': task.task_status,
                     'category': task.category,
-                    'when_ready': task.when_ready - global_state.MIN_TIME,
-                    'when_running': task.when_running - global_state.MIN_TIME,
-                    'time_worker_start': task.time_worker_start - global_state.MIN_TIME,
-                    'time_worker_end': task.time_worker_end - global_state.MIN_TIME,
-                    'when_waiting_retrieval': task.when_waiting_retrieval - global_state.MIN_TIME,
-                    'when_retrieved': task.when_retrieved - global_state.MIN_TIME,
-                    'when_done': task.when_done - global_state.MIN_TIME, 
+                    'when_ready': task.when_ready - template_manager.MIN_TIME,
+                    'when_running': task.when_running - template_manager.MIN_TIME,
+                    'time_worker_start': task.time_worker_start - template_manager.MIN_TIME,
+                    'time_worker_end': task.time_worker_end - template_manager.MIN_TIME,
+                    'when_waiting_retrieval': task.when_waiting_retrieval - template_manager.MIN_TIME,
+                    'when_retrieved': task.when_retrieved - template_manager.MIN_TIME,
+                    'when_done': task.when_done - template_manager.MIN_TIME, 
                 }
                 data['doneTasks'].append(done_task_info)
             else:
@@ -97,24 +100,34 @@ def get_execution_details():
                     'is_recovery_task': task.is_recovery_task,
                     'task_status': task.task_status,
                     'category': task.category,
-                    'when_ready': task.when_ready - global_state.MIN_TIME,
-                    'when_running': task.when_running - global_state.MIN_TIME,
-                    'when_failure_happens': task.when_failure_happens - global_state.MIN_TIME,
+                    'when_ready': task.when_ready - template_manager.MIN_TIME,
+                    'when_running': task.when_running - template_manager.MIN_TIME,
+                    'when_failure_happens': task.when_failure_happens - template_manager.MIN_TIME,
                 }
                 data['failedTasks'].append(failed_task_info)
 
         data['workerInfo'] = []
-        for worker in global_state.workers.values():
+        for worker in template_manager.workers.values():
             if not worker.hash:
                 continue
             worker_info = {
                 'hash': worker.hash,
                 'id': worker.id,
-                'time_connected': [t - global_state.MIN_TIME for t in worker.time_connected],
-                'time_disconnected': [t - global_state.MIN_TIME for t in worker.time_disconnected],
+                'time_connected': [t - template_manager.MIN_TIME for t in worker.time_connected],
+                'time_disconnected': [t - template_manager.MIN_TIME for t in worker.time_disconnected],
                 'cores': worker.cores,
             }
             data['workerInfo'].append(worker_info)
+
+        # ploting parameters
+        data['tickFontSize'] = template_manager.tick_size
+        data['xTickValues'] = [
+            round(data['xMin'], 2),
+            round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.25, 2),
+            round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.5, 2),
+            round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.75, 2),
+            round(data['xMax'], 2)
+        ]
 
         return jsonify(data)
 
@@ -127,11 +140,11 @@ def get_storage_consumption():
     try:
         # Get the runtime_template from query parameters or use the most recent one
         runtime_template = request.args.get('runtime_template')
-        global_state.ensure_runtime_template(runtime_template)
+        template_manager.ensure_runtime_template(runtime_template)
         
         data = {}
 
-        files = global_state.files
+        files = template_manager.files
 
         # construct the succeeded file transfers
         data['worker_storage_consumption'] = {}
@@ -148,42 +161,147 @@ def get_storage_consumption():
                 if destination not in data['worker_storage_consumption']:
                     data['worker_storage_consumption'][destination] = []
 
-                data['worker_storage_consumption'][destination].append((float(transfer.time_stage_in) - global_state.MIN_TIME, file.size_mb))
-                data['worker_storage_consumption'][destination].append((float(transfer.time_stage_out) - global_state.MIN_TIME, -file.size_mb))
+                data['worker_storage_consumption'][destination].append((float(transfer.time_stage_in) - template_manager.MIN_TIME, file.size_mb))
+                data['worker_storage_consumption'][destination].append((float(transfer.time_stage_out) - template_manager.MIN_TIME, -file.size_mb))
 
+        max_storage_consumption = 0
         # sort the worker storage consumption
         for destination in data['worker_storage_consumption']:
             # convert to a pandas dataframe
             df = pd.DataFrame(data['worker_storage_consumption'][destination], columns=['time', 'size'])
-            # sort the dataframe
-            df = df.sort_values(by='time')
+            # sort the dataframe, time ascending, size descending
+            df = df.sort_values(by=['time'])
             # accumulate the size
             df['storage_consumption'] = df['size'].cumsum()
-            # if some entries have the same time, only keep the last one
-            df = df.drop_duplicates(subset='time', keep='last')
+            # group by time and keep the maximum storage consumption for each time
+            df = df.groupby('time')['storage_consumption'].max().reset_index()
+            # update the max storage consumption
+            max_storage_consumption = max(max_storage_consumption, df['storage_consumption'].max())
             # keep only time and storage_consumption columns
             data['worker_storage_consumption'][destination] = df[['time', 'storage_consumption']].values.tolist()
             # add the initial point at time_connected with 0 consumption
-            for time_connected, time_disconnected in zip(global_state.workers[destination].time_connected, global_state.workers[destination].time_disconnected):
-                data['worker_storage_consumption'][destination].insert(0, [time_connected - global_state.MIN_TIME, 0])
-                data['worker_storage_consumption'][destination].append([time_disconnected - global_state.MIN_TIME, 0])
+            for time_connected, time_disconnected in zip(template_manager.workers[destination].time_connected, template_manager.workers[destination].time_disconnected):
+                data['worker_storage_consumption'][destination].insert(0, [time_connected - template_manager.MIN_TIME, 0])
+                data['worker_storage_consumption'][destination].append([time_disconnected - template_manager.MIN_TIME, 0])
             
         # convert the key to a string
         data['worker_storage_consumption'] = {f"{k[0]}:{k[1]}": v for k, v in data['worker_storage_consumption'].items()}
+
+        # calculate the file size unit, the default is MB
+        data['file_size_unit'] = 'MB'
+        if max_storage_consumption < 1 / 1024:
+            data['file_size_unit'] = 'Bytes'
+            scale = 1024 * 1024           # times 1024 * 1024
+        elif max_storage_consumption < 1:
+            data['file_size_unit'] = 'KB'
+            scale = 1024                  # times 1024
+        elif max_storage_consumption > 1024:
+            data['file_size_unit'] = 'GB'
+            scale = 1 / 1024              # divide by 1024
+        elif max_storage_consumption > 1024 * 1024:
+            data['file_size_unit'] = 'TB'
+            scale = 1 / (1024 * 1024)      # divide by 1024 * 1024
+        else:
+            scale = 1
+        # also update the source data
+        if scale != 1:
+            for destination in data['worker_storage_consumption']:
+                df = pd.DataFrame(data['worker_storage_consumption'][destination], columns=['time', 'size'])
+                df['size'] = df['size'] * scale
+                data['worker_storage_consumption'][destination] = df.values.tolist()
+            max_storage_consumption *= scale
+
+        # ploting parameters
+        data['xMin'] = 0
+        data['xMax'] = template_manager.MAX_TIME - template_manager.MIN_TIME
+        data['yMin'] = 0
+        data['yMax'] = max_storage_consumption
+        data['xTickValues'] = [
+            round(data['xMin'], 2),
+            round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.25, 2),
+            round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.5, 2),
+            round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.75, 2),
+            round(data['xMax'], 2)
+        ]
+        data['yTickValues'] = [
+            round(data['yMin'], 2),
+            round(data['yMin'] + (data['yMax'] - data['yMin']) * 0.25, 2),
+            round(data['yMin'] + (data['yMax'] - data['yMin']) * 0.5, 2),
+            round(data['yMin'] + (data['yMax'] - data['yMin']) * 0.75, 2),
+            round(data['yMax'], 2)
+        ]
+        data['tickFontSize'] = template_manager.tick_size
 
         return jsonify(data)
 
     except Exception as e:
         print(f"Error in get_storage_consumption: {str(e)}")
         return jsonify({'error': str(e)}), 500
+    
+
+@app.route('/api/worker-transfers')
+def get_worker_transfers():
+    try:
+        # Get the runtime_template from query parameters or use the most recent one
+        runtime_template = request.args.get('runtime_template')
+        template_manager.ensure_runtime_template(runtime_template)
+        
+        data = {}
+
+        successful_transfers = 0
+        failed_transfers = 0
+        # construct the worker transfers
+        data['incoming_transfers'] = defaultdict(list)     # for destinations
+        data['outgoing_transfers'] = defaultdict(list)     # for sources
+        for file in template_manager.files.values():
+            for transfer in file.transfers.values():
+                source = transfer.source
+                destination = transfer.destination
+                
+                # if the source is a worker
+                if isinstance(source, tuple):
+                    data['incoming_transfers'][destination].append((transfer.time_start_stage_in - template_manager.MIN_TIME, 1))
+                    if transfer.time_stage_in:
+                        data['incoming_transfers'][destination].append((transfer.time_stage_in - template_manager.MIN_TIME, -1))
+                    elif transfer.time_stage_out:
+                        data['incoming_transfers'][destination].append((transfer.time_stage_out - template_manager.MIN_TIME, -1))
+                # if the destination is a worker
+                if isinstance(destination, tuple):
+                    data['outgoing_transfers'][source].append((transfer.time_start_stage_in - template_manager.MIN_TIME, 1))
+                    if transfer.time_stage_in:
+                        data['outgoing_transfers'][source].append((transfer.time_stage_in - template_manager.MIN_TIME, -1))
+                    elif transfer.time_stage_out:
+                        data['outgoing_transfers'][source].append((transfer.time_stage_out - template_manager.MIN_TIME, -1))
+
+        for destination in data['incoming_transfers']:
+            df = pd.DataFrame(data['incoming_transfers'][destination], columns=['time', 'event'])
+            df = df.sort_values(by=['time'])
+            df['cumulative_event'] = df['event'].cumsum()
+            data['incoming_transfers'][destination] = df[['time', 'cumulative_event']].values.tolist()
+        for source in data['outgoing_transfers']:
+            df = pd.DataFrame(data['outgoing_transfers'][source], columns=['time', 'event'])
+            df = df.sort_values(by=['time'])
+            df['cumulative_event'] = df['event'].cumsum()
+            data['outgoing_transfers'][source] = df[['time', 'cumulative_event']].values.tolist()
+
+        # convert keys to string-formatted keys
+        data['incoming_transfers'] = {f"{k[0]}:{k[1]}": v for k, v in data['incoming_transfers'].items()}
+        data['outgoing_transfers'] = {f"{k[0]}:{k[1]}": v for k, v in data['outgoing_transfers'].items()}
+        
+        return jsonify(data)
+
+    except Exception as e:
+        print(f"Error in get_peer2peer_transfer: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 
 
 @app.route('/logs/<runtime_template>')
 def render_log_page(runtime_template):
     log_folders = [name for name in os.listdir(LOGS_DIR) if os.path.isdir(os.path.join(LOGS_DIR, name))]
     log_folders_sorted = sorted(log_folders)
-    if runtime_template != global_state.runtime_template:
-        global_state.change_runtime_template(runtime_template)
+    if runtime_template != template_manager.runtime_template:
+        template_manager.change_runtime_template(runtime_template)
     return render_template('index.html', log_folders=log_folders_sorted)
 
 @app.route('/')
@@ -221,6 +339,6 @@ if __name__ == "__main__":
     parser.add_argument('--port', default=9122, help='Port number')
     args = parser.parse_args()
 
-    global_state = TemplateState()
+    template_manager = TemplateState()
     
     app.run(host='0.0.0.0', port=args.port, debug=True)

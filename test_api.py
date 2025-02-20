@@ -30,4 +30,5 @@ if __name__ == "__main__":
     
     base_url = f"http://localhost:{args.port}"
     # test_api(base_url, args.runtime_template, "execution-details")
-    test_api(base_url, args.runtime_template, "storage-consumption")
+    # test_api(base_url, args.runtime_template, "storage-consumption")
+    test_api(base_url, args.runtime_template, "worker-transfers")

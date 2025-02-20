@@ -1,14 +1,3 @@
-/*
-<div class="report-toolbox">
-    <button id="button-reset-task-execution-time-distribution" class="report-button">Reset</button>
-    <button id="button-download-task-execution-time-distribution" class="report-button">Download SVG</button>
-</div>
-<div id="task-execution-time-distribution-container" class="container-alpha" >
-    <svg id="task-execution-time-distribution-svg" xmlns="http://www.w3.org/2000/svg">
-    </svg>
-</div>
-*/
-
 import { downloadSVG, setupZoomAndScroll } from './tools.js';
 
 const sortContainer = document.getElementById('task-execution-time-distribution-sort-category');
@@ -28,10 +17,10 @@ const tooltip = document.getElementById('vine-tooltip');
 const margin = {top: 40, right: 50, bottom: 40, left: 50};
 var svgWidth = svgContainer.clientWidth - margin.left - margin.right;
 var svgHeight = svgContainer.clientHeight - margin.top - margin.bottom;
-var taskDone = '';
+var doneTasks = '';
 
 export function plotTaskExecutionTimeDistribution({displayCDF = false} = {}) {
-    if (!window.taskDone) {
+    if (!window.doneTasks) {
         return;
     }
 
@@ -46,12 +35,12 @@ export function plotTaskExecutionTimeDistribution({displayCDF = false} = {}) {
         .append('g')
         .attr('transform', `translate(${margin.left}, ${margin.top})`);
 
-    taskDone = window.taskDone;
+    doneTasks = window.doneTasks;
 
     // update dotRadius based on the number of tasks
-    if (taskDone.length > 500 && taskDone.length <= 1000) {
+    if (doneTasks.length > 500 && doneTasks.length <= 1000) {
         dotRadius = 2;
-    } else if (taskDone.length > 1000) {
+    } else if (doneTasks.length > 1000) {
         dotRadius = 1;
     }
 
@@ -63,11 +52,11 @@ export function plotTaskExecutionTimeDistribution({displayCDF = false} = {}) {
 }
 
 function cdfplot(svg) {
-    taskDone.sort((a, b) => a.execution_time - b.execution_time);
+    doneTasks.sort((a, b) => a.execution_time - b.execution_time);
 
-    const cdfData = taskDone.map((d, i) => ({
+    const cdfData = doneTasks.map((d, i) => ({
         execution_time: d.execution_time,
-        probability: (i + 1) / taskDone.length
+        probability: (i + 1) / doneTasks.length
     }));
 
     const xScale = d3.scaleLinear()
@@ -149,10 +138,10 @@ function cdfplot(svg) {
 
 
 function scatterplot(svg) {
-    const maxExecutionTime = d3.max(taskDone, d => d.execution_time);
+    const maxExecutionTime = d3.max(doneTasks, d => d.execution_time);
     
     const xScale = d3.scaleLinear()
-        .domain([0, d3.max(taskDone, d => d.task_id)])
+        .domain([0, d3.max(doneTasks, d => d.task_id)])
         .range([0, svgWidth]);
     const xAxis = d3.axisBottom(xScale)
                     .tickSizeOuter(0)
@@ -190,7 +179,7 @@ function scatterplot(svg) {
         .attr("font-size", window.yTickFontSize);
 
     const points = svg.selectAll(".point")
-    .data(taskDone)
+    .data(doneTasks)
         .enter()
         .append("circle")
         .classed("point", true)

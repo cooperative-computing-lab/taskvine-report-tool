@@ -2,7 +2,7 @@ class TransferEvent:
     def __init__(self, source, destination, time_start_stage_in, event, file_type, cache_level):
         self.source = source
         self.destination = destination
-        self.time_start_stage_in = time_start_stage_in
+        self.time_start_stage_in = float(time_start_stage_in)
         
         # event describes how the transfer is created
         assert event in ["manager_put", "manager_get", "task_created", "puturl", "puturl_now"]
@@ -10,7 +10,7 @@ class TransferEvent:
 
         self.time_stage_in = None
         self.time_stage_out = None
-        self.eventual_state = None
+        self.eventual_state = "pending"
 
         """
         typedef enum {
@@ -40,12 +40,16 @@ class TransferEvent:
 
     def set_time_stage_in(self, time_stage_in):
         assert self.time_stage_in is None
-        if self.time_start_stage_in > time_stage_in:
+        time_stage_in = float(time_stage_in)
+        if self.time_start_stage_in is not None and self.time_start_stage_in > time_stage_in:
             raise ValueError(f"time_stage_in {time_stage_in} is less than time_start_stage_in {self.time_start_stage_in}. {self.source} {self.destination} {self.event} {self.file_type} {self.cache_level}")
         self.time_stage_in = time_stage_in
 
     def set_time_stage_out(self, time_stage_out):
         assert self.time_stage_out is None
+        time_stage_out = float(time_stage_out)
+        if self.time_stage_in is not None and self.time_stage_in > time_stage_out:
+            raise ValueError(f"time_stage_out {time_stage_out} is less than time_stage_in {self.time_stage_in}. {self.source} {self.destination} {self.event} {self.file_type} {self.cache_level}")
         self.time_stage_out = time_stage_out
 
     def set_eventual_state(self, eventual_state):
@@ -137,6 +141,7 @@ class FileInfo:
         return list(destinations)
 
     def unlink_on_destination(self, time_stage_out, destination):
+        time_stage_out = float(time_stage_out)
         transfers = self.get_transfers_on_destination(destination)
         for transfer in transfers:
             # skip if the transfer had been staged out

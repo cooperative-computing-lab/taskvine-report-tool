@@ -11,12 +11,8 @@ const state = {
     doneTasks: null,
     failedTasks: null,
     workerInfo: null,
-    managerInfo: null,
-    minTime: null,
-    maxTime: null,
-    xTickFormat: '.2f',
-    xTickFontSize: '12px',
-    yTickFontSize: '12px'
+    xTickValues: null,
+    tickFontSize: null,
 };
 
 // Global highlight color
@@ -62,13 +58,13 @@ function getTaskInnerHTML(task) {
         task id: ${task.task_id}<br>
         worker:  ${task.worker_ip}:${task.worker_port}<br>
         core id: ${task.core_id}<br>
-        when ready: ${(task.when_ready - state.minTime).toFixed(2)}<br>
-        when running: ${(task.when_running - state.minTime).toFixed(2)}<br>
-        time worker start: ${(task.time_worker_start - state.minTime).toFixed(2)}<br>
-        time worker end: ${(task.time_worker_end - state.minTime).toFixed(2)}<br>   
-        when waiting retrieval: ${(task.when_waiting_retrieval - state.minTime).toFixed(2)}<br>
-        when retrieved: ${(task.when_retrieved - state.minTime).toFixed(2)}<br>
-        when done: ${(task.when_done - state.minTime).toFixed(2)}<br>
+        when ready: ${(task.when_ready).toFixed(2)}<br>
+        when running: ${(task.when_running).toFixed(2)}<br>
+        time worker start: ${(task.time_worker_start).toFixed(2)}<br>
+        time worker end: ${(task.time_worker_end).toFixed(2)}<br>   
+        when waiting retrieval: ${(task.when_waiting_retrieval).toFixed(2)}<br>
+        when retrieved: ${(task.when_retrieved).toFixed(2)}<br>
+        when done: ${(task.when_done).toFixed(2)}<br>
     `;
 
     return htmlContent;
@@ -261,9 +257,9 @@ function plotExecutionDetails() {
                 const disconnectTime = disconnectTimes[i] || state.maxTime;
 
                 svg.append('rect')
-                    .attr('x', xScale(connectTime - state.minTime))
+                    .attr('x', xScale(connectTime))
                     .attr('y', yScale(worker.id + '-' + worker.cores))
-                    .attr('width', xScale(disconnectTime - state.minTime) - xScale(connectTime - state.minTime))
+                    .attr('width', xScale(disconnectTime) - xScale(connectTime))
                     .attr('height', yScale.bandwidth() * worker.cores + (yScale.step() - yScale.bandwidth()) * (worker.cores - 1))
                     .attr('fill', colors['workers'])
                     .attr('opacity', 0.3)
@@ -272,8 +268,8 @@ function plotExecutionDetails() {
                         tooltip.innerHTML = `
                             cores: ${worker.cores}<br>
                             worker id: ${worker.id}<br>
-                            when connected: ${(connectTime - state.minTime).toFixed(2)}s<br>
-                            when disconnected: ${(disconnectTime - state.minTime).toFixed(2)}s<br>
+                            when connected: ${(connectTime).toFixed(2)}s<br>
+                            when disconnected: ${(disconnectTime).toFixed(2)}s<br>
                             life time: ${(disconnectTime - connectTime).toFixed(2)}s<br>`;
                         tooltip.style.visibility = 'visible';
                         tooltip.style.top = (event.pageY + 10) + 'px';
@@ -293,9 +289,9 @@ function plotExecutionDetails() {
         if (task.when_running && task.time_worker_start) {
             if (isTaskTypeChecked('done-committing-to-worker')) {
                 svg.append('rect')
-                    .attr('x', xScale(task.when_running - state.minTime))
+                    .attr('x', xScale(task.when_running))
                     .attr('y', yScale(task.worker_id + '-' + task.core_id))
-                    .attr('width', xScale(task.time_worker_start - task.when_running))
+                    .attr('width', xScale(task.time_worker_start) - xScale(task.when_running))
                     .attr('height', yScale.bandwidth())
                     .attr('fill', colors['done-committing-to-worker'])
                     .on('mouseover', function(event) {
@@ -316,9 +312,9 @@ function plotExecutionDetails() {
         if (task.time_worker_start && task.time_worker_end) {
             if (isTaskTypeChecked('done-executing-on-worker')) {
                 svg.append('rect')
-                    .attr('x', xScale(task.time_worker_start - state.minTime))
+                    .attr('x', xScale(task.time_worker_start))
                     .attr('y', yScale(task.worker_id + '-' + task.core_id))
-                    .attr('width', xScale(task.time_worker_end - task.time_worker_start))
+                    .attr('width', xScale(task.time_worker_end) - xScale(task.time_worker_start))
                     .attr('height', yScale.bandwidth())
                     .attr('fill', colors['done-executing-on-worker'])
                     .on('mouseover', function(event) {
@@ -339,9 +335,9 @@ function plotExecutionDetails() {
         if (task.time_worker_end && task.when_done) {
             if (isTaskTypeChecked('done-retrieving-to-manager')) {
                 svg.append('rect')
-                    .attr('x', xScale(task.time_worker_end - state.minTime))
+                    .attr('x', xScale(task.time_worker_end))
                     .attr('y', yScale(task.worker_id + '-' + task.core_id))
-                    .attr('width', xScale(task.when_retrieved - task.time_worker_end))
+                    .attr('width', xScale(task.when_retrieved) - xScale(task.time_worker_end))
                     .attr('height', yScale.bandwidth())
                     .attr('fill', colors['done-retrieving-to-manager'])
                     .on('mouseover', function(event) {
@@ -369,9 +365,9 @@ function plotExecutionDetails() {
                     const startTime = task.when_running || task.time_worker_start;
                     if (startTime) {
                         svg.append('rect')
-                            .attr('x', xScale(startTime - state.minTime))
+                            .attr('x', xScale(startTime))
                             .attr('y', yScale(task.worker_id + '-' + task.core_id))
-                            .attr('width', xScale(task.when_failure_happens - startTime))
+                            .attr('width', xScale(task.when_failure_happens) - xScale(startTime))
                             .attr('height', yScale.bandwidth())
                             .attr('fill', FAILURE_TYPES[failureType].color)
                             .on('mouseover', function(event) {
@@ -381,8 +377,8 @@ function plotExecutionDetails() {
                                     Worker: ${task.worker_ip}:${task.worker_port}<br>
                                     Core: ${task.core_id}<br>
                                     Failure Type: ${FAILURE_TYPES[failureType].label}<br>
-                                    Start time: ${(startTime - state.minTime).toFixed(2)}s<br>
-                                    When next ready: ${(task.when_failure_happens - state.minTime).toFixed(2)}s<br>
+                                    Start time: ${(startTime).toFixed(2)}s<br>
+                                    When next ready: ${(task.when_failure_happens).toFixed(2)}s<br>
                                     Duration: ${(task.when_failure_happens - startTime).toFixed(2)}s`;
                                 tooltip.style.visibility = 'visible';
                                 tooltip.style.top = (event.pageY + 10) + 'px';
@@ -405,9 +401,9 @@ function plotExecutionDetails() {
                 if (isTaskTypeChecked('recovery-done')) {
                     if (task.time_worker_start && task.time_worker_end) {
                         svg.append('rect')
-                            .attr('x', xScale(task.time_worker_start - state.minTime))
+                            .attr('x', xScale(task.time_worker_start))
                             .attr('y', yScale(task.worker_id + '-' + task.core_id))
-                            .attr('width', xScale(task.time_worker_end - task.time_worker_start))
+                            .attr('width', xScale(task.time_worker_end) - xScale(task.time_worker_start))
                             .attr('height', yScale.bandwidth())
                             .attr('fill', colors['recovery-done'])
                             .on('mouseover', function(event) {
@@ -418,11 +414,11 @@ function plotExecutionDetails() {
                                     Worker: ${task.worker_ip}:${task.worker_port}<br>
                                     Core: ${task.core_id}<br>
                                     Type: Recovery Task (Done)<br>
-                                    Start time: ${(task.time_worker_start - state.minTime).toFixed(2)}s<br>
-                                    End time: ${(task.time_worker_end - state.minTime).toFixed(2)}s<br>
+                                    Start time: ${(task.time_worker_start).toFixed(2)}s<br>
+                                    End time: ${(task.time_worker_end).toFixed(2)}s<br>
                                     Duration: ${(task.time_worker_end - task.time_worker_start).toFixed(2)}s`;
                                 tooltip.style.visibility = 'visible';
-                                tooltip.style.top = (event.pageY + 10) + 'px';
+                                tooltip.style.top = (event.pageY -15) + 'px';
                                 tooltip.style.left = (event.pageX + 10) + 'px';
                             })
                             .on('mouseout', function() {
@@ -446,9 +442,9 @@ function plotExecutionDetails() {
                             startTime + 0.01 : task.when_failure_happens;
                         
                         svg.append('rect')
-                            .attr('x', xScale(startTime - state.minTime))
+                            .attr('x', xScale(startTime))
                             .attr('y', yScale(task.worker_id + '-' + task.core_id))
-                            .attr('width', xScale(endTime - startTime))
+                            .attr('width', xScale(endTime) - xScale(startTime))
                             .attr('height', yScale.bandwidth())
                             .attr('fill', colors['recovery-failed'])
                             .on('mouseover', function(event) {
@@ -460,8 +456,8 @@ function plotExecutionDetails() {
                                     Core: ${task.core_id}<br>
                                     Type: Recovery Task (Failed)<br>
                                     Failure Type: ${FAILURE_TYPES[getFailureType(task.task_status)]?.label || 'Unknown'}<br>
-                                    Start time: ${(startTime - state.minTime).toFixed(2)}s<br>
-                                    When next ready: ${(endTime - state.minTime).toFixed(2)}s<br>
+                                    Start time: ${(startTime).toFixed(2)}s<br>
+                                    When next ready: ${(endTime).toFixed(2)}s<br>
                                     Duration: ${(endTime - startTime).toFixed(2)}s`;
                                 tooltip.style.visibility = 'visible';
                                 tooltip.style.top = (event.pageY + 10) + 'px';
@@ -480,44 +476,34 @@ function plotExecutionDetails() {
 }
 
 function calculateMargin() {
-    const margin = {top: 40, right: 30, bottom: 40, left: 30};
-    const svgHeight = svgContainer.clientHeight - margin.top - margin.bottom;
+    const margin = { top: 40, right: 30, bottom: 40, left: 30 };
 
-    const tempSvg = d3.select('#execution-details')
-        .attr('viewBox', `0 0 ${svgContainer.clientWidth} ${svgContainer.clientHeight}`)
-        .attr('preserveAspectRatio', 'xMidYMid meet')
+    const tempSvg = svgElement
         .append('g')
-        .attr('transform', `translate(${margin.left}, ${margin.top})`);
+        .attr('class', 'temp');
 
-    const workerCoresMap = [];
-    state.workerInfo.forEach(d => {
-        for (let i = 1; i <= +d.cores; i++) {
-            workerCoresMap.push(`${d.id}-${i}`);
-        }
-    });
+    const tempYScale = d3.scaleBand()
+        .domain(state.workerInfo.map(d => `${d.id}-${d.cores}`));
 
-    const yScale = d3.scaleBand()
-        .domain(workerCoresMap)
-        .range([svgHeight, 0])
-        .padding(0.1);
+    const tempYAxis = d3.axisLeft(tempYScale)
+        .tickFormat(d => d.split('-')[0]);
 
-    const yAxis = d3.axisLeft(yScale)
-        .tickSizeOuter(0);
-
-    tempSvg.append('g').call(yAxis);
-
-    const maxTickWidth = d3.max(tempSvg.selectAll('.tick text').nodes(), d => d.getBBox().width);
+    tempSvg.call(tempYAxis);
+    tempSvg.selectAll('text').style('font-size', state.tickFontSize);
+    
+    const maxYLabelWidth = d3.max(tempSvg.selectAll('.tick text').nodes(), 
+        d => d.getBBox().width);
     tempSvg.remove();
 
-    margin.left = Math.ceil(maxTickWidth + 15);
+    margin.left = Math.ceil(maxYLabelWidth + 20);
 
-    return margin
+    return margin;
 }
 
 function plotAxis(svg, svgWidth, svgHeight) {
     // set x scale
     const xScale = d3.scaleLinear()
-        .domain([0, state.maxTime - state.minTime])
+        .domain([state.xMin, state.xMax])
         .range([0, svgWidth]);
     // set y scale
     const workerCoresMap = [];
@@ -533,19 +519,13 @@ function plotAxis(svg, svgWidth, svgHeight) {
     // draw x axis
     const xAxis = d3.axisBottom(xScale)
         .tickSizeOuter(0)
-        .tickValues([
-            xScale.domain()[0],
-            xScale.domain()[0] + (xScale.domain()[1] - xScale.domain()[0]) * 0.25,
-            xScale.domain()[0] + (xScale.domain()[1] - xScale.domain()[0]) * 0.5,
-            xScale.domain()[0] + (xScale.domain()[1] - xScale.domain()[0]) * 0.75,
-            xScale.domain()[1]
-        ])
-        .tickFormat(d3.format(state.xTickFormat));
+        .tickValues(state.xTickValues)
+        .tickFormat(d => `${d3.format('.2f')(d)} s`);
     svg.append('g')
         .attr('transform', `translate(0, ${svgHeight})`)
         .call(xAxis)
         .selectAll('text')
-        .style('font-size', state.xTickFontSize);
+        .style('font-size', state.tickFontSize);
 
     // draw y axis
     const totalWorkers = state.workerInfo.length;
@@ -561,7 +541,7 @@ function plotAxis(svg, svgWidth, svgHeight) {
     svg.append('g')
         .call(yAxis)
         .selectAll('text')
-        .style('font-size', state.yTickFontSize);
+        .style('font-size', state.tickFontSize);
 
     return { xScale, yScale };
 }
@@ -589,16 +569,10 @@ async function initialize() {
         state.doneTasks = data.doneTasks;
         state.failedTasks = data.failedTasks;
         state.workerInfo = data.workerInfo;
-        state.managerInfo = data.managerInfo;
-
-        state.minTime = data.managerInfo.time_start;
-        state.maxTime = data.managerInfo.time_end;
-
-        if (state.managerInfo.failed === 'True') {
-            document.getElementById('execution-details-tip').style.visibility = 'visible';
-        } else {
-            document.getElementById('execution-details-tip').style.visibility = 'hidden';
-        }
+        state.tickFontSize = data.tickFontSize;
+        state.xTickValues = data.xTickValues;
+        state.xMin = data.xMin;
+        state.xMax = data.xMax;
 
         setLegend();
         

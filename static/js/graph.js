@@ -141,7 +141,7 @@ function highlightTask(taskID) {
     if (isNaN(taskID) || taskID === 0) {
         return;
     }
-    if (!window.taskDone.some(d => +d.task_id === taskID)) {
+    if (!window.doneTasks.some(d => +d.task_id === taskID)) {
         return;
     }
     removeHighlightedTask();
@@ -153,7 +153,7 @@ function highlightTask(taskID) {
 
 function displayAnalyzedTaskInfo(taskID) {
     // show the information div
-    var taskData = window.taskDone.find(d => d.task_id === taskID);
+    var taskData = window.doneTasks.find(d => d.task_id === taskID);
 
     // analyzed task table
     var specificSettings = {
@@ -191,8 +191,8 @@ function displayAnalyzedTaskInfo(taskID) {
             { "data": "when_done" },
             { "data": "category" },
             { "data": "graph_id" },
-            { "data": "size_input_files(MB)" },
-            { "data": "size_output_files(MB)" },
+            { "data": "size_input_files_mb" },
+            { "data": "size_output_files_mb" },
             { "data": "input_files" },
             { "data": "output_files" },
         ],
@@ -207,7 +207,7 @@ function displayAnalyzedTaskInfo(taskID) {
             let dependencyTime = file['producers'].length <= 1 ? "0" : (() => {
                 for (let i = file['producers'].length - 1; i >= 0; i--) {
                     let producerTaskID = +file['producers'][i];
-                    let producerTaskData = window.taskDone.find(d => +d.task_id === producerTaskID);
+                    let producerTaskData = window.doneTasks.find(d => +d.task_id === producerTaskID);
             
                     if (producerTaskData && producerTaskData.time_worker_end < taskData.time_worker_start) {
                         return (taskData.time_worker_start - producerTaskData.time_worker_end).toFixed(2);
@@ -257,7 +257,7 @@ function highlightParentsAndChildren(taskID) {
     // parents
     window.parentTasks = [];
     function getTaskParents(taskID) {
-        const taskData = window.taskDone.find(d => d.task_id === taskID);
+        const taskData = window.doneTasks.find(d => d.task_id === taskID);
         const inputFiles = taskData.input_files;
         if (inputFiles.length === 0) {
             return;
@@ -272,7 +272,7 @@ function highlightParentsAndChildren(taskID) {
             for (let i = 0; i < producers.length; i++) {
                 // an input file should only has one producer, and the end time of the producer should be less than the start time of the task
                 const producerTaskID = +producers[i];
-                const producerTaskData = window.taskDone.find(d => +d.task_id === producerTaskID);
+                const producerTaskData = window.doneTasks.find(d => +d.task_id === producerTaskID);
                 if (producerTaskData.when_output_fully_lost > taskData.time_worker_start) {
                     thisParents.push(producerTaskID);
                     break;
@@ -293,7 +293,7 @@ function highlightParentsAndChildren(taskID) {
     // children
     window.childTasks = [];
     function getTaskChildren(taskID) {
-        const taskData = window.taskDone.find(d => d.task_id === taskID);
+        const taskData = window.doneTasks.find(d => d.task_id === taskID);
         const outputFiles = taskData.output_files;
     
         const thisChildren = [];
@@ -305,7 +305,7 @@ function highlightParentsAndChildren(taskID) {
             for (let i = 0; i < consumers.length; i++) {
                 // an output file can have multiple consumers
                 const consumerTaskID = +consumers[i];
-                const consumerTaskData = window.taskDone.find(d => +d.task_id === consumerTaskID);
+                const consumerTaskData = window.doneTasks.find(d => +d.task_id === consumerTaskID);
                 if (consumerTaskData.when_ready > taskData.when_done && taskData.when_output_fully_lost > consumerTaskData.time_worker_start) {
                     thisChildren.push(consumerTaskID);
                 }
@@ -328,7 +328,7 @@ function handleAnalyzeTaskClick(filename) {
     const inputValue = inputAnalyzeTask.value;
     const taskID = +inputValue;
     // invalid input
-    if (inputValue === "" || isNaN(taskID) || !window.taskDone.some(d => d.task_id === taskID)) {
+    if (inputValue === "" || isNaN(taskID) || !window.doneTasks.some(d => d.task_id === taskID)) {
         removeHighlightedTask();
         analyzeTaskDisplayDetails.style.display = 'none';
         if (this.classList.contains('report-button-active')) {
@@ -390,8 +390,8 @@ function displayCriticalTasksTable() {
             { "data": "when_done" },
             { "data": "category" },
             { "data": "graph_id" },
-            { "data": "size_input_files(MB)" },
-            { "data": "size_output_files(MB)" },
+            { "data": "size_input_files_mb" },
+            { "data": "size_output_files_mb" },
             { "data": "input_files" },
             { "data": "output_files" },
         ],
@@ -450,7 +450,7 @@ function displayCriticalPathInfo() {
         .range([svgHeight, 0]);
 
     criticalTasks.forEach(function(taskID) {
-        var taskData = window.taskDone.find(d => d.task_id === taskID);
+        var taskData = window.doneTasks.find(d => d.task_id === taskID);
 
         svg.append('rect')
             .attr('x', xScale(taskData.when_ready - graphStartTime))
@@ -489,7 +489,7 @@ function removeHighlightedCriticalPath() {
             graphNodeMap[taskID].select('ellipse').style('fill', highlightTaskColor);
         }
         // recover the highlighted output file
-        var outputFiles = window.taskDone.find(d => +d.task_id === taskID).output_files;
+        var outputFiles = window.doneTasks.find(d => +d.task_id === taskID).output_files;
         if (outputFiles.length !== 1) {
             console.log(`Task ${taskID} has ${outputFiles.length} output files`);
             return;
@@ -509,7 +509,7 @@ function highlightCriticalPath() {
             graphNodeMap[taskID].select('ellipse').style('fill', highlightTaskColor);
         }
         // find the output file
-        var outputFiles = window.taskDone.find(d => +d.task_id === taskID).output_files;
+        var outputFiles = window.doneTasks.find(d => +d.task_id === taskID).output_files;
         if (outputFiles.length !== 1) {
             console.log(`Task ${taskID} has ${outputFiles.length} output files`);
             return;
