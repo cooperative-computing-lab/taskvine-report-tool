@@ -1,56 +1,239 @@
-import { downloadSVG, getTaskInnerHTML } from './tools.js';
+import { downloadSVG } from './tools.js';
 import { setupZoomAndScroll } from './tools.js';
 
 const buttonReset = document.getElementById('button-reset-task-execution-details');
 const buttonDownload = document.getElementById('button-download-task-execution-details');
 const svgContainer = document.getElementById('execution-details-container');
 const svgElement = d3.select('#execution-details');
-
 const tooltip = document.getElementById('vine-tooltip');
 
+const state = {
+    doneTasks: null,
+    failedTasks: null,
+    workerInfo: null,
+    managerInfo: null,
+    minTime: null,
+    maxTime: null,
+    xTickFormat: '.2f',
+    xTickFontSize: '12px',
+    yTickFontSize: '12px'
+};
+
+// Global highlight color
+const HIGHLIGHT_COLOR = 'orange';
+
+// Define failure types with their bit values
+const FAILURE_TYPES = {
+    'VINE_RESULT_INPUT_MISSING': { value: 1, color: '#FFB6C1', label: 'Input Missing' },
+    'VINE_RESULT_OUTPUT_MISSING': { value: 2, color: '#FF69B4', label: 'Output Missing' },
+    'VINE_RESULT_STDOUT_MISSING': { value: 4, color: '#FF1493', label: 'Stdout Missing' },
+    'VINE_RESULT_SIGNAL': { value: 1 << 3, color: '#CD5C5C', label: 'Signal' },
+    'VINE_RESULT_RESOURCE_EXHAUSTION': { value: 2 << 3, color: '#8B0000', label: 'Resource Exhaustion' },
+    'VINE_RESULT_MAX_END_TIME': { value: 3 << 3, color: '#B22222', label: 'Max End Time' },
+    'VINE_RESULT_UNKNOWN': { value: 4 << 3, color: '#A52A2A', label: 'Unknown' },
+    'VINE_RESULT_FORSAKEN': { value: 5 << 3, color: '#E331EE', label: 'Forsaken' },
+    'VINE_RESULT_MAX_RETRIES': { value: 6 << 3, color: '#8B4513', label: 'Max Retries' },
+    'VINE_RESULT_MAX_WALL_TIME': { value: 7 << 3, color: '#D2691E', label: 'Max Wall Time' },
+    'VINE_RESULT_RMONITOR_ERROR': { value: 8 << 3, color: '#FF4444', label: 'Monitor Error' },
+    'VINE_RESULT_OUTPUT_TRANSFER_ERROR': { value: 9 << 3, color: '#FF6B6B', label: 'Transfer Error' },
+    'VINE_RESULT_FIXED_LOCATION_MISSING': { value: 10 << 3, color: '#FF8787', label: 'Location Missing' },
+    'VINE_RESULT_CANCELLED': { value: 11 << 3, color: '#FFA07A', label: 'Cancelled' },
+    'VINE_RESULT_LIBRARY_EXIT': { value: 12 << 3, color: '#FA8072', label: 'Library Exit' },
+    'VINE_RESULT_SANDBOX_EXHAUSTION': { value: 13 << 3, color: '#E9967A', label: 'Sandbox Exhaustion' },
+    'VINE_RESULT_MISSING_LIBRARY': { value: 14 << 3, color: '#F08080', label: 'Missing Library' },
+    
+    'WORKER_DISCONNECTED': { value: 15 << 3, color: '#FF0000', label: 'Worker Disconnected' }
+};
+
+// Update colors object
 const colors = {
-    'workers': {
-        'normal': 'lightgrey',
-        'highlight': 'orange',
-    },
-    'waiting-to-execute-on-worker': {
-        'normal': 'lightblue',
-        'highlight': '#72bbb0',
-    },
-    'running-tasks': {
-        'normal': 'steelblue',
-        'highlight': 'orange',
-    },
-    'retrieving-tasks': {
-        'normal': '#cc5a12',
-        'highlight': 'orange',
-    },
-    'committing-tasks': {
-        'normal': '#8327cf',
-        'highlight': 'orange',
-    },
-    'failed-tasks': {
-        'normal': '#ad2c23',
-        'highlight': 'orange',
-    },
-    'recovery-tasks': {
-        'normal': '#ea67a9',
-        'highlight': 'orange',
-    },
+    'workers': 'lightgrey',
+    'done-committing-to-worker': '#4a4a4a',
+    'done-executing-on-worker': 'steelblue',
+    'done-retrieving-to-manager': '#cc5a12',
+    'recovery-done': '#FF69B4',
+    'recovery-failed': '#E3314F',
+    ...Object.fromEntries(Object.entries(FAILURE_TYPES).map(([key, value]) => [`failed-${key.toLowerCase()}`, value.color]))
+};
+
+// get the innerHTML of the task
+function getTaskInnerHTML(task) {
+    let htmlContent = `
+        task id: ${task.task_id}<br>
+        worker:  ${task.worker_ip}:${task.worker_port}<br>
+        core id: ${task.core_id}<br>
+        when ready: ${(task.when_ready - state.minTime).toFixed(2)}<br>
+        when running: ${(task.when_running - state.minTime).toFixed(2)}<br>
+        time worker start: ${(task.time_worker_start - state.minTime).toFixed(2)}<br>
+        time worker end: ${(task.time_worker_end - state.minTime).toFixed(2)}<br>   
+        when waiting retrieval: ${(task.when_waiting_retrieval - state.minTime).toFixed(2)}<br>
+        when retrieved: ${(task.when_retrieved - state.minTime).toFixed(2)}<br>
+        when done: ${(task.when_done - state.minTime).toFixed(2)}<br>
+    `;
+
+    return htmlContent;
 }
 
-export function plotExecutionDetails() {
-    if (!window.taskDone) {
+function parseTimeArray(timeStr) {
+    // Convert "[1739409589.49]" to array of numbers
+
+    try {
+        return JSON.parse(timeStr.replace(/'/g, '"')).map(Number);
+    } catch (e) {
+        console.error('Error parsing time:', timeStr);
+        return [];
+    }
+}
+
+function getFailureType(status) {
+    // Find the failure type that matches the status value
+    return Object.entries(FAILURE_TYPES).find(([_, type]) => type.value === status)?.[0];
+}
+
+function setLegend() {
+    const legendContainer = document.getElementById('execution-details-legend');
+    legendContainer.innerHTML = '';
+
+    // Count recovery tasks
+    let recoveryDoneCount = 0;
+    let recoveryFailedCount = 0;
+    
+    if (state.doneTasks) {
+        recoveryDoneCount = state.doneTasks.filter(task => task.is_recovery_task === true).length;
+    }
+    if (state.failedTasks) {
+        recoveryFailedCount = state.failedTasks.filter(task => task.is_recovery_task === true).length;
+    }
+
+    // Count failures by type
+    const failureCounts = {};
+    if (state.failedTasks) {
+        state.failedTasks.forEach(task => {
+            failureCounts[task.task_status] = (failureCounts[task.task_status] || 0) + 1;
+        });
+    }
+
+    // Create sorted failure items (only include types that have occurrences)
+    const failureItems = Object.entries(FAILURE_TYPES)
+        .filter(([_, type]) => failureCounts[type.value] > 0)
+        .map(([key, value]) => ({
+            id: `failed-${key.toLowerCase()}`,
+            label: `${value.label} (${failureCounts[value.value]})`,
+            color: value.color,
+            checked: false,
+            count: failureCounts[value.value]
+        }))
+        .sort((a, b) => b.count - a.count);
+
+    const legendGroups = [
+        {
+            title: `Done Tasks (${state.doneTasks ? state.doneTasks.length : 0} total)`,
+            items: [
+                { id: 'done-committing-to-worker', label: 'Committing to Worker', color: colors['done-committing-to-worker'], checked: false },
+                { id: 'done-executing-on-worker', label: 'Executing on Worker', color: colors['done-executing-on-worker'], checked: true },
+                { id: 'done-retrieving-to-manager', label: 'Retrieving to Manager', color: colors['done-retrieving-to-manager'], checked: false }
+            ]
+        },
+        {
+            title: `Failed Tasks (${state.failedTasks ? state.failedTasks.length : 0} total)`,
+            items: failureItems
+        },
+        {
+            title: `Recovery Tasks (${recoveryDoneCount + recoveryFailedCount} total)`,
+            items: [
+                { id: 'recovery-done', label: `Done (${recoveryDoneCount})`, color: colors['recovery-done'], checked: false },
+                { id: 'recovery-failed', label: `Failed (${recoveryFailedCount})`, color: colors['recovery-failed'], checked: false }
+            ]
+        },
+        {
+            title: 'Infrastructure',
+            items: [
+                { id: 'workers', label: 'Workers', color: colors['workers'], checked: true }
+            ]
+        }
+    ];
+
+    // Only include Failed Tasks group if there are failures
+    const groupsToDisplay = legendGroups.filter(group => 
+        group.title !== 'Failed Tasks' || group.items.length > 0
+    );
+
+    // Create a flex container for better layout control
+    const flexContainer = document.createElement('div');
+    flexContainer.className = 'legend-flex-container';
+    legendContainer.appendChild(flexContainer);
+
+    // Add groups to the flex container
+    groupsToDisplay.forEach(group => {
+        const groupDiv = document.createElement('div');
+        groupDiv.className = 'legend-group';
+        
+        const titleContainer = document.createElement('div');
+        titleContainer.className = 'legend-group-title-container';
+        
+        const groupTitle = document.createElement('div');
+        groupTitle.className = 'legend-group-title';
+        groupTitle.textContent = group.title;
+        
+        if (group.tooltip) {
+            const questionMark = document.createElement('span');
+            questionMark.className = 'legend-help-icon';
+            questionMark.textContent = '?';
+            questionMark.title = group.tooltip;
+            titleContainer.appendChild(groupTitle);
+            titleContainer.appendChild(questionMark);
+        } else {
+            titleContainer.appendChild(groupTitle);
+        }
+        
+        groupDiv.appendChild(titleContainer);
+
+        group.items.forEach(item => {
+            const legendItem = document.createElement('div');
+            legendItem.className = `legend-item${item.checked ? ' checked' : ''}`;
+            
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.id = `${item.id}-checkbox`;
+            checkbox.checked = item.checked;
+            checkbox.style.display = 'none';
+            
+            const colorBox = document.createElement('div');
+            colorBox.className = 'legend-color';
+            colorBox.style.setProperty('--color', item.color);
+            
+            const label = document.createElement('span');
+            label.textContent = item.label;
+            
+            legendItem.appendChild(checkbox);
+            legendItem.appendChild(colorBox);
+            legendItem.appendChild(label);
+            
+            legendItem.addEventListener('click', () => {
+                checkbox.checked = !checkbox.checked;
+                legendItem.classList.toggle('checked');
+                plotExecutionDetails();
+            });
+            
+            groupDiv.appendChild(legendItem);
+        });
+
+        flexContainer.appendChild(groupDiv);
+    });
+}
+
+// Update how we get checkbox states
+function isTaskTypeChecked(taskType) {
+    const checkbox = document.getElementById(`${taskType}-checkbox`);
+    return checkbox && checkbox.checked;
+}
+
+function plotExecutionDetails() {
+    if (!state.doneTasks) {
         return;
     }
 
-    const taskDone = window.taskDone;
-    const taskFailedOnWorker = window.taskFailedOnWorker;
-
     let margin = calculateMargin();
-
-    console.log('execution details margin', margin);
-
     const svgWidth = svgContainer.clientWidth - margin.left - margin.right;
     const svgHeight = svgContainer.clientHeight - margin.top - margin.bottom;
 
@@ -66,177 +249,234 @@ export function plotExecutionDetails() {
 
     const { xScale, yScale } = plotAxis(svg, svgWidth, svgHeight);
 
-    ////////////////////////////////////////////
-    // create rectanges for each worker
-    const workerEntries = window.workerSummary.map(d => ({
-        worker: d.worker_hash,
-        Info: {
-            worker_id: +d.worker_id,
-            time_connected: +d.time_connected,
-            time_disconnected: +d.time_disconnected,
-            cores: +d.cores,
-        }
-    }));
-    workerEntries.forEach(({ worker, Info }) => {
-        let worker_id = Info.worker_id;
-        const rect = svg.append('rect')
-            .attr('x', xScale(+Info.time_connected - window.minTime))
-            .attr('y', yScale(worker_id + '-' + Info.cores))
-            .attr('width', xScale(+Info.time_disconnected - window.minTime) - xScale(+Info.time_connected - window.minTime))
-            .attr('height', yScale.bandwidth() * Info.cores + (yScale.step() - yScale.bandwidth()) * (Info.cores - 1))
-            .attr('fill', colors.workers.normal)
-            .attr('opacity', 0.3)
-            .on('mouseover', function(event, d) {
-                d3.select(this)
-                    .attr('fill', colors.workers.highlight);
-                // show tooltip
-                tooltip.innerHTML = `
-                    cores: ${Info.cores}<br>
-                    worker id: ${Info.worker_id}<br>
-                    when connected: ${(Info.time_connected - window.minTime).toFixed(2)}s<br>
-                    when disconnected: ${(Info.time_disconnected - window.minTime).toFixed(2)}s<br>
-                    life time: ${(Info.time_disconnected - Info.time_connected).toFixed(2)}s<br>`;
-                tooltip.style.visibility = 'visible';
-                tooltip.style.top = (event.pageY + 10) + 'px';
-                tooltip.style.left = (event.pageX + 10) + 'px';
-            })
-            .on('mousemove', function(event) {
-                tooltip.style.top = (event.pageY + 10) + 'px';
-                tooltip.style.left = (event.pageX + 10) + 'px';
-            })
-            .on('mouseout', function(event, d) {
-                d3.select(this)
-                    .attr('fill', colors.workers.normal);
-                // hide tooltip
-                tooltip.style.visibility = 'hidden';
-            });
-    });
-    ////////////////////////////////////////////
+    // Plot worker connection periods
+    if (isTaskTypeChecked('workers') && state.workerInfo) {
+        state.workerInfo.forEach(worker => {
+            const connectTimes = worker.time_connected;
+            const disconnectTimes = worker.time_disconnected;
+            
+            // Create rectangle for each connection period
+            for (let i = 0; i < connectTimes.length; i++) {
+                const connectTime = connectTimes[i];
+                const disconnectTime = disconnectTimes[i] || state.maxTime;
 
-    ////////////////////////////////////////////
-    // create rectange for each successful task (time extent: when_running ~ time_worker_start)
-    svg.selectAll('.task-rect')
-        .data(taskDone)
-        .enter()
-        .append('g')
-        .each(function(d) {
-            var g = d3.select(this);
-        /*
-            g.append('rect')
-                .attr('class', 'committing-tasks')
-                .attr('x', d => xScale(+d.when_running - window.minTime))
-                .attr('y', d => yScale(d.worker_id + '-' + d.core_id))
-                .attr('width', d => xScale(+d.time_worker_start) - xScale(+d.when_running))
-                .attr('height', yScale.bandwidth())
-                .attr('fill', function(d) {
-                    return colors['committing-tasks'].normal;
-                });
-        */
-            g.append('rect')
-                .attr('class', 'running-tasks')
-                .attr('x', d => xScale(+d.time_worker_start - window.minTime))
-                .attr('y', d => yScale(d.worker_id + '-' + d.core_id))
-                .attr('width', d => xScale(+d.time_worker_end) - xScale(+d.time_worker_start))
-                .attr('height', yScale.bandwidth())
-                .attr('fill', function(d) {
-                    return d.is_recovery_task === true ? colors['recovery-tasks'].normal : colors['running-tasks'].normal;
-                });
-        /*
-            g.append('rect')
-                .attr('class', 'retrieving-tasks')
-                .attr('x', d => xScale(+d.time_worker_end - window.minTime))
-                .attr('y', d => yScale(d.worker_id + '-' + d.core_id))
-                .attr('width', d => xScale(+d.when_done) - xScale(+d.time_worker_end))
-                .attr('height', yScale.bandwidth())
-                .attr('fill', function(d) {
-                    return colors['retrieving-tasks'].normal;
-                });
-        */
-        
-        })
-        .on('mouseover', function(event, d) {
-            d3.select(this).selectAll('rect').each(function() {
-                if (this.classList.contains('committing-tasks')) {
-                    d3.select(this).attr('fill', colors['committing-tasks'].highlight);
-                } else if (this.classList.contains('running-tasks')) {
-                    d3.select(this).attr('fill', colors['running-tasks'].highlight);
-                } else if (this.classList.contains('retrieving-tasks')) {
-                    d3.select(this).attr('fill', colors['retrieving-tasks'].highlight);
-                }
-            });
-
-            // show tooltip
-            tooltip.innerHTML = getTaskInnerHTML(d);
-            tooltip.style.visibility = 'visible';
-            tooltip.style.top = (event.pageY + 10) + 'px';
-            tooltip.style.left = (event.pageX + 10) + 'px';
-        })
-        .on('mousemove', function(event) {
-            tooltip.style.top = (event.pageY + 10) + 'px';
-            tooltip.style.left = (event.pageX + 10) + 'px';
-        })
-        .on('mouseout', function() {
-            // hide tooltip
-            tooltip.style.visibility = 'hidden';
-            // restore color
-            d3.select(this).selectAll('rect').each(function() {
-                if (this.classList.contains('committing-tasks')) {
-                    d3.select(this).attr('fill', colors['committing-tasks'].normal);
-                } else if (this.classList.contains('running-tasks')) {
-                    d3.select(this).attr('fill', function(d) {
-                        return d.is_recovery_task === "True" ? colors['recovery-tasks'].normal : colors['running-tasks'].normal;
+                svg.append('rect')
+                    .attr('x', xScale(connectTime - state.minTime))
+                    .attr('y', yScale(worker.id + '-' + worker.cores))
+                    .attr('width', xScale(disconnectTime - state.minTime) - xScale(connectTime - state.minTime))
+                    .attr('height', yScale.bandwidth() * worker.cores + (yScale.step() - yScale.bandwidth()) * (worker.cores - 1))
+                    .attr('fill', colors['workers'])
+                    .attr('opacity', 0.3)
+                    .on('mouseover', function(event) {
+                        d3.select(this).attr('fill', HIGHLIGHT_COLOR);
+                        tooltip.innerHTML = `
+                            cores: ${worker.cores}<br>
+                            worker id: ${worker.id}<br>
+                            when connected: ${(connectTime - state.minTime).toFixed(2)}s<br>
+                            when disconnected: ${(disconnectTime - state.minTime).toFixed(2)}s<br>
+                            life time: ${(disconnectTime - connectTime).toFixed(2)}s<br>`;
+                        tooltip.style.visibility = 'visible';
+                        tooltip.style.top = (event.pageY + 10) + 'px';
+                        tooltip.style.left = (event.pageX + 10) + 'px';
+                    })
+                    .on('mouseout', function() {
+                        d3.select(this).attr('fill', colors['workers']);
+                        tooltip.style.visibility = 'hidden';
                     });
-                } else if (this.classList.contains('retrieving-tasks')) {
-                    d3.select(this).attr('fill', colors['retrieving-tasks'].normal);
-                }
-            });
-        });
-
-    ////////////////////////////////////////////
-
-    ////////////////////////////////////////////
-    // create rectange for each failed task (time extent: when_running ~ when_next_ready)
-    svg.selectAll('.failed-tasks')
-        .data(taskFailedOnWorker)
-        .enter()
-        .append('rect')
-        .attr('class', 'failed-tasks')
-        .attr('x', d => xScale(+d.when_running - window.minTime))
-        .attr('y', d => yScale(d.worker_id + '-' + d.core_id))
-        .attr('width', d => {
-            const width = xScale(+d.when_next_ready) - xScale(+d.when_running);
-            if (width < 0) {
-                throw new Error(`Invalid width: ${width} for task_id ${(d.task_id)} try_id ${d.try_id} when_running ${+d.when_running} when_next_ready ${d.when_next_ready}`);
             }
-            return width;
-        })
-        .attr('height', yScale.bandwidth())
-        .attr('fill', colors['failed-tasks'].normal)
-        .attr('opacity', 0.8)
-        .on('mouseover', function(event, d) {
-            // change color
-            d3.select(this).attr('fill', colors['failed-tasks'].highlight);
-            // show tooltip
-            tooltip.innerHTML = `
-                task id: ${d.task_id}<br>
-                worker: ${d.worker_id} (core ${d.core_id})<br>
-                execution time: ${(d.when_next_ready - d.when_running).toFixed(2)}s<br>
-                input size: ${(d.size_input_mgr - 0).toFixed(4)}MB<br>
-                when ready: ${(d.when_ready - window.minTime).toFixed(2)}s<br>
-                when running: ${(d.when_running - window.minTime).toFixed(2)}s<br>
-                when next ready: ${(d.when_next_ready - window.minTime).toFixed(2)}s<br>`;
-            tooltip.style.visibility = 'visible';
-            tooltip.style.top = (event.pageY + 10) + 'px';
-            tooltip.style.left = (event.pageX + 10) + 'px';
-        })
-        .on('mouseout', function() {
-            // restore color
-            d3.select(this).attr('fill', colors['failed-tasks'].normal);
-            // hide tooltip
-            tooltip.style.visibility = 'hidden';
         });
+    }
 
-    ////////////////////////////////////////////
+    // Plot done tasks
+    state.doneTasks.forEach(task => {
+        // Committing to worker phase
+        if (task.when_running && task.time_worker_start) {
+            if (isTaskTypeChecked('done-committing-to-worker')) {
+                svg.append('rect')
+                    .attr('x', xScale(task.when_running - state.minTime))
+                    .attr('y', yScale(task.worker_id + '-' + task.core_id))
+                    .attr('width', xScale(task.time_worker_start - task.when_running))
+                    .attr('height', yScale.bandwidth())
+                    .attr('fill', colors['done-committing-to-worker'])
+                    .on('mouseover', function(event) {
+                        d3.select(this).attr('fill', HIGHLIGHT_COLOR);
+                        tooltip.innerHTML = getTaskInnerHTML(task);
+                        tooltip.style.visibility = 'visible';
+                        tooltip.style.top = (event.pageY + 10) + 'px';
+                        tooltip.style.left = (event.pageX + 10) + 'px';
+                    })
+                    .on('mouseout', function() {
+                        d3.select(this).attr('fill', colors['done-committing-to-worker']);
+                        tooltip.style.visibility = 'hidden';
+                    });
+            }
+        }
+
+        // Executing on worker phase
+        if (task.time_worker_start && task.time_worker_end) {
+            if (isTaskTypeChecked('done-executing-on-worker')) {
+                svg.append('rect')
+                    .attr('x', xScale(task.time_worker_start - state.minTime))
+                    .attr('y', yScale(task.worker_id + '-' + task.core_id))
+                    .attr('width', xScale(task.time_worker_end - task.time_worker_start))
+                    .attr('height', yScale.bandwidth())
+                    .attr('fill', colors['done-executing-on-worker'])
+                    .on('mouseover', function(event) {
+                        d3.select(this).attr('fill', HIGHLIGHT_COLOR);
+                        tooltip.innerHTML = getTaskInnerHTML(task);
+                        tooltip.style.visibility = 'visible';
+                        tooltip.style.top = (event.pageY + 10) + 'px';
+                        tooltip.style.left = (event.pageX + 10) + 'px';
+                    })
+                    .on('mouseout', function() {
+                        d3.select(this).attr('fill', colors['done-executing-on-worker']);
+                        tooltip.style.visibility = 'hidden';
+                    });
+            }
+        }
+
+        // Retrieving to manager phase
+        if (task.time_worker_end && task.when_done) {
+            if (isTaskTypeChecked('done-retrieving-to-manager')) {
+                svg.append('rect')
+                    .attr('x', xScale(task.time_worker_end - state.minTime))
+                    .attr('y', yScale(task.worker_id + '-' + task.core_id))
+                    .attr('width', xScale(task.when_retrieved - task.time_worker_end))
+                    .attr('height', yScale.bandwidth())
+                    .attr('fill', colors['done-retrieving-to-manager'])
+                    .on('mouseover', function(event) {
+                        d3.select(this).attr('fill', HIGHLIGHT_COLOR);
+                        tooltip.innerHTML = getTaskInnerHTML(task);
+                        tooltip.style.visibility = 'visible';
+                        tooltip.style.top = (event.pageY + 10) + 'px';
+                        tooltip.style.left = (event.pageX + 10) + 'px';
+                    })
+                    .on('mouseout', function() {
+                        d3.select(this).attr('fill', colors['done-retrieving-to-manager']);
+                        tooltip.style.visibility = 'hidden';
+                    });
+            }
+        }
+    });
+
+    // Plot failed tasks
+    if (state.failedTasks) {
+        state.failedTasks.forEach(task => {
+            const failureType = getFailureType(task.task_status);
+            if (failureType) {
+                const failureId = `failed-${failureType.toLowerCase()}`;
+                if (isTaskTypeChecked(failureId)) {
+                    const startTime = task.when_running || task.time_worker_start;
+                    if (startTime) {
+                        svg.append('rect')
+                            .attr('x', xScale(startTime - state.minTime))
+                            .attr('y', yScale(task.worker_id + '-' + task.core_id))
+                            .attr('width', xScale(task.when_failure_happens - startTime))
+                            .attr('height', yScale.bandwidth())
+                            .attr('fill', FAILURE_TYPES[failureType].color)
+                            .on('mouseover', function(event) {
+                                d3.select(this).attr('fill', HIGHLIGHT_COLOR);
+                                tooltip.innerHTML = `
+                                    Task ID: ${task.task_id}<br>
+                                    Worker: ${task.worker_ip}:${task.worker_port}<br>
+                                    Core: ${task.core_id}<br>
+                                    Failure Type: ${FAILURE_TYPES[failureType].label}<br>
+                                    Start time: ${(startTime - state.minTime).toFixed(2)}s<br>
+                                    When next ready: ${(task.when_failure_happens - state.minTime).toFixed(2)}s<br>
+                                    Duration: ${(task.when_failure_happens - startTime).toFixed(2)}s`;
+                                tooltip.style.visibility = 'visible';
+                                tooltip.style.top = (event.pageY + 10) + 'px';
+                                tooltip.style.left = (event.pageX + 10) + 'px';
+                            })
+                            .on('mouseout', function() {
+                                d3.select(this).attr('fill', FAILURE_TYPES[failureType].color);
+                                tooltip.style.visibility = 'hidden';
+                            });
+                    }
+                }
+            }
+        });
+    }
+
+    // Plot recovery tasks
+    if (state.doneTasks) {
+        state.doneTasks.forEach(task => {
+            if (task.is_recovery_task === true) {
+                if (isTaskTypeChecked('recovery-done')) {
+                    if (task.time_worker_start && task.time_worker_end) {
+                        svg.append('rect')
+                            .attr('x', xScale(task.time_worker_start - state.minTime))
+                            .attr('y', yScale(task.worker_id + '-' + task.core_id))
+                            .attr('width', xScale(task.time_worker_end - task.time_worker_start))
+                            .attr('height', yScale.bandwidth())
+                            .attr('fill', colors['recovery-done'])
+                            .on('mouseover', function(event) {
+                                const tooltip = document.getElementById('vine-tooltip');
+                                d3.select(this).attr('fill', HIGHLIGHT_COLOR);
+                                tooltip.innerHTML = `
+                                    Task ID: ${task.task_id}<br>
+                                    Worker: ${task.worker_ip}:${task.worker_port}<br>
+                                    Core: ${task.core_id}<br>
+                                    Type: Recovery Task (Done)<br>
+                                    Start time: ${(task.time_worker_start - state.minTime).toFixed(2)}s<br>
+                                    End time: ${(task.time_worker_end - state.minTime).toFixed(2)}s<br>
+                                    Duration: ${(task.time_worker_end - task.time_worker_start).toFixed(2)}s`;
+                                tooltip.style.visibility = 'visible';
+                                tooltip.style.top = (event.pageY + 10) + 'px';
+                                tooltip.style.left = (event.pageX + 10) + 'px';
+                            })
+                            .on('mouseout', function() {
+                                const tooltip = document.getElementById('vine-tooltip');
+                                d3.select(this).attr('fill', colors['recovery-done']);
+                                tooltip.style.visibility = 'hidden';
+                            });
+                    }
+                }
+            }
+        });
+    }
+
+    if (state.failedTasks) {
+        state.failedTasks.forEach(task => {
+            if (task.is_recovery_task === true) {
+                if (isTaskTypeChecked('recovery-failed')) {
+                    const startTime = task.when_running || task.time_worker_start;
+                    if (startTime) {
+                        const endTime = task.when_failure_happens <= startTime ? 
+                            startTime + 0.01 : task.when_failure_happens;
+                        
+                        svg.append('rect')
+                            .attr('x', xScale(startTime - state.minTime))
+                            .attr('y', yScale(task.worker_id + '-' + task.core_id))
+                            .attr('width', xScale(endTime - startTime))
+                            .attr('height', yScale.bandwidth())
+                            .attr('fill', colors['recovery-failed'])
+                            .on('mouseover', function(event) {
+                                const tooltip = document.getElementById('vine-tooltip');
+                                d3.select(this).attr('fill', HIGHLIGHT_COLOR);
+                                tooltip.innerHTML = `
+                                    Task ID: ${task.task_id}<br>
+                                    Worker: ${task.worker_ip}:${task.worker_port}<br>
+                                    Core: ${task.core_id}<br>
+                                    Type: Recovery Task (Failed)<br>
+                                    Failure Type: ${FAILURE_TYPES[getFailureType(task.task_status)]?.label || 'Unknown'}<br>
+                                    Start time: ${(startTime - state.minTime).toFixed(2)}s<br>
+                                    When next ready: ${(endTime - state.minTime).toFixed(2)}s<br>
+                                    Duration: ${(endTime - startTime).toFixed(2)}s`;
+                                tooltip.style.visibility = 'visible';
+                                tooltip.style.top = (event.pageY + 10) + 'px';
+                                tooltip.style.left = (event.pageX + 10) + 'px';
+                            })
+                            .on('mouseout', function() {
+                                const tooltip = document.getElementById('vine-tooltip');
+                                d3.select(this).attr('fill', colors['recovery-failed']);
+                                tooltip.style.visibility = 'hidden';
+                            });
+                    }
+                }
+            }
+        });
+    }
 }
 
 function calculateMargin() {
@@ -250,9 +490,9 @@ function calculateMargin() {
         .attr('transform', `translate(${margin.left}, ${margin.top})`);
 
     const workerCoresMap = [];
-    window.workerSummary.forEach(d => {
+    state.workerInfo.forEach(d => {
         for (let i = 1; i <= +d.cores; i++) {
-            workerCoresMap.push(`${d.worker_id}-${i}`);
+            workerCoresMap.push(`${d.id}-${i}`);
         }
     });
 
@@ -277,13 +517,13 @@ function calculateMargin() {
 function plotAxis(svg, svgWidth, svgHeight) {
     // set x scale
     const xScale = d3.scaleLinear()
-        .domain([0, window.maxTime - window.minTime])
+        .domain([0, state.maxTime - state.minTime])
         .range([0, svgWidth]);
     // set y scale
     const workerCoresMap = [];
-    window.workerSummary.forEach(d => {
+    state.workerInfo.forEach(d => {
         for (let i = 1; i <= +d.cores; i++) {
-            workerCoresMap.push(`${d.worker_id}-${i}`);
+            workerCoresMap.push(`${d.id}-${i}`);
         }
     });
     const yScale = d3.scaleBand()
@@ -300,20 +540,20 @@ function plotAxis(svg, svgWidth, svgHeight) {
             xScale.domain()[0] + (xScale.domain()[1] - xScale.domain()[0]) * 0.75,
             xScale.domain()[1]
         ])
-        .tickFormat(d3.format(window.xTickFormat));
+        .tickFormat(d3.format(state.xTickFormat));
     svg.append('g')
         .attr('transform', `translate(0, ${svgHeight})`)
         .call(xAxis)
         .selectAll('text')
-        .style('font-size', window.xTickFontSize);
+        .style('font-size', state.xTickFontSize);
 
     // draw y axis
-    const totalWorkers = window.workerSummary.length;
+    const totalWorkers = state.workerInfo.length;
     const maxTicks = 5;
     const tickInterval = Math.ceil(totalWorkers / maxTicks);
     const selectedTicks = [];
     for (let i = totalWorkers - 1; i >= 0; i -= tickInterval) {
-        selectedTicks.unshift(`${window.workerSummary[i].worker_id}-${window.workerSummary[i].cores}`);
+        selectedTicks.unshift(`${state.workerInfo[i].id}-${state.workerInfo[i].cores}`);
     }
     const yAxis = d3.axisLeft(yScale)
         .tickValues(selectedTicks)
@@ -321,7 +561,7 @@ function plotAxis(svg, svgWidth, svgHeight) {
     svg.append('g')
         .call(yAxis)
         .selectAll('text')
-        .style('font-size', window.yTickFontSize);
+        .style('font-size', state.yTickFontSize);
 
     return { xScale, yScale };
 }
@@ -335,91 +575,46 @@ function handleDownloadClick() {
     downloadSVG('execution-details');
 }
 
-function setLegend() {
-    var legendCell = d3.select("#legend-running-tasks");
-    legendCell.selectAll('*').remove();
-    const cellWidth = legendCell.node().offsetWidth;
-    const cellHeight = legendCell.node().offsetHeight;
-    const svgWidth = cellWidth;
-    const svgHeight = cellHeight;
-    var rectWidth = svgWidth * 0.8;
-    var rectHeight = svgHeight * 0.6;
-    var rectX = 0;
-    var rectY = (svgHeight - rectHeight) / 2;
+async function initialize() {
+    try {
+        const runtimeTemplate =  window.logName;
+        const url = `/api/execution-details?runtime_template=${runtimeTemplate}`;
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (!data) {
+            return;
+        }
 
-    legendCell = d3.select("#legend-running-tasks");
-    legendCell.selectAll('*').remove();
-    var svg = legendCell
-        .append("svg")
-        .attr("width", svgWidth)
-        .attr("height", svgHeight);
-    svg.append("rect")
-        .attr("width", rectWidth)
-        .attr("height", rectHeight)
-        .attr("x", rectX)
-        .attr("y", rectY)
-        .attr("fill", colors['running-tasks'].normal);
+        state.doneTasks = data.doneTasks;
+        state.failedTasks = data.failedTasks;
+        state.workerInfo = data.workerInfo;
+        state.managerInfo = data.managerInfo;
 
-    legendCell = d3.select("#legend-failed-tasks");
-    legendCell.selectAll('*').remove();
-    var svg = legendCell
-        .append("svg")
-        .attr("width", svgWidth)
-        .attr("height", svgHeight);
-    svg.append("rect")
-        .attr("width", rectWidth)
-        .attr("height", rectHeight)
-        .attr("x", rectX)
-        .attr("y", rectY)
-        .attr("fill", colors['failed-tasks'].normal);
+        state.minTime = data.managerInfo.time_start;
+        state.maxTime = data.managerInfo.time_end;
 
-    legendCell = d3.select("#legend-recovery-tasks");
-    legendCell.selectAll('*').remove();
-    var svg = legendCell
-        .append("svg")
-        .attr("width", svgWidth)
-        .attr("height", svgHeight);
-    svg.append("rect")
-        .attr("width", rectWidth)
-        .attr("height", rectHeight)
-        .attr("x", rectX)
-        .attr("y", rectY)
-        .attr("fill", colors['recovery-tasks'].normal);
+        if (state.managerInfo.failed === 'True') {
+            document.getElementById('execution-details-tip').style.visibility = 'visible';
+        } else {
+            document.getElementById('execution-details-tip').style.visibility = 'hidden';
+        }
 
-    legendCell = d3.select("#legend-workers");
-    legendCell.selectAll('*').remove();
-    var svg = legendCell
-        .append("svg")
-        .attr("width", svgWidth)
-        .attr("height", svgHeight);
-    svg.append("rect")
-        .attr("width", rectWidth)
-        .attr("height", rectHeight)
-        .attr("x", rectX)
-        .attr("y", rectY)
-        .attr("fill", colors['workers'].normal);
+        setLegend();
+        
+        buttonDownload.removeEventListener('click', handleDownloadClick); 
+        buttonDownload.addEventListener('click', handleDownloadClick);
+
+        buttonReset.removeEventListener('click', handleResetClick);
+        buttonReset.addEventListener('click', handleResetClick);
+
+        plotExecutionDetails();
+        setupZoomAndScroll('#execution-details', '#execution-details-container');
+    } catch (error) {
+        console.error('Error fetching execution details:', error);
+    }
 }
 
-
-window.parent.document.addEventListener('dataLoaded', function() {
-    if (!window.managerInfo) {
-        return;
-    }
-    if (window.managerInfo.failed === 'True') {
-        document.getElementById('execution-details-tip').style.visibility = 'visible';
-    } else {
-        document.getElementById('execution-details-tip').style.visibility = 'hidden';
-    }
-    setLegend();
-
-    buttonDownload.removeEventListener('click', handleDownloadClick); 
-    buttonDownload.addEventListener('click', handleDownloadClick);
-
-    buttonReset.removeEventListener('click', handleResetClick);
-    buttonReset.addEventListener('click', handleResetClick);
-
-    plotExecutionDetails();
-    setupZoomAndScroll('#execution-details', '#execution-details-container');
-});
-
+window.document.addEventListener('dataLoaded', initialize);
 window.addEventListener('resize', _.debounce(() => plotExecutionDetails(), 300));
+
