@@ -32,24 +32,18 @@ class TemplateState:
         self.manager, self.workers, self.files, self.tasks = self.data_parser.restore_from_checkpoint()
 
     def change_runtime_template(self, runtime_template):
-        runtime_template = Path(runtime_template).name
-        runtime_template = os.path.join(os.getcwd(), LOGS_DIR, runtime_template)
-        self.runtime_template = runtime_template
-        self.data_parser = DataParser(runtime_template)
+        self.runtime_template = os.path.join(os.getcwd(), LOGS_DIR, Path(runtime_template).name)
+        self.data_parser = DataParser(self.runtime_template)
         self.restore_from_checkpoint()
         self.MIN_TIME = float(self.manager.time_start)
         self.MAX_TIME = float(self.manager.time_end)
 
     def ensure_runtime_template(self, runtime_template):
-        # Get the runtime_template from query parameters or use the most recent one
         if not runtime_template:
-            all_templates = sorted([d for d in os.listdir(LOGS_DIR) if os.path.isdir(os.path.join(LOGS_DIR, d))])
-            if not all_templates:
-                return jsonify({'error': 'No runtime templates found'}), 404
-            runtime_template = all_templates[-1]
-
-        if not self.runtime_template or Path(runtime_template).name != Path(self.runtime_template).name:
-            self.change_runtime_template(runtime_template)
+            return
+        if self.runtime_template and Path(runtime_template).name == Path(self.runtime_template).name:
+            return
+        self.change_runtime_template(runtime_template)
 
 
 app = Flask(__name__)
@@ -60,7 +54,7 @@ def get_execution_details():
         # Get the runtime_template from query parameters or use the most recent one
         runtime_template = request.args.get('runtime_template')
         template_manager.ensure_runtime_template(runtime_template)
-        
+
         data: Dict[str, Any] = {}
 
         data['xMin'] = 0
@@ -139,10 +133,6 @@ def get_execution_details():
 @app.route('/api/storage-consumption')
 def get_storage_consumption():
     try:
-        # Get the runtime_template from query parameters or use the most recent one
-        runtime_template = request.args.get('runtime_template')
-        template_manager.ensure_runtime_template(runtime_template)
-        
         data = {}
 
         files = template_manager.files
@@ -244,9 +234,6 @@ def get_storage_consumption():
 def get_worker_transfers():
     try:
         # Get the runtime_template from query parameters or use the most recent one
-        runtime_template = request.args.get('runtime_template')
-        template_manager.ensure_runtime_template(runtime_template)
-        
         data = {}
 
         successful_transfers = 0
@@ -296,14 +283,22 @@ def get_worker_transfers():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/runtime-templates-list')
+def get_runtime_templates_list():
+    log_folders = [name for name in os.listdir(LOGS_DIR) if os.path.isdir(os.path.join(LOGS_DIR, name))]
+    log_folders_sorted = sorted(log_folders)
+    return jsonify(log_folders_sorted)
+
+@app.route('/api/change-runtime-template')
+def change_runtime_template():
+    runtime_template = request.args.get('runtime_template')
+    template_manager.change_runtime_template(runtime_template)
+    return jsonify({'success': True})
 
 @app.route('/logs/<runtime_template>')
 def render_log_page(runtime_template):
     log_folders = [name for name in os.listdir(LOGS_DIR) if os.path.isdir(os.path.join(LOGS_DIR, name))]
     log_folders_sorted = sorted(log_folders)
-    print(f"runtime_template = {runtime_template}")
-    print(f"template_manager.runtime_template = {template_manager.runtime_template}")
-    print(f"log folders = {log_folders}")
     if runtime_template != template_manager.runtime_template:
         template_manager.change_runtime_template(runtime_template)
     return render_template('index.html', log_folders=log_folders_sorted)
@@ -313,29 +308,6 @@ def index():
     log_folders = [name for name in os.listdir(LOGS_DIR) if os.path.isdir(os.path.join(LOGS_DIR, name))]
     log_folders_sorted = sorted(log_folders)
     return render_template('index.html', log_folders=log_folders_sorted)
-
-@app.route('/data/<path:filename>')
-def serve_from_data(filename):
-    return send_from_directory('data', filename)
-
-@app.route('/logs/<path:filename>')
-def serve_file(filename):
-    base_directory = os.path.abspath("logs/")
-    file_path = os.path.join(base_directory, filename)
-
-    # stream the file
-    if not os.path.exists(file_path):
-        # skip and don't abort
-        return Response(status=404)
-    def generate():
-        with open(file_path, "rb") as f:
-            while True:
-                chunk = f.read(4096)
-                if not chunk:
-                    break
-                yield chunk
-
-    return Response(generate(), mimetype='text/plain')
 
 
 if __name__ == "__main__":
