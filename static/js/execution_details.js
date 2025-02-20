@@ -125,9 +125,9 @@ function setLegend() {
         {
             title: `Done Tasks (${state.doneTasks ? state.doneTasks.length : 0} total)`,
             items: [
-                { id: 'done-committing-to-worker', label: 'Committing to Worker', color: colors['done-committing-to-worker'], checked: false },
-                { id: 'done-executing-on-worker', label: 'Executing on Worker', color: colors['done-executing-on-worker'], checked: true },
-                { id: 'done-retrieving-to-manager', label: 'Retrieving to Manager', color: colors['done-retrieving-to-manager'], checked: false }
+                { id: 'done-committing-to-worker', label: 'Committingr', color: colors['done-committing-to-worker'], checked: false },
+                { id: 'done-executing-on-worker', label: 'Executing', color: colors['done-executing-on-worker'], checked: true },
+                { id: 'done-retrieving-to-manager', label: 'Retrieving', color: colors['done-retrieving-to-manager'], checked: false }
             ]
         },
         {
