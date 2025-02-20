@@ -1,38 +1,25 @@
-import argparse
+
 import os
-import copy
 import json
 import pandas as pd
-from datetime import datetime
-import re
-import time
-from tqdm import tqdm
-from collections import defaultdict
-import json
-from bitarray import bitarray # type: ignore
-from tqdm import tqdm
-import re
-import cloudpickle
-from datetime import datetime, timezone, timedelta
-import pytz
-import numpy as np
-from worker_info import WorkerInfo
-from task_info import TaskInfo
-from file_info import FileInfo
-from decimal import Decimal, ROUND_FLOOR
 
 
 class DataProcessor:
-    def __init__(self, workers, files, tasks, manager_info, csv_files_dir, json_files_dir):
+    def __init__(self, runtime_template, manager, workers, files, tasks):
+        self.runtime_template = runtime_template
+        self.vine_logs_dir = os.path.join(self.runtime_template, 'vine-logs')
+        self.csv_files_dir = os.path.join(self.runtime_template, 'csv-files')
+        self.json_files_dir = os.path.join(self.runtime_template, 'json-files')
+        self.pkl_files_dir = os.path.join(self.runtime_template, 'pkl-files')
+        os.makedirs(self.csv_files_dir, exist_ok=True)
+        os.makedirs(self.json_files_dir, exist_ok=True)
+        os.makedirs(self.pkl_files_dir, exist_ok=True)
+
+        self.manager = manager
         self.workers = workers
         self.files = files
         self.tasks = tasks
-        self.manager_info = manager_info
-        self.csv_files_dir = csv_files_dir
-        self.json_files_dir = json_files_dir
 
-        os.makedirs(csv_files_dir, exist_ok=True)
-        os.makedirs(json_files_dir, exist_ok=True)
 
     def generate_data(self):
         # generate all the csv files
@@ -42,7 +29,7 @@ class DataProcessor:
         self.generate_worker_info_csv()
     
         # generate all the json files
-        self.generate_manager_info_json()
+        self.generate_manager_json()
 
     def generate_task_info_csv(self):
         rows = []
@@ -147,31 +134,31 @@ class DataProcessor:
         df = pd.DataFrame(rows)
         df.to_csv(os.path.join(self.csv_files_dir, 'file_transfers.csv'), index=False)
 
-    def generate_manager_info_json(self):
+    def generate_manager_json(self):
         row = {
-            'time_zone_offset_hours': self.manager_info.time_zone_offset_hours,
-            'time_start': self.manager_info.time_start,
-            'time_end': self.manager_info.time_end,
-            'lifetime_s': self.manager_info.lifetime_s,
-            'time_start_human': self.manager_info.time_start_human,
-            'time_end_human': self.manager_info.time_end_human,
-            'when_first_task_start_commit': self.manager_info.when_first_task_start_commit,
-            'when_last_task_done': self.manager_info.when_last_task_done,
-            'when_first_worker_connect': self.manager_info.when_first_worker_connect,
-            'when_last_worker_disconnect': self.manager_info.when_last_worker_disconnect,
-            'tasks_submitted': self.manager_info.tasks_submitted,
-            'tasks_done': self.manager_info.tasks_done,
-            'tasks_failed_on_manager': self.manager_info.tasks_failed_on_manager,
-            'tasks_failed_on_worker': self.manager_info.tasks_failed_on_worker,
-            'max_task_try_count': self.manager_info.max_task_try_count,
-            'total_workers': self.manager_info.total_workers,
-            'max_concurrent_workers': self.manager_info.max_concurrent_workers,
-            'failed': self.manager_info.failed,
-            'active_workers': self.manager_info.active_workers,
-            'size_of_all_files_mb': self.manager_info.size_of_all_files_mb,
-            'cluster_peak_disk_usage_mb': self.manager_info.cluster_peak_disk_usage_mb,
+            'time_zone_offset_hours': self.manager.time_zone_offset_hours,
+            'time_start': self.manager.time_start,
+            'time_end': self.manager.time_end,
+            'lifetime_s': self.manager.lifetime_s,
+            'time_start_human': self.manager.time_start_human,
+            'time_end_human': self.manager.time_end_human,
+            'when_first_task_start_commit': self.manager.when_first_task_start_commit,
+            'when_last_task_done': self.manager.when_last_task_done,
+            'when_first_worker_connect': self.manager.when_first_worker_connect,
+            'when_last_worker_disconnect': self.manager.when_last_worker_disconnect,
+            'tasks_submitted': self.manager.tasks_submitted,
+            'tasks_done': self.manager.tasks_done,
+            'tasks_failed_on_manager': self.manager.tasks_failed_on_manager,
+            'tasks_failed_on_worker': self.manager.tasks_failed_on_worker,
+            'max_task_try_count': self.manager.max_task_try_count,
+            'total_workers': self.manager.total_workers,
+            'max_concurrent_workers': self.manager.max_concurrent_workers,
+            'failed': self.manager.failed,
+            'active_workers': self.manager.active_workers,
+            'size_of_all_files_mb': self.manager.size_of_all_files_mb,
+            'cluster_peak_disk_usage_mb': self.manager.cluster_peak_disk_usage_mb,
         }
-        with open(os.path.join(self.json_files_dir, 'manager_info.json'), 'w') as f:
+        with open(os.path.join(self.json_files_dir, 'manager.json'), 'w') as f:
             json.dump(row, f, indent=4)
 
     def generate_worker_info_csv(self):
@@ -196,3 +183,4 @@ class DataProcessor:
             rows.append(row)
         df = pd.DataFrame(rows)
         df.to_csv(os.path.join(self.csv_files_dir, 'worker_info.csv'), index=False)
+

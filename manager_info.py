@@ -1,4 +1,6 @@
 from datetime import datetime, timezone, timedelta
+
+
 class ManagerInfo:
     def __init__(self):
         self.ip = None

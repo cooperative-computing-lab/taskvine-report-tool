@@ -59,6 +59,7 @@ class TaskInfo:
 
         # worker info
         self.worker_ip, self.worker_port = None, None
+        self.worker_id = None
         self.core_id = []       # a task can be assigned to multiple cores
         self.committed_worker_hash = None
         self.cores_requested = None
@@ -72,6 +73,12 @@ class TaskInfo:
         if self.when_ready and when_ready != self.when_ready:
             raise ValueError(f"when_ready mismatch for task {self.task_id}")
         self.when_ready = when_ready
+
+    def set_when_running(self, when_running):
+        when_running = float(when_running)
+        if self.when_running and when_running != self.when_running:
+            raise ValueError(f"when_running mismatch for task {self.task_id}")
+        self.when_running = when_running
 
     def set_when_failure_happens(self, when_failure_happens):
         try:

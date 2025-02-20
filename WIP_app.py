@@ -41,19 +41,19 @@ def get_execution_details():
             task_df = pd.read_csv(task_info_path)
             
             # Filter successful tasks
-            done_tasks = task_df[task_df['when_done'].notna() & (task_df['when_done'] > 0)].copy()
-            data['tasksDone'] = done_tasks[[
+            done_tasks = task_df[task_df['task_status'] == 0].copy()
+            data['doneTasks'] = done_tasks[[
                 'task_id', 'worker_ip', 'worker_port', 'worker_id', 'core_id', 'is_recovery_task', 'task_status', 'category',
                 'when_ready', 'when_running', 'time_worker_start', 'time_worker_end', 'when_waiting_retrieval', 'when_retrieved', 'when_done',
             ]].to_dict(orient='records')
             # assert that there is no None in the data
-            assert not any(d.get(k) is None for d in data['tasksDone'] for k in d.keys())
+            assert not any(d.get(k) is None for d in data['doneTasks'] for k in d.keys())
 
             # Failed tasks (task_status != 0)
-            failed_tasks = task_df[task_df['when_done'].isna()].copy()
+            failed_tasks = task_df[task_df['task_status'] != 0].copy()
             data['failedTasks'] = failed_tasks[[
                 'task_id', 'worker_ip', 'worker_port', 'worker_id', 'core_id', 'is_recovery_task', 'task_status', 'category',
-                'when_ready', 'when_running', 'when_next_ready',
+                'when_ready', 'when_running', 'when_failure_happens',
             ]].to_dict(orient='records')
             # convert the None to "None"
             data['failedTasks'] = [
@@ -67,6 +67,8 @@ def get_execution_details():
         worker_info_path = os.path.join(csv_dir, 'worker_info.csv')
         if os.path.exists(worker_info_path):
             worker_df = pd.read_csv(worker_info_path)
+            # filter out workers that have NaN columns
+            worker_df = worker_df[worker_df.notna().all(axis=1)]
             data['workerInfo'] = worker_df[[
                 'hash', 'id', 'time_connected', 'time_disconnected', 'cores'
             ]].to_dict(orient='records')
@@ -103,22 +105,6 @@ def index():
     log_folders = [name for name in os.listdir(LOGS_DIR) if os.path.isdir(os.path.join(LOGS_DIR, name))]
     log_folders_sorted = sorted(log_folders)
     return render_template('index.html', log_folders=log_folders_sorted)
-
-@app.route('/report')
-def report():
-    return render_template('report.html')
-
-@app.route('/debug')
-def debug():
-    return render_template('debug.html')
-
-@app.route('/performance')
-def performance():
-    return render_template('performance.html')
-
-@app.route('/transactions')
-def transactions():
-    return render_template('transactions.html')
 
 @app.route('/logs/<log_folder>')
 def logs(log_folder):

@@ -1,26 +1,18 @@
-import argparse
-import os
-import copy
-import json
-import pandas as pd
-from datetime import datetime
-import re
-import time
-from tqdm import tqdm
-from collections import defaultdict
-import json
-from bitarray import bitarray # type: ignore
-from tqdm import tqdm
-import re
-import cloudpickle
-from datetime import datetime, timezone, timedelta
-import pytz
-import numpy as np
 from worker_info import WorkerInfo
 from task_info import TaskInfo
 from file_info import FileInfo
-from decimal import Decimal, ROUND_FLOOR
 from manager_info import ManagerInfo
+
+import os
+import json
+from datetime import datetime
+import time
+from tqdm import tqdm
+from collections import defaultdict
+import cloudpickle
+from datetime import datetime, timezone, timedelta
+import pytz
+from decimal import Decimal, ROUND_FLOOR
 
 
 def floor_decimal(number, decimal_places):
@@ -30,23 +22,28 @@ def floor_decimal(number, decimal_places):
 
 
 class DataParser:
-    def __init__(self, vine_logs_dir, pkl_files_dir):
+    def __init__(self, runtime_template):
+        self.runtime_template = runtime_template
+
         self.ip = None
         self.port = None
         self.transfer_port = None
 
         # log files
-        self.vine_logs_dir = vine_logs_dir
-        self.debug = os.path.join(vine_logs_dir, 'debug')
-        self.transactions = os.path.join(vine_logs_dir, 'transactions')
-        self.taskgraph = os.path.join(vine_logs_dir, 'taskgraph')
-        self.daskvine_log = os.path.join(vine_logs_dir, 'daskvine.log')
+        self.vine_logs_dir = os.path.join(self.runtime_template, 'vine-logs')
+        self.csv_files_dir = os.path.join(self.runtime_template, 'csv-files')
+        self.json_files_dir = os.path.join(self.runtime_template, 'json-files')
+        self.pkl_files_dir = os.path.join(self.runtime_template, 'pkl-files')
+        os.makedirs(self.csv_files_dir, exist_ok=True)
+        os.makedirs(self.json_files_dir, exist_ok=True)
+        os.makedirs(self.pkl_files_dir, exist_ok=True)
+
+        self.debug = os.path.join(self.vine_logs_dir, 'debug')
+        self.transactions = os.path.join(self.vine_logs_dir, 'transactions')
+        self.taskgraph = os.path.join(self.vine_logs_dir, 'taskgraph')
+        self.daskvine_log = os.path.join(self.vine_logs_dir, 'daskvine.log')
 
         # output csv files
-        self.pkl_files_dir = pkl_files_dir
-    
-        os.makedirs(pkl_files_dir, exist_ok=True)
-
         self.manager = ManagerInfo()
 
         # tasks
@@ -403,8 +400,9 @@ class DataParser:
                         # update the coremap
                         worker_entry = (task.worker_ip, task.worker_port)
                         worker = self.workers[worker_entry]
-                        task.when_running = timestamp
+                        task.set_when_running(timestamp)
                         task.committed_worker_hash = worker.hash
+                        task.worker_id = worker.id
                         worker.run_task(task)
                     elif "RUNNING (2) to WAITING_RETRIEVAL (3)" in line:    # as expected
                         task.set_when_waiting_retrieval(timestamp)
@@ -647,4 +645,5 @@ class DataParser:
             self.manager = cloudpickle.load(f)
         time_end = time.time()
         print(f"Restored from checkpoint in {round(time_end - time_start, 4)} seconds")
+        return self.manager, self.workers, self.files, self.tasks
 

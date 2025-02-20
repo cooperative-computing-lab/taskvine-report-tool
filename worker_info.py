@@ -1,7 +1,5 @@
-import json
 import re
 from bitarray import bitarray
-from task_info import TaskInfo
 
 
 class WorkerInfo:
@@ -48,7 +46,7 @@ class WorkerInfo:
             raise ValueError(f"transfer port mismatch for worker {self.ip}:{self.port}")
         self.transfer_port = transfer_port
 
-    def run_task(self, task: TaskInfo):
+    def run_task(self, task):
         assert self.coremap is not None
         cores_found = 0
         for i in range(1, len(self.coremap)):
@@ -60,7 +58,7 @@ class WorkerInfo:
                     return i
         raise ValueError(f"not enough cores available for task {task.task_id}")
     
-    def reap_task(self, task: TaskInfo):
+    def reap_task(self, task):
         assert self.coremap is not None
         for core_id in task.core_id:
             self.coremap[core_id] = 0
