@@ -44,8 +44,10 @@
     <script src="{{ url_for('static', filename='js/graph.js') }}" type="module"></script>
     -->
     <script src="{{ url_for('static', filename='js/log_viewer.js') }}" type="module"></script>
-    <script src="{{ url_for('static', filename='js/execution_details.js') }}" type="module"></script>
+    <script src="{{ url_for('static', filename='js/task_execution_details.js') }}" type="module"></script>
+    <script src="{{ url_for('static', filename='js/task_execution_time.js') }}" type="module"></script>
     <script src="{{ url_for('static', filename='js/storage_consumption.js') }}" type="module"></script>
+    <script src="{{ url_for('static', filename='js/sidebar.js') }}" type="module"></script>
 </head>
 <body>
     <div id="vine-tooltip" class="tooltip"></div>  
@@ -85,7 +87,7 @@
 
         <!-- Tasks Execution Details section -->
         <div class="section-header">
-            <h2 class="section-title">Tasks Execution Details</h2>
+            <h2 class="section-title">Task Execution Details</h2>
             <div class="section-buttons">
                 <button id="button-reset-task-execution-details" class="report-button">Reset</button>
                 <button id="button-download-task-execution-details" class="report-button">Download SVG</button>
@@ -117,293 +119,20 @@
             <!-- Legend items will be added by JavaScript -->
         </div>
         
-<!-- 
+        <!-- Task Execution Time section -->
         <div class="section-header">
-            <h2 class="section-title">Manager Summary</h2>
-        </div>
-
-        <div class="preface">
-           <p>The time span of this report begins when the manager starts and ends when the manager ends. 
-            If the manager was connected at Unix timestamp 1720370750.935014, we set this as 0, any other 
-            timestamps should be subtracted by this value. For example, if a task starts at 
-            1720371091.890853 and ends at 1720371102.900173, the start and end times will be 340.95 and 351.96, respectively.
-           </p>
-        </div>
-
-        <div id="manager-info-container">
-            <div id="manager-description-container">
-                <table id="manager-description-table">
-                    <tbody>
-                        <tr>
-                            <th>Start time</th>
-                            <td id="start-time"></td>
-                        </tr>
-                        <tr>
-                            <th>End time</th>
-                            <td id="end-time"></td>
-                        </tr>
-                        <tr>
-                            <th>Life time</th>
-                            <td id="lift-time"></td>
-                        </tr>
-                        <tr>
-                            <th>Tasks Submitted</th>
-                            <td id="tasks-submitted"></td>
-                        </tr>
-                        <tr>
-                            <th>Tasks Done</th>
-                            <td id="tasks-done"></td>
-                        </tr>
-                        <tr>
-                            <th>Tasks Waiting</th>
-                            <td id="tasks-waiting"></td>
-                        </tr>
-                        <tr>
-                            <th>Tasks Failed</th>
-                            <td id="tasks-failed"></td>
-                        </tr>
-                        <tr>
-                            <th>Workers Connected</th>
-                            <td id="workers-connected"></td>
-                        </tr>
-                        <tr>
-                            <th>Workers Active</th>
-                            <td id="workers-active"></td>
-                        </tr>
-                        <tr>
-                            <th>Maximum Parrellel Workers</th>
-                            <td id="max-concurrent-workers"></td>
-                        </tr>
-                        <tr>
-                            <th>Size of All Files</th>
-                            <td id="size-of-all-files"></td>
-                        </tr>
-                        <tr>
-                            <th>Peak Disk Load</th>
-                            <td id="peak-disk-load"></td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-            <div id="factory-description-container">
+            <h2 class="section-title">Task Execution Time</h2>
+            <div class="section-buttons">
+                <button id="button-reset-task-execution-time" class="report-button">Reset</button>
+                <button id="button-download-task-execution-time" class="report-button">Download SVG</button>
+                <button id="button-toggle-cdf" class="report-button">Display CDF</button>
             </div>
         </div>
 
-
-        <div class="section-header">
-            <h2 class="section-title">Worker Summary</h2>
+        <div id="task-execution-time-container" class="container-alpha">
+            <svg id="task-execution-time" xmlns="http://www.w3.org/2000/svg"></svg>
         </div>
 
-        <table id="worker-table" class="display">
-            <thead>
-                <tr>
-                    <th>id</th>
-                    <th>hash</th>
-                    <th>machine</th>
-                    <th>ip</th>
-                    <th>port</th>
-                    <th>when connected</th>
-                    <th>when disconnected</th>
-                    <th>lifetime(s)</th>
-                    <th>cores</th>
-                    <th>memory (MB)</th>
-                    <th>disk (MB)</th>
-                    <th>num tasks completed</th>
-                    <th>num tasks failed</th>
-                    <th>tasks average runtime</th>
-                    <th>peak disk usage (MB)</th>
-                    <th>peak disk usage (%)</th>
-                </tr>
-            </thead>
-            <tbody>
-            </tbody>
-        </table>
-
-        <div class="section-header">
-            <h2 class="section-title">Worker Concurrency</h2>
-        </div>
-
-        <div class="preface">
-            <p>This plot shows the number of concurrent workers during the manager's lifetime.
-            </p>
-         </div>
-         <div class="report-toolbox">
-            <button id="button-reset-worker-concurrency" class="report-button">Reset</button>
-            <button id="button-download-worker-concurrency" class="report-button">Download SVG</button>
-        </div>
-        <div id="worker-concurrency-container" class="container-alpha">
-            <svg id="worker-concurrency" xmlns="http://www.w3.org/2000/svg">
-            </svg>
-        </div>
-
-        <div class="section-header">
-            <h2 class="section-title">Tasks Concurrency</h2>
-        </div>
-
-        <div id="tasks-concurrency-preface" class="preface">
-            <p>This plot shows the number of concurrent tasks through the manager's lifetime. Each task starts at
-                when it's running and ends at when it's waiting retrieval.
-            </p>
-        </div>
-        <div class="report-toolbox">
-            <button id="button-reset-tasks-concurrency" class="report-button">Reset</button>
-            <button id="button-download-tasks-concurrency" class="report-button">Download SVG</button>
-        </div>
-        <div id="tasks-concurrency-container" class="container-alpha" >
-            <svg id="tasks-concurrency-svg" xmlns="http://www.w3.org/2000/svg">
-            </svg>
-        </div>
-
-        <div class="section-header">
-            <h2 class="section-title">Tasks Completed</h2>
-        </div>
-
-        <div id="task-execution-details-preface" class="preface">
-            <p>The execution time of a task spans from when start on worker to when end on worker.
-            </p>
-        </div>
-        <div class="report-toolbox">
-            <button id="button-tasks-completed-reset-table" class="report-button">Reset</button>
-            <button id="button-tasks-completed-convert-timestamp" class="report-button">Convert Timestamp</button>
-            <input type="text" id="input-tasks-completed-task-id" class="report-input-box" placeholder="Input Task ID">
-            <button id="button-tasks-completed-search-by-id" class="report-button">Search</button>
-            <input type="text" id="input-tasks-completed-category" class="report-input-box" placeholder="Input Category">
-            <button id="button-tasks-completed-search-by-category" class="report-button">Search</button>
-            <input type="text" id="input-tasks-completed-filename" class="report-input-box" placeholder="Input Filename">
-            <button id="button-tasks-completed-search-by-filename" class="report-button">Search</button>
-        </div>
-
-        <table id="tasks-completed-table" class="display">
-            <thead>
-                <tr>
-                    <th>task id</th>
-                    <th>try id</th>
-                    <th>worker id</th>
-                    <th>schedule id</th>
-                    <th>execution time</th>
-                    <th>when ready</th>
-                    <th>when running</th>
-                    <th>when start on worker</th>
-                    <th>when end on worker</th>
-                    <th>when waiting retrieval</th>
-                    <th>when retrieved</th>
-                    <th>when done</th>
-                    <th>when output fully lost</th>
-                    <th>cores requested</th>
-                    <th>gpus requested</th>
-                    <th>memory requested</th>
-                    <th>disk requested</th>
-                    <th>category</th>
-                    <th>graph id</th>
-                    <th>size of input (MB)</th>
-                    <th>size of output (MB)</th>
-                    <th>input files</th>
-                    <th>output files</th>
-                </tr>
-            </thead>
-            <tbody>
-            </tbody>
-        </table>
-
-        <div class="section-header">
-            <h2 class="section-title">Tasks Failed</h2>
-        </div>
-
-        <div class="report-toolbox">
-            <button id="button-tasks-failed-reset-table" class="report-button">Reset</button>
-            <button id="button-tasks-failed-convert-timestamp" class="report-button">Convert Timestamp</button>
-            <input type="text" id="input-tasks-failed-task-id" class="report-input-box" placeholder="Search by ID">
-            <button id="button-tasks-failed-search-by-id" class="report-button">Search</button>
-            <input type="text" id="input-tasks-failed-category" class="report-input-box" placeholder="Search by Category">
-            <button id="button-tasks-failed-search-by-category" class="report-button">Search</button>
-            <input type="text" id="input-tasks-failed-worker-id" class="report-input-box" placeholder="Search by Worker">
-            <button id="button-tasks-failed-search-by-worker-id" class="report-button">Search</button>
-        </div>
-
-        <table id="tasks-failed-table" class="display">
-            <thead>
-                <tr>
-                    <th>task id</th>
-                    <th>try id</th>
-                    <th>worker id</th>
-                    <th>when ready</th>
-                    <th>when running</th>
-                    <th>when next ready</th>
-                    <th>category</th>
-                    <th>cores requested</th>
-                    <th>gpus requested</th>
-                    <th>memory requested</th>
-                    <th>disk requested</th>
-                </tr>
-            </thead>
-            <tbody>
-            </tbody>
-        </table>
-
-        <div class="section-header">
-            <h2 class="section-title">Tasks Execution Time Distribution</h2>
-        </div>
-
-        <div id="task-execution-time-distribution-preface" class="preface">
-            <p>This plot shows the execution time distribution of all tasks. The execution time is the duration from when a task starts on a worker to when it ends on a worker.
-            </p>
-        </div>
-        <div class="report-toolbox">
-            <button id="button-reset-task-execution-time-distribution" class="report-button">Reset</button>
-            <button id="button-execution-time-distribution-display-cdf" class="report-button">Display CDF</button>
-            <button id="button-download-task-execution-time-distribution" class="report-button">Download SVG</button>
-        </div>
-        <div id="task-execution-time-distribution-container" class="container-alpha" >
-            <svg id="task-execution-time-distribution-svg" xmlns="http://www.w3.org/2000/svg">
-            </svg>
-        </div>
-
-        <div class="section-header">
-            <h2 class="section-title">Tasks Category Information</h2>
-        </div>
-
-        <div id="task-category-information-preface" class="preface">
-        </div>
-        <div class="report-toolbox">
-            <button id="button-reset-task-category-information" class="report-button">Reset</button>
-            <button id="button-task-category-information-sort-by-avg-time" class="report-button">Sort by Avg Execution Time</button>
-            <button id="button-download-task-category-information" class="report-button">Download SVG</button>
-        </div>
-        <div id="task-category-information-container" class="container-alpha" >
-            <svg id="task-category-information-svg" xmlns="http://www.w3.org/2000/svg">
-            </svg>
-        </div>
-
-        <div class="section-header">
-            <h2 class="section-title">File Summary</h2>
-        </div>
-
-        <div id="file-summary-preface" class="preface">
-            <p>The file summary table shows the information of all files that are used in this execution. 
-            </p>
-        </div>
-        <div class="report-toolbox">
-            <button id="button-file-summary-reset-table" class="report-button">Reset</button>
-            <button id="button-file-summary-has-producer" class="report-button">Has Producer</button>
-            <input type="text" id="input-file-summary-search-filename" class="report-input-box" placeholder="Input Filename">
-            <button id="button-file-summary-search-filename" class="report-button">Search Filename</button>
-        </div>
-        <table id="file-summary-table" class="display">
-            <thead>
-                <tr>
-                    <th>filename</th>
-                    <th>size (MB)</th>
-                    <th>producers</th>
-                    <th>consumers</th>
-                    <th>num workers held</th>
-                    <th>workers held</th>
-                </tr>
-            </thead>
-            <tbody>
-            </tbody>
-        </table>
-
-    -->
         <div class="footnote">
             <p>
                 TaskVine Report Tool available on <a href="https://github.com/cooperative-computing-lab/taskvine-report-tool.git" target="_blank">Github</a>.

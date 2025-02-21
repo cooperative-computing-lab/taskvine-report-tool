@@ -241,25 +241,23 @@ def get_worker_transfers():
         # Get the runtime_template from query parameters or use the most recent one
         data = {}
 
-        successful_transfers = 0
-        failed_transfers = 0
         # construct the worker transfers
         data['incoming_transfers'] = defaultdict(list)     # for destinations
         data['outgoing_transfers'] = defaultdict(list)     # for sources
         for file in template_manager.files.values():
             for transfer in file.transfers.values():
-                source = transfer.source
                 destination = transfer.destination
+                source = transfer.source
                 
-                # if the source is a worker
-                if isinstance(source, tuple):
+                # if the destination is a worker
+                if isinstance(destination, tuple):
                     data['incoming_transfers'][destination].append((transfer.time_start_stage_in - template_manager.MIN_TIME, 1))
                     if transfer.time_stage_in:
                         data['incoming_transfers'][destination].append((transfer.time_stage_in - template_manager.MIN_TIME, -1))
                     elif transfer.time_stage_out:
                         data['incoming_transfers'][destination].append((transfer.time_stage_out - template_manager.MIN_TIME, -1))
-                # if the destination is a worker
-                if isinstance(destination, tuple):
+                # if the source is a worker
+                if isinstance(source, tuple):
                     data['outgoing_transfers'][source].append((transfer.time_start_stage_in - template_manager.MIN_TIME, 1))
                     if transfer.time_stage_in:
                         data['outgoing_transfers'][source].append((transfer.time_stage_in - template_manager.MIN_TIME, -1))
@@ -269,24 +267,84 @@ def get_worker_transfers():
         for destination in data['incoming_transfers']:
             df = pd.DataFrame(data['incoming_transfers'][destination], columns=['time', 'event'])
             df = df.sort_values(by=['time'])
+            # if two rows have the same time, keep the one with the largest event
+            df = df.drop_duplicates(subset=['time'], keep='last')
             df['cumulative_event'] = df['event'].cumsum()
             data['incoming_transfers'][destination] = df[['time', 'cumulative_event']].values.tolist()
         for source in data['outgoing_transfers']:
             df = pd.DataFrame(data['outgoing_transfers'][source], columns=['time', 'event'])
             df = df.sort_values(by=['time'])
             df['cumulative_event'] = df['event'].cumsum()
+            # if two rows have the same time, keep the one with the largest event
+            df = df.drop_duplicates(subset=['time'], keep='last')
             data['outgoing_transfers'][source] = df[['time', 'cumulative_event']].values.tolist()
 
         # convert keys to string-formatted keys
         data['incoming_transfers'] = {f"{k[0]}:{k[1]}": v for k, v in data['incoming_transfers'].items()}
         data['outgoing_transfers'] = {f"{k[0]}:{k[1]}": v for k, v in data['outgoing_transfers'].items()}
-        
+
         return jsonify(data)
 
     except Exception as e:
         print(f"Error in get_peer2peer_transfer: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/task-execution-time')
+def get_task_execution_time():
+    try:
+        data = {}
+
+        # get the execution time of each task
+        data['task_execution_time'] = []
+        for task in template_manager.tasks.values():
+            # skip if the task didn't run to completion
+            if task.task_status != 0:
+                continue
+            task_execution_time = round(task.time_worker_end - task.time_worker_start, 2)
+            # if a task completes very quickly, we set it to 0.01
+            task_execution_time = max(task_execution_time, 0.01)
+            data['task_execution_time'].append((task.task_id, task_execution_time))
+
+        # calculate the cdf of the task execution time using pandas, where the y is the probability
+        df = pd.DataFrame(data['task_execution_time'], columns=['task_id', 'task_execution_time'])
+        df = df.sort_values(by=['task_execution_time'])
+        df['cumulative_execution_time'] = df['task_execution_time'].cumsum()
+        df['probability'] = df['cumulative_execution_time'] / df['cumulative_execution_time'].max()
+        df['probability'] = df['probability'].round(4)
+        data['task_execution_time_cdf'] = df[['task_execution_time', 'probability']].values.tolist()
+
+
+        # tick values
+        data['execution_time_x_tick_values'] = [
+            round(df['task_id'].min(), 2),
+            round(df['task_id'].min() + (df['task_id'].max() - df['task_id'].min()) * 0.25, 2),
+            round(df['task_id'].min() + (df['task_id'].max() - df['task_id'].min()) * 0.5, 2),
+            round(df['task_id'].min() + (df['task_id'].max() - df['task_id'].min()) * 0.75, 2),
+            round(df['task_id'].max(), 2)
+        ]
+        data['execution_time_y_tick_values'] = [
+            round(df['task_execution_time'].min(), 2),
+            round(df['task_execution_time'].min() + (df['task_execution_time'].max() - df['task_execution_time'].min()) * 0.25, 2),
+            round(df['task_execution_time'].min() + (df['task_execution_time'].max() - df['task_execution_time'].min()) * 0.5, 2),
+            round(df['task_execution_time'].min() + (df['task_execution_time'].max() - df['task_execution_time'].min()) * 0.75, 2),
+            round(df['task_execution_time'].max(), 2)
+        ]
+        data['probability_y_tick_values'] = [0, 0.25, 0.5, 0.75, 1]
+        data['probability_x_tick_values'] = [
+            round(df['task_execution_time'].min(), 2),
+            round(df['task_execution_time'].min() + (df['task_execution_time'].max() - df['task_execution_time'].min()) * 0.25, 2),
+            round(df['task_execution_time'].min() + (df['task_execution_time'].max() - df['task_execution_time'].min()) * 0.5, 2),
+            round(df['task_execution_time'].min() + (df['task_execution_time'].max() - df['task_execution_time'].min()) * 0.75, 2),
+            round(df['task_execution_time'].max(), 2)
+        ]
+
+        data['tickFontSize'] = template_manager.tick_size
+
+        return jsonify(data)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    
 
 @app.route('/api/runtime-templates-list')
 def get_runtime_templates_list():
@@ -297,7 +355,6 @@ def get_runtime_templates_list():
         if all_subfolders_exists(os.path.join(LOGS_DIR, log_folder), ['vine-logs', 'pkl-files']):
             valid_runtime_templates.append(log_folder)
     valid_runtime_templates = sorted(valid_runtime_templates)
-    print('valid_runtime_templates', valid_runtime_templates)
     return jsonify(valid_runtime_templates)
 
 @app.route('/api/change-runtime-template')
