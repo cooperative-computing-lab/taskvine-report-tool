@@ -57,7 +57,6 @@ class DataParser:
 
         # files
         self.files = {}      # key: filename, value: FileInfo
-        self.transferred_filenames = set()
 
         # time info
         self.set_time_zone()
@@ -588,15 +587,10 @@ class DataParser:
                     getting_transfer_event.set_time_stage_in(timestamp)
                     getting_transfer_event.set_eventual_state("manager_received")
                     getting_transfer_event = None
-                    self.transferred_filenames.add(filename)
                     continue
 
                 if "manager end" in line:
                     self.manager.set_time_end(timestamp)
-                    # in case some files were not transferred
-                    for filename in list(self.transferred_filenames):
-                        file = self.files[filename]
-                        file.manager_removed_on_destination(timestamp, "manager")
                     for task in self.tasks.values():
                         # some tasks were retrieved but not done because the manager was terminated by the user
                         if task.when_done is None and task.when_retrieved is not None:

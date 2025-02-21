@@ -238,55 +238,74 @@ def get_storage_consumption():
 @app.route('/api/worker-transfers')
 def get_worker_transfers():
     try:
-        # Get the runtime_template from query parameters or use the most recent one
+        # Get the transfer type from query parameters
+        transfer_type = request.args.get('type', 'incoming')  # default to incoming
+        if transfer_type not in ['incoming', 'outgoing']:
+            return jsonify({'error': 'Invalid transfer type'}), 400
+
         data = {}
 
         # construct the worker transfers
-        data['incoming_transfers'] = defaultdict(list)     # for destinations
-        data['outgoing_transfers'] = defaultdict(list)     # for sources
+        data['transfers'] = defaultdict(list)     # for destinations/sources
         for file in template_manager.files.values():
             for transfer in file.transfers.values():
                 destination = transfer.destination
                 source = transfer.source
                 
-                # if the destination is a worker
-                if isinstance(destination, tuple):
-                    data['incoming_transfers'][destination].append((transfer.time_start_stage_in - template_manager.MIN_TIME, 1))
+                # if transfer_type is incoming, process destinations
+                if transfer_type == 'incoming' and isinstance(destination, tuple):
+                    data['transfers'][destination].append((round(transfer.time_start_stage_in - template_manager.MIN_TIME, 2), 1))
                     if transfer.time_stage_in:
-                        data['incoming_transfers'][destination].append((transfer.time_stage_in - template_manager.MIN_TIME, -1))
+                        data['transfers'][destination].append((round(transfer.time_stage_in - template_manager.MIN_TIME, 2), -1))
                     elif transfer.time_stage_out:
-                        data['incoming_transfers'][destination].append((transfer.time_stage_out - template_manager.MIN_TIME, -1))
-                # if the source is a worker
-                if isinstance(source, tuple):
-                    data['outgoing_transfers'][source].append((transfer.time_start_stage_in - template_manager.MIN_TIME, 1))
+                        # data['transfers'][destination].append((round(transfer.time_stage_out - template_manager.MIN_TIME, 2), -1))
+                        pass
+                # if transfer_type is outgoing, process sources
+                elif transfer_type == 'outgoing' and isinstance(source, tuple):
+                    data['transfers'][source].append((round(transfer.time_start_stage_in - template_manager.MIN_TIME, 2), 1))
                     if transfer.time_stage_in:
-                        data['outgoing_transfers'][source].append((transfer.time_stage_in - template_manager.MIN_TIME, -1))
+                        data['transfers'][source].append((round(transfer.time_stage_in - template_manager.MIN_TIME, 2), -1))
                     elif transfer.time_stage_out:
-                        data['outgoing_transfers'][source].append((transfer.time_stage_out - template_manager.MIN_TIME, -1))
+                        pass
+                        #data['transfers'][source].append((round(transfer.time_stage_out - template_manager.MIN_TIME, 2), -1))
 
-        for destination in data['incoming_transfers']:
-            df = pd.DataFrame(data['incoming_transfers'][destination], columns=['time', 'event'])
+        max_transfers = 0
+        for worker in data['transfers']:
+            df = pd.DataFrame(data['transfers'][worker], columns=['time', 'event'])
             df = df.sort_values(by=['time'])
+            df['cumulative_transfers'] = df['event'].cumsum()
             # if two rows have the same time, keep the one with the largest event
             df = df.drop_duplicates(subset=['time'], keep='last')
-            df['cumulative_event'] = df['event'].cumsum()
-            data['incoming_transfers'][destination] = df[['time', 'cumulative_event']].values.tolist()
-        for source in data['outgoing_transfers']:
-            df = pd.DataFrame(data['outgoing_transfers'][source], columns=['time', 'event'])
-            df = df.sort_values(by=['time'])
-            df['cumulative_event'] = df['event'].cumsum()
-            # if two rows have the same time, keep the one with the largest event
-            df = df.drop_duplicates(subset=['time'], keep='last')
-            data['outgoing_transfers'][source] = df[['time', 'cumulative_event']].values.tolist()
+            data['transfers'][worker] = df[['time', 'cumulative_transfers']].values.tolist()
+            max_transfers = max(max_transfers, df['cumulative_transfers'].max())
 
         # convert keys to string-formatted keys
-        data['incoming_transfers'] = {f"{k[0]}:{k[1]}": v for k, v in data['incoming_transfers'].items()}
-        data['outgoing_transfers'] = {f"{k[0]}:{k[1]}": v for k, v in data['outgoing_transfers'].items()}
+        data['transfers'] = {f"{k[0]}:{k[1]}": v for k, v in data['transfers'].items()}
 
+        # ploting parameters
+        data['xMin'] = 0
+        data['xMax'] = template_manager.MAX_TIME - template_manager.MIN_TIME
+        data['yMin'] = 0
+        data['yMax'] = max_transfers
+        data['xTickValues'] = [
+            round(data['xMin'], 2),
+            round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.25, 2),
+            round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.5, 2),
+            round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.75, 2),
+            round(data['xMax'], 2)
+        ]
+        data['yTickValues'] = [
+            int(data['yMin']),
+            int(data['yMin'] + (data['yMax'] - data['yMin']) * 0.25),
+            int(data['yMin'] + (data['yMax'] - data['yMin']) * 0.5),
+            int(data['yMin'] + (data['yMax'] - data['yMin']) * 0.75),
+            int(data['yMax'])
+        ]
+        data['tickFontSize'] = template_manager.tick_size
         return jsonify(data)
 
     except Exception as e:
-        print(f"Error in get_peer2peer_transfer: {str(e)}")
+        print(f"Error in get_worker_transfers: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/task-execution-time')
