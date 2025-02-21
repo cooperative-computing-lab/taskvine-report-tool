@@ -516,3 +516,37 @@ table.dataTable thead th {
     font-weight: bold;
     min-width: 120px;
 }
+
+/* Task Concurrency Legend Styles */
+.checkbox-container {
+    margin: 10px;
+    font-size: 14px;
+}
+
+.legend-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    margin-right: 15px;
+}
+
+.legend-checkbox {
+    margin-right: 5px;
+    cursor: pointer;
+}
+
+.legend-label {
+    cursor: pointer;
+    user-select: none;
+    transition: opacity 0.2s;
+    color: #333;  /* 默认文字颜色 */
+}
+
+.legend-checkbox:not(:checked) + .legend-label {
+    opacity: 0.5;
+}

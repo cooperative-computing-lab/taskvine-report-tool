@@ -313,29 +313,30 @@ def get_task_execution_time():
         df['probability'] = df['probability'].round(4)
         data['task_execution_time_cdf'] = df[['task_execution_time', 'probability']].values.tolist()
 
-
         # tick values
+        num_tasks = len(df)
         data['execution_time_x_tick_values'] = [
-            round(df['task_id'].min(), 2),
-            round(df['task_id'].min() + (df['task_id'].max() - df['task_id'].min()) * 0.25, 2),
-            round(df['task_id'].min() + (df['task_id'].max() - df['task_id'].min()) * 0.5, 2),
-            round(df['task_id'].min() + (df['task_id'].max() - df['task_id'].min()) * 0.75, 2),
-            round(df['task_id'].max(), 2)
+            1,
+            round(num_tasks * 0.25, 2),
+            round(num_tasks * 0.5, 2),
+            round(num_tasks * 0.75, 2),
+            num_tasks
         ]
+        max_execution_time = df['task_execution_time'].max()
         data['execution_time_y_tick_values'] = [
-            round(df['task_execution_time'].min(), 2),
-            round(df['task_execution_time'].min() + (df['task_execution_time'].max() - df['task_execution_time'].min()) * 0.25, 2),
-            round(df['task_execution_time'].min() + (df['task_execution_time'].max() - df['task_execution_time'].min()) * 0.5, 2),
-            round(df['task_execution_time'].min() + (df['task_execution_time'].max() - df['task_execution_time'].min()) * 0.75, 2),
-            round(df['task_execution_time'].max(), 2)
+            0,
+            round(max_execution_time * 0.25, 2),
+            round(max_execution_time * 0.5, 2),
+            round(max_execution_time * 0.75, 2),
+            max_execution_time
         ]
         data['probability_y_tick_values'] = [0, 0.25, 0.5, 0.75, 1]
         data['probability_x_tick_values'] = [
-            round(df['task_execution_time'].min(), 2),
-            round(df['task_execution_time'].min() + (df['task_execution_time'].max() - df['task_execution_time'].min()) * 0.25, 2),
-            round(df['task_execution_time'].min() + (df['task_execution_time'].max() - df['task_execution_time'].min()) * 0.5, 2),
-            round(df['task_execution_time'].min() + (df['task_execution_time'].max() - df['task_execution_time'].min()) * 0.75, 2),
-            round(df['task_execution_time'].max(), 2)
+            0,
+            round(max_execution_time * 0.25, 2),
+            round(max_execution_time * 0.5, 2),
+            round(max_execution_time * 0.75, 2),
+            max_execution_time
         ]
 
         data['tickFontSize'] = template_manager.tick_size
@@ -345,6 +346,113 @@ def get_task_execution_time():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     
+@app.route('/api/task-concurrency')
+def get_task_concurrency():
+    try:
+        data = {}
+        
+        # Get selected types from query parameter, default to all types if not specified
+        selected_types = request.args.get('types', '').split(',')
+        if not selected_types or selected_types == ['']:
+            selected_types = [
+                'tasks_waiting',
+                'tasks_committing',
+                'tasks_executing',
+                'tasks_retrieving',
+                'tasks_done'
+            ]
+        
+        # Initialize all task types with empty lists in response
+        all_task_types = {
+            'tasks_waiting': [],
+            'tasks_committing': [],
+            'tasks_executing': [],
+            'tasks_retrieving': [],
+            'tasks_done': []
+        }
+        data.update(all_task_types)
+        
+        # Only process selected task types
+        for task in template_manager.tasks.values():
+            # waiting: when_ready -> when_running
+            if 'tasks_waiting' in selected_types:
+                if task.when_ready:
+                    data['tasks_waiting'].append((task.when_ready - template_manager.MIN_TIME, 1))
+                    if task.when_running:
+                        data['tasks_waiting'].append((task.when_running - template_manager.MIN_TIME, -1))
+            
+            # committing: when_running -> time_worker_start
+            if 'tasks_committing' in selected_types:
+                if task.when_running:
+                    data['tasks_committing'].append((task.when_running - template_manager.MIN_TIME, 1))
+                    if task.time_worker_start:
+                        data['tasks_committing'].append((task.time_worker_start - template_manager.MIN_TIME, -1))
+            
+            # executing: time_worker_start -> time_worker_end
+            if 'tasks_executing' in selected_types:
+                if task.time_worker_start:
+                    data['tasks_executing'].append((task.time_worker_start - template_manager.MIN_TIME, 1))
+                    if task.time_worker_end:
+                        data['tasks_executing'].append((task.time_worker_end - template_manager.MIN_TIME, -1))
+            
+            # retrieving: time_worker_end -> when_retrieved
+            if 'tasks_retrieving' in selected_types:
+                if task.time_worker_end:
+                    data['tasks_retrieving'].append((task.time_worker_end - template_manager.MIN_TIME, 1))
+                    if task.when_retrieved:
+                        data['tasks_retrieving'].append((task.when_retrieved - template_manager.MIN_TIME, -1))
+            
+            # done: when_retrieved -> when_done
+            if 'tasks_done' in selected_types:
+                if task.when_done:
+                    data['tasks_done'].append((task.when_done - template_manager.MIN_TIME, 1))
+
+        def sort_tasks(tasks):
+            if not tasks:
+                return []
+            df = pd.DataFrame(tasks, columns=['time', 'event'])
+            df = df.sort_values(by=['time'])
+            df['time'] = df['time'].round(2)
+            df['cumulative_event'] = df['event'].cumsum()
+            df = df.drop_duplicates(subset=['time'], keep='last')
+            return df[['time', 'cumulative_event']].values.tolist()
+
+        # Process all task types, but only calculate max for selected ones
+        for task_type in all_task_types:
+            data[task_type] = sort_tasks(data[task_type])
+
+        # Calculate min/max values based only on selected data
+        data['xMin'] = 0
+        data['xMax'] = template_manager.MAX_TIME - template_manager.MIN_TIME
+        data['yMin'] = 0
+        
+        # Calculate yMax only from selected types
+        max_values = []
+        for task_type in selected_types:
+            if data[task_type]:
+                max_values.extend([point[1] for point in data[task_type]])
+        data['yMax'] = max(max_values) if max_values else 0
+
+        # Generate tick values
+        data['xTickValues'] = [
+            round(data['xMin'], 2),
+            round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.25, 2),
+            round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.5, 2),
+            round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.75, 2),
+            round(data['xMax'], 2)
+        ]
+        data['yTickValues'] = [
+            round(data['yMin'], 2),
+            round(data['yMin'] + (data['yMax'] - data['yMin']) * 0.25, 2),
+            round(data['yMin'] + (data['yMax'] - data['yMin']) * 0.5, 2),
+            round(data['yMin'] + (data['yMax'] - data['yMin']) * 0.75, 2),
+            round(data['yMax'], 2)
+        ]
+        data['tickFontSize'] = template_manager.tick_size
+
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/runtime-templates-list')
 def get_runtime_templates_list():

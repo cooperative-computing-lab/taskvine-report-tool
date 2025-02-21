@@ -378,7 +378,7 @@ function plotExecutionDetails() {
                                     Core: ${task.core_id}<br>
                                     Failure Type: ${FAILURE_TYPES[failureType].label}<br>
                                     Start time: ${(startTime).toFixed(2)}s<br>
-                                    When next ready: ${(task.when_failure_happens).toFixed(2)}s<br>
+                                    When Completes: ${(task.when_failure_happens).toFixed(2)}s<br>
                                     Duration: ${(task.when_failure_happens - startTime).toFixed(2)}s`;
                                 tooltip.style.visibility = 'visible';
                                 tooltip.style.top = (event.pageY + 10) + 'px';
@@ -457,7 +457,7 @@ function plotExecutionDetails() {
                                     Type: Recovery Task (Failed)<br>
                                     Failure Type: ${FAILURE_TYPES[getFailureType(task.task_status)]?.label || 'Unknown'}<br>
                                     Start time: ${(startTime).toFixed(2)}s<br>
-                                    When next ready: ${(endTime).toFixed(2)}s<br>
+                                    When Completes: ${(endTime).toFixed(2)}s<br>
                                     Duration: ${(endTime - startTime).toFixed(2)}s`;
                                 tooltip.style.visibility = 'visible';
                                 tooltip.style.top = (event.pageY + 10) + 'px';

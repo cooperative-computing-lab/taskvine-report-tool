@@ -48,6 +48,7 @@
     <script src="{{ url_for('static', filename='js/task_execution_time.js') }}" type="module"></script>
     <script src="{{ url_for('static', filename='js/storage_consumption.js') }}" type="module"></script>
     <script src="{{ url_for('static', filename='js/sidebar.js') }}" type="module"></script>
+    <script src="{{ url_for('static', filename='js/task_concurrency.js') }}" type="module"></script>
 </head>
 <body>
     <div id="vine-tooltip" class="tooltip"></div>  
@@ -131,6 +132,20 @@
 
         <div id="task-execution-time-container" class="container-alpha">
             <svg id="task-execution-time" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+
+        <!-- Task Concurrency section -->
+        <div class="section-header">
+            <h2 class="section-title">Task Concurrency</h2>
+            <div class="section-buttons">
+                <button id="button-reset-task-concurrency" class="report-button">Reset</button>
+                <button id="button-download-task-concurrency" class="report-button">Download SVG</button>
+            </div>
+        </div>
+
+        <div id="task-concurrency-checkboxes" class="checkbox-container"></div>
+        <div id="task-concurrency-container" class="container-alpha">
+            <svg id="task-concurrency" xmlns="http://www.w3.org/2000/svg"></svg>
         </div>
 
         <div class="footnote">
