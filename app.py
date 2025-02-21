@@ -292,7 +292,7 @@ def get_worker_transfers():
         data['xMin'] = 0
         data['xMax'] = template_manager.MAX_TIME - template_manager.MIN_TIME
         data['yMin'] = 0
-        data['yMax'] = max_transfers
+        data['yMax'] = int(max_transfers)
         data['xTickValues'] = [
             round(data['xMin'], 2),
             round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.25, 2),
@@ -307,7 +307,7 @@ def get_worker_transfers():
             int(data['yMin'] + (data['yMax'] - data['yMin']) * 0.75),
             int(data['yMax'])
         ]
-        data['tickFontSize'] = template_manager.tick_size
+        data['tickFontSize'] = int(template_manager.tick_size)
         return jsonify(data)
 
     except Exception as e:
