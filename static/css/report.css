@@ -346,8 +346,8 @@ table.dataTable thead th {
 .legend-container {
     display: flex;
     gap: 2px;
-    padding: 2px 2px;
-    width: auto;
+    padding: 5px 2px;
+    width: 90%;
     min-width: 600px;
     margin-top: 5px;
 }

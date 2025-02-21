@@ -445,6 +445,7 @@ def get_task_concurrency():
             df = df.sort_values(by=['time'])
             df['time'] = df['time'].round(2)
             df['cumulative_event'] = df['event'].cumsum()
+            # if two rows have the same time, keep the one with the largest event
             df = df.drop_duplicates(subset=['time'], keep='last')
             return df[['time', 'cumulative_event']].values.tolist()
 

@@ -119,18 +119,21 @@
             <svg id="task-execution-time" xmlns="http://www.w3.org/2000/svg"></svg>
         </div>
         
-        <!-- Task Concurrency section -->
-        <div class="section-header">
-            <h2 class="section-title">Task Concurrency</h2>
-            <div class="section-buttons">
-                <button id="button-reset-task-concurrency" class="report-button">Reset</button>
-                <button id="button-download-task-concurrency" class="report-button">Download SVG</button>
+        <!-- Task Concurrency Section -->
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title">Task Concurrency</h2>
+                <div class="section-buttons">
+                    <button id="button-reset-task-concurrency" class="report-button">Reset</button>
+                    <button id="button-download-task-concurrency" class="report-button">Download</button>
+                </div>
             </div>
-        </div>
-        
-        <div id="task-concurrency-checkboxes" class="checkbox-container"></div>
-        <div id="task-concurrency-container" class="container-alpha">
-            <svg id="task-concurrency" xmlns="http://www.w3.org/2000/svg"></svg>
+            <div id="task-concurrency-legend" class="legend-container">
+                <!-- Legend items will be added by JavaScript -->
+            </div>
+            <div id="task-concurrency-container" class="container-alpha">
+                <svg id="task-concurrency" xmlns="http://www.w3.org/2000/svg"></svg>
+            </div>
         </div>
         
         <!-- Storage Consumption section -->

@@ -7,7 +7,7 @@ const svgContainer = document.getElementById('task-concurrency-container');
 const svgElement = d3.select('#task-concurrency');
 const tooltip = document.getElementById('vine-tooltip');
 
-const LINE_WIDTH = 0.8;
+const LINE_WIDTH = 0.9;
 const HIGHLIGHT_WIDTH = 2;
 const HIGHLIGHT_COLOR = 'orange';
 
@@ -32,46 +32,50 @@ const state = {
     xTickValues: null,
     yTickValues: null,
     tickFontSize: null,
-    selectedTypes: new Set(Object.keys(taskTypes))
+    selectedTypes: new Set(['tasks_waiting', 'tasks_committing', 'tasks_executing', 'tasks_retrieving'])
 };
 
 function setupTaskTypeCheckboxes() {
-    const container = document.getElementById('task-concurrency-checkboxes');
-    container.className = 'checkbox-container';
-
+    const container = document.getElementById('task-concurrency-legend');
+    
     const itemsContainer = document.createElement('div');
-    itemsContainer.className = 'legend-items';
+    itemsContainer.className = 'legend-items flex';
     
     Object.entries(taskTypes).forEach(([type, info]) => {
         const item = document.createElement('div');
-        item.className = 'legend-item';
+        item.className = 'legend-item flex';
         
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.checked = type !== 'tasks_done';
-        checkbox.id = `checkbox-${type}`;
-        checkbox.className = 'legend-checkbox';
-        checkbox.style.accentColor = info.color;
+        checkbox.id = `${type}-checkbox`;
+        checkbox.style.display = 'none';
         
-        const label = document.createElement('label');
-        label.htmlFor = `checkbox-${type}`;
-        label.className = 'legend-label';
+        const colorDiv = document.createElement('div');
+        colorDiv.className = 'legend-color';
+        colorDiv.style.backgroundColor = type !== 'tasks_done' ? info.color : 'transparent';
+        
+        const label = document.createElement('span');
         label.textContent = info.label;
-        label.style.opacity = type !== 'tasks_done' ? '1' : '0.5';
+        label.style.color = type !== 'tasks_done' ? '#4a4a4a' : '#999';
 
-        checkbox.addEventListener('change', async (e) => {
-            if (e.target.checked) {
+        item.addEventListener('click', async () => {
+            checkbox.checked = !checkbox.checked;
+            if (checkbox.checked) {
                 state.selectedTypes.add(type);
-                label.style.opacity = '1';
+                colorDiv.style.backgroundColor = info.color;
+                label.style.color = '#4a4a4a';
             } else {
                 state.selectedTypes.delete(type);
-                label.style.opacity = '0.5';
+                colorDiv.style.backgroundColor = 'transparent';
+                label.style.color = '#999';
             }
             svgElement.selectAll('*').remove();
             await fetchData();
         });
 
         item.appendChild(checkbox);
+        item.appendChild(colorDiv);
         item.appendChild(label);
         itemsContainer.appendChild(item);
     });
@@ -157,30 +161,32 @@ function plotTaskConcurrency() {
     // Create line generator
     const line = d3.line()
         .x(d => xScale(d[0]))
-        .y(d => yScale(d[1]));
+        .y(d => yScale(d[1]))
+        .curve(d3.curveStepAfter);
 
     // Draw lines for each task type
     Object.entries(taskTypes).forEach(([type, info]) => {
-        if (!state.selectedTypes.has(type) || !state[type]) return;
+        if (!state.selectedTypes.has(type)) return;
 
         svg.append('path')
             .datum(state[type])
             .attr('fill', 'none')
             .attr('stroke', info.color)
-            .attr('stroke-width', 2)
+            .attr('stroke-width', LINE_WIDTH)
             .attr('class', `task-line ${type}-line`)
             .attr('d', line)
-            .on('mouseover', function(e, d) {
+            .on('mouseover', function(e) {
+                d3.selectAll('.task-line')
+                    .attr('stroke-opacity', 0.2);
                 d3.select(this)
                     .attr('stroke', HIGHLIGHT_COLOR)
-                    .attr('stroke-width', 3)
-                    .raise();
-                
-                // Find the closest data point to mouse position
+                    .attr('stroke-opacity', 1)
+                    .attr('stroke-width', HIGHLIGHT_WIDTH);
+
                 const mouseX = xScale.invert(d3.pointer(e)[0]);
                 const bisect = d3.bisector(d => d[0]).left;
-                const index = bisect(d, mouseX);
-                const point = d[index];
+                const index = bisect(state[type], mouseX);
+                const point = state[type][index];
 
                 if (point) {
                     tooltip.style.visibility = 'visible';
@@ -193,28 +199,30 @@ function plotTaskConcurrency() {
                     tooltip.style.left = (e.pageX + 10) + 'px';
                 }
             })
-            .on('mousemove', function(e, d) {
-                // Update tooltip position and content on mouse move
+            .on('mousemove', function(e) {
                 const mouseX = xScale.invert(d3.pointer(e)[0]);
                 const bisect = d3.bisector(d => d[0]).left;
-                const index = bisect(d, mouseX);
-                const point = d[index];
+                const index = bisect(state[type], mouseX);
+                const point = state[type][index];
 
                 if (point) {
+                    tooltip.style.top = (e.pageY - 15) + 'px';
+                    tooltip.style.left = (e.pageX + 10) + 'px';
                     tooltip.innerHTML = `
                         Type: ${info.label}<br>
                         Time: ${point[0].toFixed(2)}s<br>
                         Concurrent Tasks: ${point[1]}
                     `;
-                    tooltip.style.top = (e.pageY - 15) + 'px';
-                    tooltip.style.left = (e.pageX + 10) + 'px';
                 }
             })
             .on('mouseout', function() {
-                d3.select(this)
-                    .attr('stroke', info.color)
-                    .attr('stroke-width', 2);
-                
+                d3.selectAll('.task-line')
+                    .attr('stroke', function() {
+                        const type = this.classList[1].split('-')[0];
+                        return taskTypes[type].color;
+                    })
+                    .attr('stroke-opacity', 1)
+                    .attr('stroke-width', LINE_WIDTH);
                 tooltip.style.visibility = 'hidden';
             });
     });
@@ -233,8 +241,7 @@ async function fetchData() {
         state.xTickValues = null;
         state.yTickValues = null;
 
-        // except the tasks_done type
-        const selectedTypesParam = Array.from(state.selectedTypes).filter(type => type !== 'tasks_done').join(',');
+        const selectedTypesParam = Array.from(state.selectedTypes).join(',');
         const response = await fetch(`/api/task-concurrency?types=${selectedTypesParam}`);
         const data = await response.json();
 
