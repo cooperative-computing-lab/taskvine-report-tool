@@ -8,7 +8,7 @@ const buttonDownload = document.getElementById('button-download-tasks-concurrenc
 const svgElement = d3.select('#tasks-concurrency-svg');
 const svgContainer = document.getElementById('tasks-concurrency-container');
 
-var lineStrokeWidth = 1;
+var lineStrokeWidth = 0.8;
 const lineColor = 'steelblue';
 var dotRadius = lineStrokeWidth;
 const dotColor = 'steelblue';

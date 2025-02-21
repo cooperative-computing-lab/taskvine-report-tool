@@ -7,6 +7,8 @@ const svgContainer = document.getElementById('task-concurrency-container');
 const svgElement = d3.select('#task-concurrency');
 const tooltip = document.getElementById('vine-tooltip');
 
+const LINE_WIDTH = 0.8;
+const HIGHLIGHT_WIDTH = 2;
 const HIGHLIGHT_COLOR = 'orange';
 
 const taskTypes = {
@@ -46,7 +48,7 @@ function setupTaskTypeCheckboxes() {
         
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
-        checkbox.checked = true;
+        checkbox.checked = type !== 'tasks_done';
         checkbox.id = `checkbox-${type}`;
         checkbox.className = 'legend-checkbox';
         checkbox.style.accentColor = info.color;
@@ -55,6 +57,7 @@ function setupTaskTypeCheckboxes() {
         label.htmlFor = `checkbox-${type}`;
         label.className = 'legend-label';
         label.textContent = info.label;
+        label.style.opacity = type !== 'tasks_done' ? '1' : '0.5';
 
         checkbox.addEventListener('change', async (e) => {
             if (e.target.checked) {
@@ -230,7 +233,8 @@ async function fetchData() {
         state.xTickValues = null;
         state.yTickValues = null;
 
-        const selectedTypesParam = Array.from(state.selectedTypes).join(',');
+        // except the tasks_done type
+        const selectedTypesParam = Array.from(state.selectedTypes).filter(type => type !== 'tasks_done').join(',');
         const response = await fetch(`/api/task-concurrency?types=${selectedTypesParam}`);
         const data = await response.json();
 
