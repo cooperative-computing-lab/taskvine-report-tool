@@ -66,7 +66,7 @@ function calculateMargin() {
 // Move event listeners setup outside initialize
 function setupEventListeners() {
     buttonDownload.addEventListener('click', () => downloadSVG('task-execution-time'));
-    buttonReset.addEventListener('click', () => plotExecutionTime());
+    buttonReset.addEventListener('click', () => handleResetClick());
     buttonToggleCDF.addEventListener('click', () => {
         state.showCDF = !state.showCDF;
         buttonToggleCDF.textContent = state.showCDF ? 'Display Time' : 'Display CDF';
@@ -240,6 +240,12 @@ function plotExecutionTime() {
                 .tickSizeOuter(0))
             .style('font-size', `${state.tickFontSize}px`);
     }
+}
+
+function handleResetClick() {
+    document.querySelector('#task-execution-time').style.width = '100%';
+    document.querySelector('#task-execution-time').style.height = '100%';
+    plotExecutionTime();
 }
 
 // Setup event listeners once when the script loads

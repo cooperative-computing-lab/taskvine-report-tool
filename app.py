@@ -145,7 +145,7 @@ def get_storage_consumption():
         # construct the succeeded file transfers
         data['worker_storage_consumption'] = {}
         for file in files.values():
-            for transfer in file.transfers.values():
+            for transfer in file.transfers:
                 # skip if this is not a transfer to a worker
                 if not isinstance(transfer.destination, tuple):
                     continue
@@ -248,26 +248,28 @@ def get_worker_transfers():
         # construct the worker transfers
         data['transfers'] = defaultdict(list)     # for destinations/sources
         for file in template_manager.files.values():
-            for transfer in file.transfers.values():
+            for transfer in file.transfers:
                 destination = transfer.destination
                 source = transfer.source
-                
+
+                # only consider worker-to-worker transfers
+                if not isinstance(destination, tuple) or not isinstance(source, tuple):
+                    continue
+
                 # if transfer_type is incoming, process destinations
                 if transfer_type == 'incoming' and isinstance(destination, tuple):
                     data['transfers'][destination].append((round(transfer.time_start_stage_in - template_manager.MIN_TIME, 2), 1))
                     if transfer.time_stage_in:
                         data['transfers'][destination].append((round(transfer.time_stage_in - template_manager.MIN_TIME, 2), -1))
                     elif transfer.time_stage_out:
-                        # data['transfers'][destination].append((round(transfer.time_stage_out - template_manager.MIN_TIME, 2), -1))
-                        pass
+                        data['transfers'][destination].append((round(transfer.time_stage_out - template_manager.MIN_TIME, 2), -1))
                 # if transfer_type is outgoing, process sources
                 elif transfer_type == 'outgoing' and isinstance(source, tuple):
                     data['transfers'][source].append((round(transfer.time_start_stage_in - template_manager.MIN_TIME, 2), 1))
                     if transfer.time_stage_in:
                         data['transfers'][source].append((round(transfer.time_stage_in - template_manager.MIN_TIME, 2), -1))
                     elif transfer.time_stage_out:
-                        pass
-                        #data['transfers'][source].append((round(transfer.time_stage_out - template_manager.MIN_TIME, 2), -1))
+                        data['transfers'][source].append((round(transfer.time_stage_out - template_manager.MIN_TIME, 2), -1))
 
         max_transfers = 0
         for worker in data['transfers']:
@@ -277,6 +279,10 @@ def get_worker_transfers():
             # if two rows have the same time, keep the one with the largest event
             df = df.drop_duplicates(subset=['time'], keep='last')
             data['transfers'][worker] = df[['time', 'cumulative_transfers']].values.tolist()
+            # append the initial point at time_connected with 0
+            for time_connected, time_disconnected in zip(template_manager.workers[worker].time_connected, template_manager.workers[worker].time_disconnected):
+                data['transfers'][worker].insert(0, [time_connected - template_manager.MIN_TIME, 0])
+                data['transfers'][worker].append([time_disconnected - template_manager.MIN_TIME, 0])
             max_transfers = max(max_transfers, df['cumulative_transfers'].max())
 
         # convert keys to string-formatted keys
@@ -393,6 +399,8 @@ def get_task_concurrency():
         
         # Only process selected task types
         for task in template_manager.tasks.values():
+            if task.when_failure_happens is not None:
+                continue
             # waiting: when_ready -> when_running
             if 'tasks_waiting' in selected_types:
                 if task.when_ready:
@@ -425,6 +433,10 @@ def get_task_concurrency():
             if 'tasks_done' in selected_types:
                 if task.when_done:
                     data['tasks_done'].append((task.when_done - template_manager.MIN_TIME, 1))
+
+            if task.when_failure_happens:
+
+                data['tasks_done'].append((task.when_failure_happens - template_manager.MIN_TIME, 1))
 
         def sort_tasks(tasks):
             if not tasks:

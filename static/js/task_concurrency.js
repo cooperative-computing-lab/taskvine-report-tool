@@ -10,7 +10,7 @@ const tooltip = document.getElementById('vine-tooltip');
 const HIGHLIGHT_COLOR = 'orange';
 
 const taskTypes = {
-    'tasks_waiting': { color: '#1f77b4', label: 'Waiting' },
+    'tasks_waiting': { color: '#1cb4d6', label: 'Waiting' },
     'tasks_committing': { color: '#4a4a4a', label: 'Committing' },
     'tasks_executing': { color: 'steelblue', label: 'Executing' },
     'tasks_retrieving': { color: '#cc5a12', label: 'Retrieving' },
@@ -267,8 +267,14 @@ async function initialize() {
     }
 }
 
+function handleResetClick() {
+    document.querySelector('#task-concurrency').style.width = '100%';
+    document.querySelector('#task-concurrency').style.height = '100%';
+    plotTaskConcurrency();
+}
+
 setupTaskTypeCheckboxes();
 buttonDownload.addEventListener('click', () => downloadSVG('task-concurrency'));
-buttonReset.addEventListener('click', () => plotTaskConcurrency());
+buttonReset.addEventListener('click', () => handleResetClick());
 window.document.addEventListener('dataLoaded', initialize);
 window.addEventListener('resize', _.debounce(() => plotTaskConcurrency(), 300)); 

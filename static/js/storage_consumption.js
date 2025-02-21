@@ -50,7 +50,7 @@ async function initialize() {
                     setupZoomAndScroll('#storage-consumption', '#storage-consumption-container');
 
                     buttonDownload.addEventListener('click', () => downloadSVG('storage-consumption'));
-                    buttonReset.addEventListener('click', () => plotStorageConsumption());
+                    buttonReset.addEventListener('click', handleResetClick);
                     return;
                 }
             } catch (error) {
@@ -103,9 +103,7 @@ function calculateMargin() {
 }
 
 function plotStorageConsumption() {
-    if (!state.worker_storage_consumption) {
-        return;
-    }
+    if (!state.worker_storage_consumption) return;
 
     svgElement.selectAll('*').remove();
 
@@ -127,30 +125,7 @@ function plotStorageConsumption() {
         .domain([state.yMin, state.yMax])
         .range([height, 0]);
 
-    const xAxis = d3.axisBottom(xScale)
-        .tickValues(state.xTickValues)
-        .tickFormat(d => `${d3.format('.2f')(d)} s`);
-    
-    svg.append('g')
-        .attr('class', 'x-axis')
-        .attr('transform', `translate(0, ${height})`)
-        .call(xAxis)
-        .attr('stroke-width', 0.8)
-        .selectAll('text')
-        .style('font-size', state.tickFontSize);
-
-    const yAxis = d3.axisLeft(yScale)
-        .tickValues(state.yTickValues)
-        .tickFormat(d => `${d.toFixed(2)} ${state.file_size_unit}`);
-    
-    svg.append('g')
-        .attr('class', 'y-axis')
-        .call(yAxis)
-        .attr('stroke-width', 0.8)
-        .selectAll('text')
-        .style('font-size', state.tickFontSize);
-
-    // Create line generator
+    // Create line generator with step curve
     const line = d3.line()
         .x(d => xScale(d[0]))
         .y(d => yScale(d[1]))
@@ -198,6 +173,28 @@ function plotStorageConsumption() {
                 tooltip.style.visibility = 'hidden';
             });
     });
+
+    // Add axes
+    svg.append('g')
+        .attr('transform', `translate(0, ${height})`)
+        .call(d3.axisBottom(xScale)
+            .tickValues(state.xTickValues)
+            .tickFormat(d => `${d.toFixed(2)}s`)
+            .tickSizeOuter(0))
+        .style('font-size', `${state.tickFontSize}px`);
+
+    svg.append('g')
+        .call(d3.axisLeft(yScale)
+            .tickValues(state.yTickValues)
+            .tickFormat(d => `${d.toFixed(2)} ${state.file_size_unit}`)
+            .tickSizeOuter(0))
+        .style('font-size', `${state.tickFontSize}px`);
+}
+
+function handleResetClick() {
+    document.querySelector('#storage-consumption').style.width = '100%';
+    document.querySelector('#storage-consumption').style.height = '100%';
+    plotStorageConsumption();
 }
 
 window.document.addEventListener('dataLoaded', initialize);

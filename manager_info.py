@@ -65,7 +65,7 @@ class ManagerInfo:
         else:
             self.when_first_worker_connect = min(self.when_first_worker_connect, when_first_worker_connect)
 
-    def set_when_last_worker_disconnect(self, when_last_worker_disconnect):
+    def update_when_last_worker_disconnect(self, when_last_worker_disconnect):
         when_last_worker_disconnect = round(float(when_last_worker_disconnect), 2)
         if self.when_last_worker_disconnect is None:
             self.when_last_worker_disconnect = when_last_worker_disconnect

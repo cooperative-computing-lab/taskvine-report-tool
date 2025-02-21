@@ -4,50 +4,50 @@ import sys
 import argparse
 import time
 
-def test_api(base_url="http://localhost:9122", runtime_template=None, api_name=None):
+def save_api_response(api_name, data):
+    """Save API response to a JSON file with proper formatting."""
     try:
-        # First change the runtime template
-        url = f"{base_url}/api/change-runtime-template"
-        params = {"runtime_template": runtime_template}
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-        data = response.json()
-        if not data['success']:
-            print(f"Error: {data}")
-            sys.exit(1)
+        response_data = {api_name: data}
+        try:
+            with open('api_response.json', 'r') as f:
+                existing_data = json.load(f)
+                existing_data.update(response_data)
+                response_data = existing_data
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass
+        
+        with open('api_response.json', 'w') as f:
+            json.dump(response_data, f, indent=2)
+            
     except Exception as e:
-        print(f"Error: {e}")
-        sys.exit(1)
+        print(f"Error saving API response: {e}")
 
+def test_api(base_url, runtime_template, api_config):
     try:
-        if api_name == "worker-transfers":
-            # Test incoming transfers
-            url = f"{base_url}/api/worker-transfers"
-            params = {"type": "incoming", "runtime_template": runtime_template}
-            response = requests.get(url, params=params)
-            response.raise_for_status()
-            data = response.json()
-            save_api_response('worker-transfers-incoming', data)
-            print("Saved incoming transfers response")
+        # First change runtime template
+        response = requests.get(f"{base_url}/api/change-runtime-template", 
+                              params={"runtime_template": runtime_template})
+        response.raise_for_status()
+        if not response.json()['success']:
+            raise Exception("Failed to change runtime template")
 
-            # Test outgoing transfers
-            params["type"] = "outgoing"
-            response = requests.get(url, params=params)
-            response.raise_for_status()
-            data = response.json()
-            save_api_response('worker-transfers-outgoing', data)
-            print("Saved outgoing transfers response")
+        api_name = api_config["name"]
+        
+        # Handle API with variants
+        if "variants" in api_config:
+            for variant in api_config["variants"]:
+                response = requests.get(f"{base_url}/api/{api_name}", params=variant)
+                response.raise_for_status()
+                save_api_response(f"{api_name}-{variant['type']}", response.json())
+                print(f"Saved {api_name}-{variant['type']} response")
         else:
-            url = f"{base_url}/api/{api_name}"
-            params = {"runtime_template": runtime_template}
-            time_start = time.time()
-            response = requests.get(url, params=params)
+            # Handle regular APIs
+            params = api_config.get("params", None)
+            response = requests.get(f"{base_url}/api/{api_name}", params=params)
             response.raise_for_status()
-            data = response.json()
-            time_end = time.time()
-            print(f"Time taken: {round(time_end - time_start, 4)} seconds")
-            save_api_response(api_name, data)
-            print("Success, full response saved to 'api_response.json'")
+            save_api_response(api_name, response.json())
+            print(f"Saved {api_name} response")
+
     except Exception as e:
         print(f"Error: {e}")
         sys.exit(1)
@@ -162,33 +162,6 @@ def test_worker_transfers(client, runtime_template):
     response = client.get('/api/worker-transfers?type=invalid')
     assert response.status_code == 400
 
-def save_api_response(api_name, data):
-    """Save API response to a JSON file with proper formatting.
-    
-    Args:
-        api_name (str): Name of the API endpoint
-        data (dict): Response data to save
-    """
-    try:
-        # Create a dictionary with the API name as key
-        response_data = {api_name: data}
-        
-        # Try to load existing data if file exists
-        try:
-            with open('api_response.json', 'r') as f:
-                existing_data = json.load(f)
-                existing_data.update(response_data)
-                response_data = existing_data
-        except (FileNotFoundError, json.JSONDecodeError):
-            pass  # Use only new data if file doesn't exist or is invalid
-        
-        # Save the updated data
-        with open('api_response.json', 'w') as f:
-            json.dump(response_data, f, indent=2)
-            
-    except Exception as e:
-        print(f"Error saving API response: {e}")
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('runtime_template', help='Specific runtime template to query')
@@ -198,14 +171,17 @@ if __name__ == "__main__":
     base_url = f"http://localhost:{args.port}"
     
     api_list = [
-        "runtime-templates-list",
-        "execution-details",
-        "storage-consumption",
-        "task-execution-time",
-        "task-concurrency",
-        "worker-transfers",
+        {"name": "runtime-templates-list", "params": None},
+        {"name": "execution-details", "params": None},
+        {"name": "storage-consumption", "params": None},
+        {"name": "task-execution-time", "params": None},
+        {"name": "task-concurrency", "params": {"types": "tasks_waiting,tasks_executing"}},
+        {"name": "worker-transfers", "variants": [
+            {"type": "incoming"},   
+            {"type": "outgoing"}
+        ]}
     ]
-    testing_api = api_list[-1]  # 测试 worker-transfers
+    testing_api = api_list[-1]  # Test worker-transfers
 
-    test_api(base_url, runtime_template=args.runtime_template, api_name=testing_api)
+    test_api(base_url, args.runtime_template, testing_api)
 

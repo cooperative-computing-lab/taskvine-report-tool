@@ -7,10 +7,11 @@ const buttonToggleType = document.getElementById('button-toggle-transfer-type');
 const svgContainer = document.getElementById('worker-transfers-container');
 const svgElement = d3.select('#worker-transfers');
 const tooltip = document.getElementById('vine-tooltip');
+const transferTypeDisplay = document.getElementById('transfer-type-display');
 
+const LINE_WIDTH = 0.8;
+const HIGHLIGHT_WIDTH = 2;
 const HIGHLIGHT_COLOR = 'orange';
-const LINE_WIDTH = 0.8;  // Match other charts' line width
-const HIGHLIGHT_WIDTH = 2;  // Adjusted highlight width
 const LEGEND_LINE_WIDTH = 3;
 
 const state = {
@@ -122,32 +123,34 @@ function plotWorkerTransfers() {
         .range(d3.schemeCategory10);
 
     // Draw lines for each worker
-    Object.entries(state.transfers).forEach(([workerId, transfers]) => {
+    workerIds.forEach(workerId => {
+        const transfers = state.transfers[workerId];
         const line = d3.line()
             .x(d => xScale(d[0]))
-            .y(d => yScale(d[1]));
+            .y(d => yScale(d[1]))
+            .curve(d3.curveStepAfter);  // Use step-after curve
 
         svg.append('path')
-            .datum(transfers)
+            .datum({transfers: transfers, workerId: workerId})  // Store workerId with data
+            .attr('class', 'line')
             .attr('fill', 'none')
             .attr('stroke', colorScale(workerId))
             .attr('stroke-width', LINE_WIDTH)
-            .attr('d', line)
+            .attr('d', line(transfers))
             .on('mouseover', function(e) {
+                d3.selectAll('.line')
+                    .attr('stroke-opacity', 0.2);
                 d3.select(this)
                     .attr('stroke', HIGHLIGHT_COLOR)
+                    .attr('stroke-opacity', 1)
                     .attr('stroke-width', HIGHLIGHT_WIDTH);
 
-                // Find closest point to mouse position
-                const mouseX = xScale.invert(d3.pointer(e)[0]);
-                const bisect = d3.bisector(d => d[0]).left;
-                const index = bisect(transfers, mouseX);
-                const point = transfers[index];
-
+                const data = d3.select(this).datum();
+                const point = data.transfers[0];  // Get first point for tooltip
                 if (point) {
                     tooltip.style.visibility = 'visible';
                     tooltip.innerHTML = `
-                        Worker: ${workerId}<br>
+                        Worker: ${data.workerId}<br>
                         Time: ${point[0].toFixed(2)}s<br>
                         Concurrent Transfers: ${point[1]}
                     `;
@@ -156,24 +159,26 @@ function plotWorkerTransfers() {
                 }
             })
             .on('mousemove', function(e) {
+                const data = d3.select(this).datum();
                 const mouseX = xScale.invert(d3.pointer(e)[0]);
                 const bisect = d3.bisector(d => d[0]).left;
-                const index = bisect(transfers, mouseX);
-                const point = transfers[index];
+                const index = bisect(data.transfers, mouseX);
+                const point = data.transfers[index];
 
                 if (point) {
                     tooltip.style.top = (e.pageY - 15) + 'px';
                     tooltip.style.left = (e.pageX + 10) + 'px';
                     tooltip.innerHTML = `
-                        Worker: ${workerId}<br>
+                        Worker: ${data.workerId}<br>
                         Time: ${point[0].toFixed(2)}s<br>
                         Concurrent Transfers: ${point[1]}
                     `;
                 }
             })
             .on('mouseout', function() {
-                d3.select(this)
-                    .attr('stroke', colorScale(workerId))
+                d3.selectAll('.line')
+                    .attr('stroke', function(d) { return colorScale(d.workerId); })
+                    .attr('stroke-opacity', 1)
                     .attr('stroke-width', LINE_WIDTH);
                 tooltip.style.visibility = 'hidden';
             });
@@ -196,14 +201,36 @@ function plotWorkerTransfers() {
         .style('font-size', `${state.tickFontSize}px`);
 }
 
+function handleResetClick() {
+    document.querySelector('#worker-transfers').style.width = '100%';
+    document.querySelector('#worker-transfers').style.height = '100%';
+    plotWorkerTransfers();
+}
+
 function setupEventListeners() {
-    buttonDownload.addEventListener('click', () => downloadSVG('worker-transfers'));
-    buttonReset.addEventListener('click', () => plotWorkerTransfers());
+    // Remove existing event listeners
+    buttonDownload.removeEventListener('click', handleDownloadClick);
+    buttonReset.removeEventListener('click', handleResetClick);
+    buttonToggleType.removeEventListener('click', async () => {
+        state.showIncoming = !state.showIncoming;
+        buttonToggleType.textContent = state.showIncoming ? 'Show Outgoing' : 'Show Incoming';
+        transferTypeDisplay.textContent = state.showIncoming ? 'Incoming' : 'Outgoing';
+        await fetchData();
+    });
+
+    // Add new event listeners
+    buttonDownload.addEventListener('click', handleDownloadClick);
+    buttonReset.addEventListener('click', handleResetClick);
     buttonToggleType.addEventListener('click', async () => {
         state.showIncoming = !state.showIncoming;
         buttonToggleType.textContent = state.showIncoming ? 'Show Outgoing' : 'Show Incoming';
-        await fetchData();  // Fetch new data and redraw
+        transferTypeDisplay.textContent = state.showIncoming ? 'Incoming' : 'Outgoing';
+        await fetchData();
     });
+}
+
+function handleDownloadClick() {
+    downloadSVG('worker-transfers');
 }
 
 async function initialize() {

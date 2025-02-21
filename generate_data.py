@@ -26,6 +26,6 @@ if __name__ == '__main__':
 
     manager, workers, files, tasks = data_parser.restore_from_checkpoint()
 
-    print(f"=== processing data for {runtime_template}")
-    data_processor = DataProcessor(runtime_template, manager, workers, files, tasks)
-    data_processor.generate_data()
+    # print(f"=== processing data for {runtime_template}")
+    # data_processor = DataProcessor(runtime_template, manager, workers, files, tasks)
+    # data_processor.generate_data()

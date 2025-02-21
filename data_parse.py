@@ -256,10 +256,10 @@ class DataParser:
                     ip, port = WorkerInfo.extract_ip_port_from_string(parts[release_idx - 1])
                     worker = self.workers[(ip, port)]
                     worker.add_disconnection(timestamp)
-                    # also stage out the pending transfers on the worker
-                    file = self.files[filename]
-                    file.worker_removed_on_destination(timestamp, (ip, port))
-                    self.manager.set_when_last_worker_disconnect(timestamp)
+
+                    for file in self.files.values():
+                        file.worker_removed((ip, port), timestamp)
+                    self.manager.update_when_last_worker_disconnect(timestamp)
                     continue
 
                 if "transfer-port" in parts:
@@ -288,13 +288,13 @@ class DataParser:
                         raise ValueError(f"pending file type: {filename}")
 
                     file = self.ensure_file_info_entry(filename, file_size_mb)
-                    putting_transfer_event = file.start_new_transfer('manager', (worker.ip, worker.port), timestamp, 'manager_put', file_type, file_cache_level)
+                    putting_transfer_event = file.add_transfer('manager', (worker.ip, worker.port), 'manager_put', file_type, file_cache_level)
+                    putting_transfer_event.start_stage_in(timestamp, "pending")
                     continue
                 if putting_transfer_event and "file" in parts:
                     continue
                 if putting_transfer_event and "received" in parts:
-                    putting_transfer_event.set_time_stage_in(timestamp)
-                    putting_transfer_event.set_eventual_state("worker_received")
+                    putting_transfer_event.stage_in(timestamp, "worker_received")
                     putting_transfer_event = None
                     continue
                 if putting_transfer_event:
@@ -331,7 +331,7 @@ class DataParser:
                 if "puturl" in parts or "puturl_now" in parts:
                     puturl_id = parts.index("puturl") if "puturl" in parts else parts.index("puturl_now")
                     filename = parts[puturl_id + 2]
-                    file_cache_level = parts[puturl_id + 3]
+                    file_cache_level = int(parts[puturl_id + 3])
                     size_in_mb = int(parts[puturl_id + 4]) / 2**20
                     
                     source_ip, source_transfer_port = WorkerInfo.extract_ip_port_from_string(parts[puturl_id + 1])
@@ -345,7 +345,8 @@ class DataParser:
                         transfer_event = 'puturl_now'
 
                     file = self.ensure_file_info_entry(filename, size_in_mb)
-                    file.start_new_transfer((source_worker.ip, source_worker.port), (dest_worker.ip, dest_worker.port), timestamp, transfer_event, 2, file_cache_level)
+                    transfer = file.add_transfer((source_worker.ip, source_worker.port), (dest_worker.ip, dest_worker.port), transfer_event, 2, file_cache_level)
+                    transfer.start_stage_in(timestamp, "pending")
                     continue
 
                 if "tx to" in line and "task" in parts:
@@ -506,29 +507,12 @@ class DataParser:
                     file_type = parts[cache_update_id + 2]
                     file_cache_level = parts[cache_update_id + 3]
                     size_in_mb = int(parts[cache_update_id + 4]) / 2**20
-                    start_sending_time = int(parts[cache_update_id + 7]) / 1e6
-
-                    time_stage_in = floor_decimal(start_sending_time, 2)
+                    # start_sending_time = int(parts[cache_update_id + 7]) / 1e6
 
                     # if this is a task-generated file, it is the first time the file is cached on this worker, otherwise we only update the stage in time
                     file = self.ensure_file_info_entry(filename, size_in_mb)
-
-                    # find all pending transfers on the destination
-                    pending_transfers_on_destination = file.get_transfers_on_destination(worker.ip, 'pending')
-
-                    # if there are pending transfers on the destination, the file was transferred by other sources
-                    if pending_transfers_on_destination:
-                        for transfer in pending_transfers_on_destination:
-                            transfer.set_time_stage_in(time_stage_in)
-                            transfer.set_eventual_state("cache_update")
-                    # otherwise, the file is created by the current task
-                    else:
-                        # note that an output file cache-update event can be received before the worker's time_worker_end
-                        file_producer_task_id = file.producers[-1]
-                        transfer = file.start_new_transfer(f"task {file_producer_task_id}", (worker.ip, worker.port), time_stage_in, 'task_created', file_type, file_cache_level)
-                        transfer.set_time_stage_in(time_stage_in)
-                        transfer.set_eventual_state("cache_update")
-
+                    # let the file handle the cache update
+                    file.cache_update((worker.ip, worker.port), timestamp, file_type, file_cache_level)
                     continue
                     
                 if "cache-invalid" in parts:
@@ -538,7 +522,7 @@ class DataParser:
                     filename = parts[cache_invalid_id + 1]
 
                     file = self.files[filename]
-                    file.cache_invalid_on_destination(timestamp, (ip, port))
+                    file.cache_invalid((ip, port), timestamp)
                     continue
 
                 if "unlink" in parts:
@@ -548,7 +532,7 @@ class DataParser:
                     worker = self.workers[(ip, port)]
 
                     file = self.files[filename]
-                    file.unlink_on_destination(timestamp, (ip, port))
+                    file.unlink((ip, port), timestamp)
                     continue
                     
                 if "Submitted recovery task" in line:
@@ -581,30 +565,26 @@ class DataParser:
                     source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[parts.index("from") + 1])
 
                     file = self.ensure_file_info_entry(filename, file_size_mb)
-                    getting_transfer_event = file.start_new_transfer((source_ip, source_port), 'manager', timestamp, 'manager_get', 1, 1)
+                    getting_transfer_event = file.add_transfer((source_ip, source_port), 'manager', 'manager_get', 1, 1)
+                    getting_transfer_event.start_stage_in(timestamp, "pending")
                     continue
                 if getting_transfer_event and "sent" in parts:
-                    getting_transfer_event.set_time_stage_in(timestamp)
-                    getting_transfer_event.set_eventual_state("manager_received")
+                    getting_transfer_event.stage_in(timestamp, "manager_received")
                     getting_transfer_event = None
                     continue
 
                 if "manager end" in line:
                     self.manager.set_time_end(timestamp)
                     for task in self.tasks.values():
-                        # some tasks were retrieved but not done because the manager was terminated by the user
+                        # task was retrieved but not yet done
                         if task.when_done is None and task.when_retrieved is not None:
                             task.set_when_done(timestamp)
-                        # in case some tasks were not failed
-                        if task.task_status == 0:
-                            task.set_when_failure_happens("N/A")
+                        # task was not retrieved
+                        elif task.when_retrieved is None:
+                            if not task.when_failure_happens:
+                                task.set_when_failure_happens(timestamp)
                         else:
-                            # it was running but failed
-                            if task.when_running is not None:
-                                assert task.when_failure_happens is not None
-                            # not dispatched at all
-                            else:
-                                pass
+                            pass
 
             pbar.close()
 

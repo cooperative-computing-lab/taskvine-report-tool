@@ -1,16 +1,16 @@
 class TransferEvent:
-    def __init__(self, source, destination, time_start_stage_in, event, file_type, cache_level):
+    def __init__(self, source, destination, event, file_type, cache_level):
         self.source = source
         self.destination = destination
-        self.time_start_stage_in = float(time_start_stage_in)
         
         # event describes how the transfer is created
         assert event in ["manager_put", "manager_get", "task_created", "puturl", "puturl_now"]
         self.event = event
 
+        self.time_start_stage_in = None
         self.time_stage_in = None
         self.time_stage_out = None
-        self.eventual_state = "pending"
+        self.eventual_state = None
 
         """
         typedef enum {
@@ -38,23 +38,24 @@ class TransferEvent:
         assert cache_level in [0, 1, 2, 3]
         self.cache_level = cache_level
 
-    def set_time_stage_in(self, time_stage_in):
-        assert self.time_stage_in is None
-        time_stage_in = float(time_stage_in)
-        if self.time_start_stage_in is not None and self.time_start_stage_in > time_stage_in:
-            raise ValueError(f"time_stage_in {time_stage_in} is less than time_start_stage_in {self.time_start_stage_in}. {self.source} {self.destination} {self.event} {self.file_type} {self.cache_level}")
-        self.time_stage_in = time_stage_in
-
-    def set_time_stage_out(self, time_stage_out):
-        assert self.time_stage_out is None
-        time_stage_out = float(time_stage_out)
-        if self.time_stage_in is not None and self.time_stage_in > time_stage_out:
-            raise ValueError(f"time_stage_out {time_stage_out} is less than time_stage_in {self.time_stage_in}. {self.source} {self.destination} {self.event} {self.file_type} {self.cache_level}")
-        self.time_stage_out = time_stage_out
-
     def set_eventual_state(self, eventual_state):
         assert eventual_state in ["pending", "cache_invalid", "cache_update", "worker_received", "manager_received", "worker_removed", "manager_removed", "unlink"]
         self.eventual_state = eventual_state
+
+    def start_stage_in(self, time_start_stage_in, eventual_state):
+        assert self.time_start_stage_in is None and self.time_stage_in is None and self.time_stage_out is None
+        self.time_start_stage_in = float(time_start_stage_in)
+        self.set_eventual_state(eventual_state)
+
+    def stage_in(self, time_stage_in, eventual_state):
+        assert self.time_start_stage_in is not None and self.time_stage_in is None and self.time_stage_out is None
+        self.time_stage_in = float(time_stage_in)
+        self.set_eventual_state(eventual_state)
+
+    def stage_out(self, time_stage_out, eventual_state):
+        assert self.time_start_stage_in is not None and self.time_stage_out is None
+        self.time_stage_out = float(time_stage_out)
+        self.set_eventual_state(eventual_state)
 
     def print_info(self):
         print(f"source: {self.source}")
@@ -74,7 +75,7 @@ class FileInfo:
         self.filename = filename
         self.size_mb = size_mb
 
-        self.transfers = {}        # key: (source, destination, time_start_stage_in), value: TransferEvent
+        self.transfers = []
         
         self.consumers = []
         self.producers = []
@@ -87,121 +88,90 @@ class FileInfo:
         if producer not in self.producers:
             self.producers.append(producer)
 
-    def start_new_transfer(self, source, destination, time_start_stage_in, event, file_type, cache_level):
-        transfer_event = TransferEvent(source, destination, time_start_stage_in, event, file_type, cache_level)
-        transfer_event.set_eventual_state("pending")
-        self.transfers[(source, destination, time_start_stage_in)] = transfer_event
+    def add_transfer(self, source, destination, event, file_type, cache_level):
+        transfer_event = TransferEvent(source, destination, event, file_type, cache_level)
+        self.transfers.append(transfer_event)
         return transfer_event
-
-    def get_transfer(self, source, destination, time_start_stage_in):
-        return self.transfers[(source, destination, time_start_stage_in)]
     
     def get_transfers_on_source(self, source, eventual_state=None):
         if eventual_state:
-            # find all transfers on source with a given eventual_state
-            return [transfer for transfer in self.transfers.values() if transfer.source == source and transfer.eventual_state == eventual_state]
+            return [transfer for transfer in self.transfers if transfer.source == source and transfer.eventual_state == eventual_state]
         else:
-            # find all transfers on source
-            return [transfer for transfer in self.transfers.values() if transfer.source == source]
-    
-    def get_transfers_on_destination(self, destination, eventual_state=None):
-        if eventual_state:
-            # find all transfers on destination with a given eventual_state
-            return [transfer for transfer in self.transfers.values() if transfer.destination == destination and transfer.eventual_state == eventual_state]
-        else:
-            # find all transfers on destination
-            return [transfer for transfer in self.transfers.values() if transfer.destination == destination]
+            return [transfer for transfer in self.transfers if transfer.source == source]
     
     def get_emitted_transfers(self):
         return len(self.transfers)
     
     def get_succeeded_transfers(self):
-        return len([transfer for transfer in self.transfers.values() if transfer.time_stage_in])
+        return len([transfer for transfer in self.transfers if transfer.time_stage_in])
     
     def get_failed_transfers(self):
-        return len([transfer for transfer in self.transfers.values() if transfer.time_stage_in is None])
-
-    def get_worker_holdings(self):
-        worker_holdings = []
-        for transfer in self.transfers.values():
-            if transfer.time_stage_in and transfer.time_stage_out:
-                worker_holdings.append([transfer.destination, float(transfer.time_stage_in), float(transfer.time_stage_out), float(transfer.time_stage_out - transfer.time_stage_in)])
-        return worker_holdings
+        return len([transfer for transfer in self.transfers if transfer.time_stage_in is None])
     
     def get_distinct_sources(self):
         sources = set()
-        for transfer in self.transfers.values():
+        for transfer in self.transfers:
             sources.add(transfer.source)
         return list(sources)
     
     def get_distinct_destinations(self):
         destinations = set()
-        for transfer in self.transfers.values():
+        for transfer in self.transfers:
             destinations.add(transfer.destination)
         return list(destinations)
-
-    def unlink_on_destination(self, time_stage_out, destination):
-        time_stage_out = float(time_stage_out)
-        transfers = self.get_transfers_on_destination(destination)
-        for transfer in transfers:
-            # skip if the transfer had been staged out
-            if transfer.time_stage_out:
-                continue
-            # skip if the start time > time_stage_out
-            if transfer.time_start_stage_in > time_stage_out:
-                print(f"unlink {self.filename} {transfer.source} {transfer.destination} {transfer.time_start_stage_in} {time_stage_out}")
-                continue
-            # set the eventual_state to unlink
-            transfer.set_eventual_state("unlink")
-            transfer.set_time_stage_out(time_stage_out)
-
-    def cache_invalid_on_destination(self, time_stage_out, destination):
-        transfers = self.get_transfers_on_destination(destination)
-        for transfer in transfers:
-            # skip if the transfer had been staged out
-            if transfer.time_stage_out:
-                continue
-            # skip if the start time > time_stage_out
-            if transfer.time_start_stage_in > time_stage_out:
-                continue
-            # set the eventual_state to cache-invalid
-            transfer.set_eventual_state("cache_invalid")
-            transfer.set_time_stage_out(time_stage_out)
     
-    def cache_update_transfers_on_destination(self, destination, time_stage_in):
-        # find all transfers on destination
-        transfers_on_destination = self.get_transfers_on_destination(destination)
-        
-        # if there are no transfers on destination, this means a task-created file
-        if not transfers_on_destination:
-            return
+    def cache_update(self, destination, time_stage_in, file_type, file_cache_level):
+        # check if the file was started staging in before the cache update
+        hit = False
 
-        # sort transfers by time_start_stage_in
-        transfers_on_destination.sort(key=lambda x: x.time_start_stage_in)
-
-        for transfer in transfers_on_destination:
-            # if the transfer has not been received yet, set the received status to cache-update and set the time_stage_in
-            if not transfer.time_stage_in and transfer.time_start_stage_in <= time_stage_in:
-                transfer.set_eventual_state("cache_update")
-                transfer.set_time_stage_in(time_stage_in)
-
-    def manager_removed_on_destination(self, time_stage_out, destination):
-        transfers = self.get_transfers_on_destination(destination)
-        for transfer in transfers:
-            # skip if the transfer had been staged out
+        for transfer in self.transfers:
+            if transfer.destination != destination:
+                continue
+            if transfer.time_stage_in:
+                continue
             if transfer.time_stage_out:
                 continue
-            # skip if the start time > time_stage_out
+            if transfer.time_start_stage_in > time_stage_in:
+                continue
+            transfer.stage_in(time_stage_in, "cache_update")
+            hit = True
+        
+        # this means a task-created file
+        if not hit:
+            file_producer_task_id = self.producers[-1]
+            transfer = self.add_transfer(f"Task {file_producer_task_id}", destination, "task_created", file_type, file_cache_level)
+            transfer.start_stage_in(time_stage_in, "pending")
+            transfer.stage_in(time_stage_in, "cache_update")
+
+    def unlink(self, worker, time_stage_out):
+        for transfer in self.transfers:
+            if transfer.source != worker and transfer.destination != worker:
+                continue
+            if transfer.time_stage_out:
+                continue
             if transfer.time_start_stage_in > time_stage_out:
                 continue
-            transfer.set_eventual_state("manager_removed")
-            transfer.set_time_stage_out(time_stage_out)
+            transfer.stage_out(time_stage_out, "unlink")
 
-    def worker_removed_on_destination(self, time_stage_out, destination):
-        transfers = self.get_transfers_on_destination(destination, eventual_state="pending")
-        for transfer in transfers:
-            transfer.set_eventual_state("worker_removed")
-            transfer.set_time_stage_out(time_stage_out)
+    def cache_invalid(self, worker, time_stage_out):
+        for transfer in self.transfers:
+            if transfer.source != worker and transfer.destination != worker:
+                continue
+            if transfer.time_stage_out:
+                continue
+            if transfer.time_start_stage_in > time_stage_out:
+                continue
+            transfer.stage_out(time_stage_out, "cache_invalid")
+
+    def worker_removed(self, worker, time_stage_out):
+        for transfer in self.transfers:
+            if transfer.source != worker and transfer.destination != worker:
+                continue
+            if transfer.time_stage_out:
+                continue
+            if transfer.time_start_stage_in > time_stage_out:
+                continue
+            transfer.stage_out(time_stage_out, "worker_removed")
 
     def set_size_mb(self, size_mb):
         size_mb = float(size_mb)
@@ -216,9 +186,9 @@ class FileInfo:
         print(f"consumers: {self.consumers}")
         print(f"producers: {self.producers}")
         print(f"transfers: {len(self.transfers)}")
-        len_start_stage_in = len([transfer for transfer in self.transfers.values() if transfer.time_start_stage_in])
-        len_stage_in = len([transfer for transfer in self.transfers.values() if transfer.time_stage_in])
-        len_stage_out = len([transfer for transfer in self.transfers.values() if transfer.time_stage_out])
+        len_start_stage_in = len([transfer for transfer in self.transfers if transfer.time_start_stage_in])
+        len_stage_in = len([transfer for transfer in self.transfers if transfer.time_stage_in])
+        len_stage_out = len([transfer for transfer in self.transfers if transfer.time_stage_out])
         print(f" len_start_stage_in: {len_start_stage_in}")
         print(f" len_stage_in: {len_stage_in}")
         print(f" len_stage_out: {len_stage_out}")

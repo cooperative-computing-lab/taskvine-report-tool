@@ -49,6 +49,7 @@
     <script src="{{ url_for('static', filename='js/storage_consumption.js') }}" type="module"></script>
     <script src="{{ url_for('static', filename='js/sidebar.js') }}" type="module"></script>
     <script src="{{ url_for('static', filename='js/task_concurrency.js') }}" type="module"></script>
+    <script src="{{ url_for('static', filename='js/worker_transfers.js') }}" type="module"></script>
 </head>
 <body>
     <div id="vine-tooltip" class="tooltip"></div>  
@@ -103,6 +104,35 @@
             <svg id="execution-details" xmlns="http://www.w3.org/2000/svg"></svg>
         </div>
 
+        
+        <!-- Task Execution Time section -->
+        <div class="section-header">
+            <h2 class="section-title">Task Execution Time</h2>
+            <div class="section-buttons">
+                <button id="button-reset-task-execution-time" class="report-button">Reset</button>
+                <button id="button-download-task-execution-time" class="report-button">Download SVG</button>
+                <button id="button-toggle-cdf" class="report-button">Display CDF</button>
+            </div>
+        </div>
+        
+        <div id="task-execution-time-container" class="container-alpha">
+            <svg id="task-execution-time" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+        
+        <!-- Task Concurrency section -->
+        <div class="section-header">
+            <h2 class="section-title">Task Concurrency</h2>
+            <div class="section-buttons">
+                <button id="button-reset-task-concurrency" class="report-button">Reset</button>
+                <button id="button-download-task-concurrency" class="report-button">Download SVG</button>
+            </div>
+        </div>
+        
+        <div id="task-concurrency-checkboxes" class="checkbox-container"></div>
+        <div id="task-concurrency-container" class="container-alpha">
+            <svg id="task-concurrency" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+        
         <!-- Storage Consumption section -->
         <div class="section-header">
             <h2 class="section-title">Storage Consumption</h2>
@@ -119,33 +149,23 @@
         <div id="disk-usage-legend" class="legend-container">
             <!-- Legend items will be added by JavaScript -->
         </div>
+
         
-        <!-- Task Execution Time section -->
-        <div class="section-header">
-            <h2 class="section-title">Task Execution Time</h2>
-            <div class="section-buttons">
-                <button id="button-reset-task-execution-time" class="report-button">Reset</button>
-                <button id="button-download-task-execution-time" class="report-button">Download SVG</button>
-                <button id="button-toggle-cdf" class="report-button">Display CDF</button>
+        <!-- Worker Transfers section -->
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title">Worker Transfers (<span id="transfer-type-display">Incoming</span>)</h2>
+                <div class="section-buttons">
+                    <button id="button-reset-worker-transfers" class="report-button">Reset</button>
+                    <button id="button-download-worker-transfers" class="report-button">Download</button>
+                    <button id="button-toggle-transfer-type" class="report-button">Show Outgoing</button>
+                </div>
             </div>
-        </div>
-
-        <div id="task-execution-time-container" class="container-alpha">
-            <svg id="task-execution-time" xmlns="http://www.w3.org/2000/svg"></svg>
-        </div>
-
-        <!-- Task Concurrency section -->
-        <div class="section-header">
-            <h2 class="section-title">Task Concurrency</h2>
-            <div class="section-buttons">
-                <button id="button-reset-task-concurrency" class="report-button">Reset</button>
-                <button id="button-download-task-concurrency" class="report-button">Download SVG</button>
+            <div class="section-content">
+                <div id="worker-transfers-container" class="container-alpha">
+                    <svg id="worker-transfers" xmlns="http://www.w3.org/2000/svg"></svg>
+                </div>
             </div>
-        </div>
-
-        <div id="task-concurrency-checkboxes" class="checkbox-container"></div>
-        <div id="task-concurrency-container" class="container-alpha">
-            <svg id="task-concurrency" xmlns="http://www.w3.org/2000/svg"></svg>
         </div>
 
         <div class="footnote">
