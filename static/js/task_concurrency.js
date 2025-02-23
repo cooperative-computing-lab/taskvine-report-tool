@@ -260,6 +260,8 @@ async function fetchData() {
 
             // Clear SVG and redraw
             svgElement.selectAll('*').remove();
+            document.querySelector('#task-concurrency').style.width = '100%';
+            document.querySelector('#task-concurrency').style.height = '100%';
             plotTaskConcurrency();
             setupZoomAndScroll('#task-concurrency', '#task-concurrency-container');
         }

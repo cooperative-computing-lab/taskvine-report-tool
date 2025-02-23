@@ -52,3 +52,13 @@ body {
     overflow-y: auto;  /* Allow scrolling if sidebar content is too long */
 }
 
+.vine-select:hover {
+    border-color: #1f77b4;
+}
+
+.vine-select:focus {
+    outline: none;
+    border-color: #1f77b4;
+    box-shadow: 0 0 0 2px rgba(31, 119, 180, 0.2);
+}
+

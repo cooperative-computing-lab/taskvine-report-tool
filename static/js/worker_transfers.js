@@ -28,7 +28,8 @@ const state = {
 
 async function fetchData() {
     try {
-        // Clear existing data
+        svgElement.selectAll('*').remove();
+
         state.transfers = {};
         state.xMin = null;
         state.xMax = null;
@@ -51,8 +52,8 @@ async function fetchData() {
             state.yTickValues = data.yTickValues;
             state.tickFontSize = data.tickFontSize;
 
-            // Clear SVG and redraw
-            svgElement.selectAll('*').remove();
+            document.querySelector('#worker-transfers').style.width = '100%';
+            document.querySelector('#worker-transfers').style.height = '100%';
             plotWorkerTransfers();
             setupZoomAndScroll('#worker-transfers', '#worker-transfers-container');
         }

@@ -93,6 +93,9 @@ async function initialize() {
                 probabilityY: data.probability_y_tick_values
             };
             state.tickFontSize = data.tickFontSize;
+
+            document.querySelector('#task-execution-time').style.width = '100%';
+            document.querySelector('#task-execution-time').style.height = '100%';
             plotExecutionTime();
             setupZoomAndScroll('#task-execution-time', '#task-execution-time-container');
         }

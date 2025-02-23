@@ -583,6 +583,8 @@ async function initialize() {
         buttonReset.removeEventListener('click', handleResetClick);
         buttonReset.addEventListener('click', handleResetClick);
 
+        document.querySelector('#execution-details').style.width = '100%';
+        document.querySelector('#execution-details').style.height = '100%';
         plotExecutionDetails();
         setupZoomAndScroll('#execution-details', '#execution-details-container');
     } catch (error) {

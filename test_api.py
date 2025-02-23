@@ -179,9 +179,13 @@ if __name__ == "__main__":
         {"name": "worker-transfers", "variants": [
             {"type": "incoming"},   
             {"type": "outgoing"}
-        ]}
+        ]},
+        {"name": "file-sizes", "params": {
+            "order": "asc",
+            "type": "buffer",
+        }},
+        
     ]
     testing_api = api_list[-1]  # Test worker-transfers
 
     test_api(base_url, args.runtime_template, testing_api)
-

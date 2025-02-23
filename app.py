@@ -183,22 +183,8 @@ def get_storage_consumption():
         # convert the key to a string
         data['worker_storage_consumption'] = {f"{k[0]}:{k[1]}": v for k, v in data['worker_storage_consumption'].items()}
 
-        # calculate the file size unit, the default is MB
-        data['file_size_unit'] = 'MB'
-        if max_storage_consumption < 1 / 1024:
-            data['file_size_unit'] = 'Bytes'
-            scale = 1024 * 1024           # times 1024 * 1024
-        elif max_storage_consumption < 1:
-            data['file_size_unit'] = 'KB'
-            scale = 1024                  # times 1024
-        elif max_storage_consumption > 1024:
-            data['file_size_unit'] = 'GB'
-            scale = 1 / 1024              # divide by 1024
-        elif max_storage_consumption > 1024 * 1024:
-            data['file_size_unit'] = 'TB'
-            scale = 1 / (1024 * 1024)      # divide by 1024 * 1024
-        else:
-            scale = 1
+        data['file_size_unit'], scale = get_unit_and_scale_by_max_file_size_mb(max_storage_consumption)
+
         # also update the source data
         if scale != 1:
             for destination in data['worker_storage_consumption']:
@@ -485,6 +471,98 @@ def get_task_concurrency():
         return jsonify(data)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
+# calculate the file size unit, the default is MB
+def get_unit_and_scale_by_max_file_size_mb(max_file_size_mb) -> tuple[str, float]:
+    if max_file_size_mb < 1 / 1024:
+        return 'Bytes',  1024 * 1024
+    elif max_file_size_mb < 1:
+        return 'KB', 1024
+    elif max_file_size_mb > 1024:
+        return 'GB', 1 / 1024
+    elif max_file_size_mb > 1024 * 1024:
+        return 'TB', 1 / (1024 * 1024)
+    else:
+        return 'MB', 1
+    
+@app.route('/api/file-sizes')
+def get_file_sizes():
+    try:
+        # Get the transfer type from query parameters
+        order = request.args.get('order', 'asc')  # default to ascending
+        file_type = request.args.get('type', 'all')  # default to all
+        if order not in ['asc', 'desc', 'created-time']:
+            return jsonify({'error': 'Invalid order'}), 400
+        if file_type not in ['temp', 'meta', 'buffer', 'task-created', 'all']:
+            return jsonify({'error': 'Invalid file type'}), 400
+        
+        data = {}
+        
+        # Get the file size of each file
+        data['file_sizes'] = []
+        max_file_size_mb = 0
+        for file in template_manager.files.values():
+            file_name = file.filename
+            file_size = file.size_mb
+            if file_type != 'all':
+                if file_type == 'temp' and not file_name.startswith('temp-'):
+                    continue
+                if file_type == 'meta' and not file_name.startswith('file-meta'):
+                    continue
+                if file_type == 'buffer' and not file_name.startswith('buffer-'):
+                    continue
+                if file_type == 'task-created' and len(file.producers) == 0:
+                    continue
+            file_created_time = float('inf') - template_manager.MIN_TIME
+            for transfer in file.transfers:
+                file_created_time = round(min(file_created_time, transfer.time_start_stage_in - template_manager.MIN_TIME), 2)
+            data['file_sizes'].append((0, file_name, file_size, file_created_time))
+            max_file_size_mb = max(max_file_size_mb, file_size)
+
+        # sort the file sizes using pandas
+        df = pd.DataFrame(data['file_sizes'], columns=['file_idx', 'file_name', 'file_size', 'file_created_time'])
+        if order == 'asc':
+            df = df.sort_values(by=['file_size'])
+        elif order == 'desc':
+            df = df.sort_values(by=['file_size'], ascending=False)
+        elif order == 'created-time':
+            df = df.sort_values(by=['file_created_time'])
+
+        # file idx should start from 1
+        df['file_idx'] = range(1, len(df) + 1)
+        # convert the file size to the desired unit
+        data['file_size_unit'], scale = get_unit_and_scale_by_max_file_size_mb(max_file_size_mb)
+        df['file_size'] = df['file_size'] * scale
+        
+        # convert the dataframe to a list of tuples
+        data['file_sizes'] = df.values.tolist()
+
+        # ploting parameters
+        data['xMin'] = 1
+        data['xMax'] = len(df)
+        data['yMin'] = 0
+        data['yMax'] = max_file_size_mb * scale
+        data['xTickValues'] = [
+            round(data['xMin'], 2),
+            round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.25, 2),
+            round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.5, 2),
+            round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.75, 2),
+            round(data['xMax'], 2)
+        ]
+        data['yTickValues'] = [
+            round(data['yMin'], 2),
+            round(data['yMin'] + (data['yMax'] - data['yMin']) * 0.25, 2),
+            round(data['yMin'] + (data['yMax'] - data['yMin']) * 0.5, 2),
+            round(data['yMin'] + (data['yMax'] - data['yMin']) * 0.75, 2),
+            round(data['yMax'], 2)
+        ]
+        data['tickFontSize'] = template_manager.tick_size
+        data['file_size_unit'] = data['file_size_unit']
+
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/runtime-templates-list')
 def get_runtime_templates_list():

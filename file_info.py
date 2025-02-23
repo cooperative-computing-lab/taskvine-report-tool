@@ -123,6 +123,7 @@ class FileInfo:
     def cache_update(self, destination, time_stage_in, file_type, file_cache_level):
         # check if the file was started staging in before the cache update
         hit = False
+        time_stage_in = float(time_stage_in)
 
         for transfer in self.transfers:
             if transfer.destination != destination:

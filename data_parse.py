@@ -374,7 +374,7 @@ class DataParser:
                     elif "infile" in parts:
                         filename = parts[parts.index("infile") + 1]
                         file = self.ensure_file_info_entry(filename, 0)
-                        file.add_producer(task.task_id)
+                        file.add_consumer(task.task_id)
                         task.add_input_file(filename)
                     elif "outfile" in parts:
                         filename = parts[parts.index("outfile") + 1]
