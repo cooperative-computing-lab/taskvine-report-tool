@@ -3,6 +3,7 @@ from task_info import TaskInfo
 from file_info import FileInfo
 from manager_info import ManagerInfo
 
+import graphviz
 import os
 import json
 from datetime import datetime
@@ -34,9 +35,11 @@ class DataParser:
         self.csv_files_dir = os.path.join(self.runtime_template, 'csv-files')
         self.json_files_dir = os.path.join(self.runtime_template, 'json-files')
         self.pkl_files_dir = os.path.join(self.runtime_template, 'pkl-files')
+        self.svg_files_dir = os.path.join(self.runtime_template, 'svg-files')
         os.makedirs(self.csv_files_dir, exist_ok=True)
         os.makedirs(self.json_files_dir, exist_ok=True)
         os.makedirs(self.pkl_files_dir, exist_ok=True)
+        os.makedirs(self.svg_files_dir, exist_ok=True)
 
         self.debug = os.path.join(self.vine_logs_dir, 'debug')
         self.transactions = os.path.join(self.vine_logs_dir, 'transactions')
@@ -61,6 +64,9 @@ class DataParser:
         # time info
         self.set_time_zone()
         self.manager.time_zone_offset_hours = self.time_zone_offset_hours
+
+        # subgraphs
+        self.subgraphs = {}   # key: subgraph_id, value: set()
 
     def worker_ip_port_to_hash(self, worker_ip: str, worker_port: int):
         return f"{worker_ip}:{worker_port}"
@@ -156,7 +162,7 @@ class DataParser:
                 total_lines += 1
 
         with open(self.transactions, 'r') as file:
-            pbar = tqdm(total=total_lines, desc="parsing transactions")
+            pbar = tqdm(total=total_lines, desc="Parsing transactions")
             for line in file:
                 pbar.update(1)
                 if line.startswith('#'):
@@ -221,7 +227,7 @@ class DataParser:
         sending_task_id = None
 
         with open(self.debug, 'r') as file:
-            pbar = tqdm(total=total_lines, desc="parsing debug")
+            pbar = tqdm(total=total_lines, desc="Parsing debug")
             for line in file:
                 pbar.update(1)
                 parts = line.strip().split(" ")
@@ -374,12 +380,12 @@ class DataParser:
                     elif "infile" in parts:
                         filename = parts[parts.index("infile") + 1]
                         file = self.ensure_file_info_entry(filename, 0)
-                        file.add_consumer(task.task_id)
+                        file.add_consumer(task)
                         task.add_input_file(filename)
                     elif "outfile" in parts:
                         filename = parts[parts.index("outfile") + 1]
                         file = self.ensure_file_info_entry(filename, 0)
-                        file.add_producer(task.task_id)
+                        file.add_producer(task)
                         task.add_output_file(filename)
                     continue
 
@@ -592,6 +598,49 @@ class DataParser:
         self.parse_debug()
         self.parse_transactions()
 
+    def generate_subgraphs(self):
+        parent = {}
+        for key in self.tasks.keys():
+            parent[key] = key
+
+        def find(x):
+            if parent[x] != x:
+                parent[x] = find(parent[x])
+            return parent[x]
+
+        def union(x, y):
+            root_x = find(x)
+            root_y = find(y)
+            if root_x != root_y:
+                parent[root_y] = root_x
+
+        pbar = tqdm(self.files.values(), desc="Generating subgraphs")
+        for file in pbar:
+            if len(file.producers) == 0:
+                continue
+            tasks_involved = set()
+            for key in self.tasks.keys():
+                if key in file.producers or key in file.consumers:
+                    tasks_involved.add(key)
+            tasks_involved = list(tasks_involved)
+            if len(tasks_involved) <= 1:
+                continue
+            first_task = tasks_involved[0]
+            for other_task in tasks_involved[1:]:
+                union(first_task, other_task)
+
+        # sort the subgraphs by the number of tasks
+        subgraphs = defaultdict(set)
+        for task_key in self.tasks.keys():
+            root = find(task_key)
+            task_id, task_try_id = task_key
+            subgraphs[root].add((task_id, task_try_id))
+        
+        sorted_subgraphs = sorted(subgraphs.values(), key=len, reverse=True)
+        self.subgraphs = {}
+        for i, subgraph in enumerate(sorted_subgraphs, 1):
+            self.subgraphs[i] = subgraph
+
     def checkpoint(self):
         # save the workers, files, and tasks
         time_start = time.time()
@@ -603,6 +652,8 @@ class DataParser:
             cloudpickle.dump(self.tasks, f)
         with open(os.path.join(self.pkl_files_dir, 'manager.pkl'), 'wb') as f:
             cloudpickle.dump(self.manager, f)
+        with open(os.path.join(self.pkl_files_dir, 'subgraphs.pkl'), 'wb') as f:
+            cloudpickle.dump(self.subgraphs, f)
         time_end = time.time()
         print(f"Checkpoint saved in {round(time_end - time_start, 4)} seconds")
 
@@ -617,7 +668,8 @@ class DataParser:
             self.tasks = cloudpickle.load(f)
         with open(os.path.join(self.pkl_files_dir, 'manager.pkl'), 'rb') as f:
             self.manager = cloudpickle.load(f)
+        with open(os.path.join(self.pkl_files_dir, 'subgraphs.pkl'), 'rb') as f:
+            self.subgraphs = cloudpickle.load(f)
         time_end = time.time()
         print(f"Restored from checkpoint in {round(time_end - time_start, 4)} seconds")
-        return self.manager, self.workers, self.files, self.tasks
 

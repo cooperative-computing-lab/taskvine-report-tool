@@ -8,8 +8,8 @@ const svgElement = d3.select('#execution-details');
 const tooltip = document.getElementById('vine-tooltip');
 
 const state = {
-    doneTasks: null,
-    failedTasks: null,
+    successfulTasks: null,
+    unsuccessfulTasks: null,
     workerInfo: null,
     xTickValues: null,
     tickFontSize: null,
@@ -44,12 +44,12 @@ const FAILURE_TYPES = {
 // Update colors object
 const colors = {
     'workers': 'lightgrey',
-    'done-committing-to-worker': '#4a4a4a',
-    'done-executing-on-worker': 'steelblue',
-    'done-retrieving-to-manager': '#cc5a12',
-    'recovery-done': '#FF69B4',
-    'recovery-failed': '#E3314F',
-    ...Object.fromEntries(Object.entries(FAILURE_TYPES).map(([key, value]) => [`failed-${key.toLowerCase()}`, value.color]))
+    'successful-committing-to-worker': '#4a4a4a',
+    'successful-executing-on-worker': 'steelblue',
+    'successful-retrieving-to-manager': '#cc5a12',
+    'recovery-successful': '#FF69B4',
+    'recovery-unsuccessful': '#E3314F',
+    ...Object.fromEntries(Object.entries(FAILURE_TYPES).map(([key, value]) => [`unsuccessful-${key.toLowerCase()}`, value.color]))
 };
 
 // get the innerHTML of the task
@@ -91,20 +91,20 @@ function setLegend() {
     legendContainer.innerHTML = '';
 
     // Count recovery tasks
-    let recoveryDoneCount = 0;
-    let recoveryFailedCount = 0;
+    let recoverySuccessfulCount = 0;
+    let recoveryUnsuccessfulCount = 0;
     
-    if (state.doneTasks) {
-        recoveryDoneCount = state.doneTasks.filter(task => task.is_recovery_task === true).length;
+    if (state.successfulTasks) {
+        recoverySuccessfulCount = state.successfulTasks.filter(task => task.is_recovery_task === true).length;
     }
-    if (state.failedTasks) {
-        recoveryFailedCount = state.failedTasks.filter(task => task.is_recovery_task === true).length;
+    if (state.unsuccessfulTasks) {
+        recoveryUnsuccessfulCount = state.unsuccessfulTasks.filter(task => task.is_recovery_task === true).length;
     }
 
     // Count failures by type
     const failureCounts = {};
-    if (state.failedTasks) {
-        state.failedTasks.forEach(task => {
+    if (state.unsuccessfulTasks) {
+        state.unsuccessfulTasks.forEach(task => {
             failureCounts[task.task_status] = (failureCounts[task.task_status] || 0) + 1;
         });
     }
@@ -113,7 +113,7 @@ function setLegend() {
     const failureItems = Object.entries(FAILURE_TYPES)
         .filter(([_, type]) => failureCounts[type.value] > 0)
         .map(([key, value]) => ({
-            id: `failed-${key.toLowerCase()}`,
+            id: `unsuccessful-${key.toLowerCase()}`,
             label: `${value.label} (${failureCounts[value.value]})`,
             color: value.color,
             checked: false,
@@ -123,22 +123,22 @@ function setLegend() {
 
     const legendGroups = [
         {
-            title: `Done Tasks (${state.doneTasks ? state.doneTasks.length : 0} total)`,
+            title: `Successful Tasks (${state.successfulTasks ? state.successfulTasks.length : 0} total)`,
             items: [
-                { id: 'done-committing-to-worker', label: 'Committing', color: colors['done-committing-to-worker'], checked: false },
-                { id: 'done-executing-on-worker', label: 'Executing', color: colors['done-executing-on-worker'], checked: true },
-                { id: 'done-retrieving-to-manager', label: 'Retrieving', color: colors['done-retrieving-to-manager'], checked: false }
+                { id: 'successful-committing-to-worker', label: 'Committing', color: colors['successful-committing-to-worker'], checked: false },
+                { id: 'successful-executing-on-worker', label: 'Executing', color: colors['successful-executing-on-worker'], checked: true },
+                { id: 'successful-retrieving-to-manager', label: 'Retrieving', color: colors['successful-retrieving-to-manager'], checked: false }
             ]
         },
         {
-            title: `Failed Tasks (${state.failedTasks ? state.failedTasks.length : 0} total)`,
+            title: `Unsuccessful Tasks (${state.unsuccessfulTasks ? state.unsuccessfulTasks.length : 0} total)`,
             items: failureItems
         },
         {
-            title: `Recovery Tasks (${recoveryDoneCount + recoveryFailedCount} total)`,
+            title: `Recovery Tasks (${recoverySuccessfulCount + recoveryUnsuccessfulCount} total)`,
             items: [
-                { id: 'recovery-done', label: `Done (${recoveryDoneCount})`, color: colors['recovery-done'], checked: false },
-                { id: 'recovery-failed', label: `Failed (${recoveryFailedCount})`, color: colors['recovery-failed'], checked: false }
+                { id: 'recovery-successful', label: `Successful (${recoverySuccessfulCount})`, color: colors['recovery-successful'], checked: false },
+                { id: 'recovery-unsuccessful', label: `Unsuccessful (${recoveryUnsuccessfulCount})`, color: colors['recovery-unsuccessful'], checked: false }
             ]
         },
         {
@@ -149,9 +149,9 @@ function setLegend() {
         }
     ];
 
-    // Only include Failed Tasks group if there are failures
+    // Only include Unsuccessful Tasks group if there are failures
     const groupsToDisplay = legendGroups.filter(group => 
-        group.title !== 'Failed Tasks' || group.items.length > 0
+        group.title !== 'Unsuccessful Tasks' || group.items.length > 0
     );
 
     // Create a flex container for better layout control
@@ -225,7 +225,7 @@ function isTaskTypeChecked(taskType) {
 }
 
 function plotExecutionDetails() {
-    if (!state.doneTasks) {
+    if (!state.successfulTasks) {
         return;
     }
 
@@ -283,17 +283,17 @@ function plotExecutionDetails() {
         });
     }
 
-    // Plot done tasks
-    state.doneTasks.forEach(task => {
+    // Plot successful tasks
+    state.successfulTasks.forEach(task => {
         // Committing to worker phase
         if (task.when_running && task.time_worker_start) {
-            if (isTaskTypeChecked('done-committing-to-worker')) {
+            if (isTaskTypeChecked('successful-committing-to-worker')) {
                 svg.append('rect')
                     .attr('x', xScale(task.when_running))
                     .attr('y', yScale(task.worker_id + '-' + task.core_id))
                     .attr('width', xScale(task.time_worker_start) - xScale(task.when_running))
                     .attr('height', yScale.bandwidth())
-                    .attr('fill', colors['done-committing-to-worker'])
+                    .attr('fill', colors['successful-committing-to-worker'])
                     .on('mouseover', function(event) {
                         d3.select(this).attr('fill', HIGHLIGHT_COLOR);
                         tooltip.innerHTML = getTaskInnerHTML(task);
@@ -302,7 +302,7 @@ function plotExecutionDetails() {
                         tooltip.style.left = (event.pageX + 10) + 'px';
                     })
                     .on('mouseout', function() {
-                        d3.select(this).attr('fill', colors['done-committing-to-worker']);
+                        d3.select(this).attr('fill', colors['successful-committing-to-worker']);
                         tooltip.style.visibility = 'hidden';
                     });
             }
@@ -310,13 +310,13 @@ function plotExecutionDetails() {
 
         // Executing on worker phase
         if (task.time_worker_start && task.time_worker_end) {
-            if (isTaskTypeChecked('done-executing-on-worker')) {
+            if (isTaskTypeChecked('successful-executing-on-worker')) {
                 svg.append('rect')
                     .attr('x', xScale(task.time_worker_start))
                     .attr('y', yScale(task.worker_id + '-' + task.core_id))
                     .attr('width', xScale(task.time_worker_end) - xScale(task.time_worker_start))
                     .attr('height', yScale.bandwidth())
-                    .attr('fill', colors['done-executing-on-worker'])
+                    .attr('fill', colors['successful-executing-on-worker'])
                     .on('mouseover', function(event) {
                         d3.select(this).attr('fill', HIGHLIGHT_COLOR);
                         tooltip.innerHTML = getTaskInnerHTML(task);
@@ -325,7 +325,7 @@ function plotExecutionDetails() {
                         tooltip.style.left = (event.pageX + 10) + 'px';
                     })
                     .on('mouseout', function() {
-                        d3.select(this).attr('fill', colors['done-executing-on-worker']);
+                        d3.select(this).attr('fill', colors['successful-executing-on-worker']);
                         tooltip.style.visibility = 'hidden';
                     });
             }
@@ -333,13 +333,13 @@ function plotExecutionDetails() {
 
         // Retrieving to manager phase
         if (task.time_worker_end && task.when_done) {
-            if (isTaskTypeChecked('done-retrieving-to-manager')) {
+            if (isTaskTypeChecked('successful-retrieving-to-manager')) {
                 svg.append('rect')
                     .attr('x', xScale(task.time_worker_end))
                     .attr('y', yScale(task.worker_id + '-' + task.core_id))
                     .attr('width', xScale(task.when_retrieved) - xScale(task.time_worker_end))
                     .attr('height', yScale.bandwidth())
-                    .attr('fill', colors['done-retrieving-to-manager'])
+                    .attr('fill', colors['successful-retrieving-to-manager'])
                     .on('mouseover', function(event) {
                         d3.select(this).attr('fill', HIGHLIGHT_COLOR);
                         tooltip.innerHTML = getTaskInnerHTML(task);
@@ -348,19 +348,19 @@ function plotExecutionDetails() {
                         tooltip.style.left = (event.pageX + 10) + 'px';
                     })
                     .on('mouseout', function() {
-                        d3.select(this).attr('fill', colors['done-retrieving-to-manager']);
+                        d3.select(this).attr('fill', colors['successful-retrieving-to-manager']);
                         tooltip.style.visibility = 'hidden';
                     });
             }
         }
     });
 
-    // Plot failed tasks
-    if (state.failedTasks) {
-        state.failedTasks.forEach(task => {
+    // Plot unsuccessful tasks
+    if (state.unsuccessfulTasks) {
+        state.unsuccessfulTasks.forEach(task => {
             const failureType = getFailureType(task.task_status);
             if (failureType) {
-                const failureId = `failed-${failureType.toLowerCase()}`;
+                const failureId = `unsuccessful-${failureType.toLowerCase()}`;
                 if (isTaskTypeChecked(failureId)) {
                     const startTime = task.when_running || task.time_worker_start;
                     if (startTime) {
@@ -395,17 +395,17 @@ function plotExecutionDetails() {
     }
 
     // Plot recovery tasks
-    if (state.doneTasks) {
-        state.doneTasks.forEach(task => {
+    if (state.successfulTasks) {
+        state.successfulTasks.forEach(task => {
             if (task.is_recovery_task === true) {
-                if (isTaskTypeChecked('recovery-done')) {
+                if (isTaskTypeChecked('recovery-successful')) {
                     if (task.time_worker_start && task.time_worker_end) {
                         svg.append('rect')
                             .attr('x', xScale(task.time_worker_start))
                             .attr('y', yScale(task.worker_id + '-' + task.core_id))
                             .attr('width', xScale(task.time_worker_end) - xScale(task.time_worker_start))
                             .attr('height', yScale.bandwidth())
-                            .attr('fill', colors['recovery-done'])
+                            .attr('fill', colors['recovery-successful'])
                             .on('mouseover', function(event) {
                                 const tooltip = document.getElementById('vine-tooltip');
                                 d3.select(this).attr('fill', HIGHLIGHT_COLOR);
@@ -413,7 +413,7 @@ function plotExecutionDetails() {
                                     Task ID: ${task.task_id}<br>
                                     Worker: ${task.worker_ip}:${task.worker_port}<br>
                                     Core: ${task.core_id}<br>
-                                    Type: Recovery Task (Done)<br>
+                                    Type: Recovery Task (Successful)<br>
                                     Start time: ${(task.time_worker_start).toFixed(2)}s<br>
                                     End time: ${(task.time_worker_end).toFixed(2)}s<br>
                                     Duration: ${(task.time_worker_end - task.time_worker_start).toFixed(2)}s`;
@@ -423,7 +423,7 @@ function plotExecutionDetails() {
                             })
                             .on('mouseout', function() {
                                 const tooltip = document.getElementById('vine-tooltip');
-                                d3.select(this).attr('fill', colors['recovery-done']);
+                                d3.select(this).attr('fill', colors['recovery-successful']);
                                 tooltip.style.visibility = 'hidden';
                             });
                     }
@@ -432,10 +432,10 @@ function plotExecutionDetails() {
         });
     }
 
-    if (state.failedTasks) {
-        state.failedTasks.forEach(task => {
+    if (state.unsuccessfulTasks) {
+        state.unsuccessfulTasks.forEach(task => {
             if (task.is_recovery_task === true) {
-                if (isTaskTypeChecked('recovery-failed')) {
+                if (isTaskTypeChecked('recovery-unsuccessful')) {
                     const startTime = task.when_running || task.time_worker_start;
                     if (startTime) {
                         const endTime = task.when_failure_happens <= startTime ? 
@@ -446,7 +446,7 @@ function plotExecutionDetails() {
                             .attr('y', yScale(task.worker_id + '-' + task.core_id))
                             .attr('width', xScale(endTime) - xScale(startTime))
                             .attr('height', yScale.bandwidth())
-                            .attr('fill', colors['recovery-failed'])
+                            .attr('fill', colors['recovery-unsuccessful'])
                             .on('mouseover', function(event) {
                                 const tooltip = document.getElementById('vine-tooltip');
                                 d3.select(this).attr('fill', HIGHLIGHT_COLOR);
@@ -454,7 +454,7 @@ function plotExecutionDetails() {
                                     Task ID: ${task.task_id}<br>
                                     Worker: ${task.worker_ip}:${task.worker_port}<br>
                                     Core: ${task.core_id}<br>
-                                    Type: Recovery Task (Failed)<br>
+                                    Type: Recovery Task (Unsuccessful)<br>
                                     Failure Type: ${FAILURE_TYPES[getFailureType(task.task_status)]?.label || 'Unknown'}<br>
                                     Start time: ${(startTime).toFixed(2)}s<br>
                                     When Completes: ${(endTime).toFixed(2)}s<br>
@@ -465,7 +465,7 @@ function plotExecutionDetails() {
                             })
                             .on('mouseout', function() {
                                 const tooltip = document.getElementById('vine-tooltip');
-                                d3.select(this).attr('fill', colors['recovery-failed']);
+                                d3.select(this).attr('fill', colors['recovery-unsuccessful']);
                                 tooltip.style.visibility = 'hidden';
                             });
                     }
@@ -567,8 +567,8 @@ async function initialize() {
             return;
         }
 
-        state.doneTasks = data.doneTasks;
-        state.failedTasks = data.failedTasks;
+        state.successfulTasks = data.successfulTasks;
+        state.unsuccessfulTasks = data.unsuccessfulTasks;
         state.workerInfo = data.workerInfo;
         state.tickFontSize = data.tickFontSize;
         state.xTickValues = data.xTickValues;

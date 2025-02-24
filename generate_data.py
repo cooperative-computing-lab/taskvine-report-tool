@@ -3,6 +3,7 @@ import os
 from data_parse import DataParser
 from pathlib import Path
 from data_process import DataProcessor
+import graphviz
 
 
 if __name__ == '__main__':
@@ -20,12 +21,11 @@ if __name__ == '__main__':
     print(f"=== parsing data for {runtime_template}")
     data_parser = DataParser(runtime_template)
 
-    if not args.restore:
+    if args.restore:
+        data_parser.restore_from_checkpoint()
+    else:
         data_parser.parse_logs()
-        data_parser.checkpoint()
 
-    manager, workers, files, tasks = data_parser.restore_from_checkpoint()
+    data_parser.generate_subgraphs()
+    data_parser.checkpoint()
 
-    # print(f"=== processing data for {runtime_template}")
-    # data_processor = DataProcessor(runtime_template, manager, workers, files, tasks)
-    # data_processor.generate_data()

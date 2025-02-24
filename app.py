@@ -7,6 +7,7 @@ from typing import Dict, Any
 from pathlib import Path
 from collections import defaultdict
 import json
+import graphviz
 from data_parse import DataParser
 
 LOGS_DIR = 'logs'
@@ -22,6 +23,10 @@ class TemplateState:
         self.workers = None
         self.files = None
         self.tasks = None
+        self.subgraphs = None
+
+        # for storing the graph files
+        self.svg_files_dir = None   
 
         self.MIN_TIME = None
         self.MAX_TIME = None
@@ -29,11 +34,17 @@ class TemplateState:
         self.tick_size = 12
 
     def restore_from_checkpoint(self):
-        self.manager, self.workers, self.files, self.tasks = self.data_parser.restore_from_checkpoint()
+        self.data_parser.restore_from_checkpoint()
+        self.manager = self.data_parser.manager
+        self.workers = self.data_parser.workers
+        self.files = self.data_parser.files
+        self.tasks = self.data_parser.tasks
+        self.subgraphs = self.data_parser.subgraphs
 
     def change_runtime_template(self, runtime_template):
         self.runtime_template = os.path.join(os.getcwd(), LOGS_DIR, Path(runtime_template).name)
         self.data_parser = DataParser(self.runtime_template)
+        self.svg_files_dir = self.data_parser.svg_files_dir
         self.restore_from_checkpoint()
         self.MIN_TIME = float(self.manager.time_start)
         self.MAX_TIME = float(self.manager.time_end)
@@ -66,8 +77,8 @@ def get_execution_details():
         data['xMax'] = template_manager.MAX_TIME - template_manager.MIN_TIME
 
         # tasks information
-        data['doneTasks'] = []
-        data['failedTasks'] = []
+        data['successfulTasks'] = []
+        data['unsuccessfulTasks'] = []
         for task in template_manager.tasks.values():
             if task.task_status == 0:
                 done_task_info = {
@@ -87,11 +98,11 @@ def get_execution_details():
                     'when_retrieved': task.when_retrieved - template_manager.MIN_TIME,
                     'when_done': task.when_done - template_manager.MIN_TIME, 
                 }
-                data['doneTasks'].append(done_task_info)
+                data['successfulTasks'].append(done_task_info)
             else:
                 if len(task.core_id) == 0:    # not run at all
                     continue
-                failed_task_info = {
+                unsuccessful_task_info = {
                     'task_id': task.task_id,
                     'worker_ip': task.worker_ip,
                     'worker_port': task.worker_port,
@@ -104,7 +115,7 @@ def get_execution_details():
                     'when_running': task.when_running - template_manager.MIN_TIME,
                     'when_failure_happens': task.when_failure_happens - template_manager.MIN_TIME,
                 }
-                data['failedTasks'].append(failed_task_info)
+                data['unsuccessfulTasks'].append(unsuccessful_task_info)
 
         data['workerInfo'] = []
         for worker in template_manager.workers.values():
@@ -485,6 +496,67 @@ def get_unit_and_scale_by_max_file_size_mb(max_file_size_mb) -> tuple[str, float
     else:
         return 'MB', 1
     
+@app.route('/api/file-replicas')
+def get_file_replicas():
+    try:
+        order = request.args.get('order', 'desc')  # default to descending
+        if order not in ['asc', 'desc']:
+            return jsonify({'error': 'Invalid order'}), 400
+
+        data = {}
+        
+        # Get the file size of each file
+        data['file_replicas'] = []
+        for file in template_manager.files.values():
+            file_name = file.filename
+            file_size = file.size_mb
+            workers = set()
+            # skip if not a temp file
+            if not file_name.startswith('temp-'):
+                continue
+            for transfer in file.transfers:
+                # skip if the file is not staged in
+                if not transfer.time_stage_in:
+                    continue
+                workers.add(transfer.destination)
+            data['file_replicas'].append((0, file_name, file_size, len(workers)))
+
+        # sort the file replicas using pandas
+        df = pd.DataFrame(data['file_replicas'], columns=['file_idx', 'file_name', 'file_size', 'num_replicas'])
+        if order == 'asc':
+            df = df.sort_values(by=['num_replicas'])
+        elif order == 'desc':   
+            df = df.sort_values(by=['num_replicas'], ascending=False)
+        df['file_idx'] = range(1, len(df) + 1)
+        
+        # convert the dataframe to a list of tuples
+        data['file_replicas'] = df.values.tolist()
+        
+        # ploting parameters
+        data['xMin'] = 1
+        data['xMax'] = len(df)
+        data['yMin'] = 0    
+        data['yMax'] = df['num_replicas'].max()
+        data['xTickValues'] = [
+            round(data['xMin'], 2),
+            round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.25, 2),
+            round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.5, 2),
+            round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.75, 2),
+            round(data['xMax'], 2)
+            ]
+        data['yTickValues'] = [
+            round(data['yMin'], 2),
+            int(round(data['yMin'] + (data['yMax'] - data['yMin']) * 0.25, 2)),
+            int(round(data['yMin'] + (data['yMax'] - data['yMin']) * 0.5, 2)),
+            int(round(data['yMin'] + (data['yMax'] - data['yMin']) * 0.75, 2)),
+            int(round(data['yMax'], 2))
+            ]
+        data['tickFontSize'] = template_manager.tick_size
+
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    
 @app.route('/api/file-sizes')
 def get_file_sizes():
     try:
@@ -502,6 +574,9 @@ def get_file_sizes():
         data['file_sizes'] = []
         max_file_size_mb = 0
         for file in template_manager.files.values():
+            # skip if the file was not staged in at all (outfile of a task but task unsuccessful)
+            if len(file.transfers) == 0:
+                continue
             file_name = file.filename
             file_size = file.size_mb
             if file_type != 'all':
@@ -513,9 +588,11 @@ def get_file_sizes():
                     continue
                 if file_type == 'task-created' and len(file.producers) == 0:
                     continue
-            file_created_time = float('inf') - template_manager.MIN_TIME
+            file_created_time = float('inf')
             for transfer in file.transfers:
                 file_created_time = round(min(file_created_time, transfer.time_start_stage_in - template_manager.MIN_TIME), 2)
+            if file_created_time == float('inf'):
+                file.print_info()
             data['file_sizes'].append((0, file_name, file_size, file_created_time))
             max_file_size_mb = max(max_file_size_mb, file_size)
 
@@ -563,6 +640,123 @@ def get_file_sizes():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/subgraphs')
+def get_subgraphs():
+    try:
+        data = {}
+        
+        subgraph_id = request.args.get('subgraph_id')
+        if not subgraph_id:
+            return jsonify({'error': 'Subgraph ID is required'}), 400
+        subgraph_id = int(subgraph_id)
+        if subgraph_id not in template_manager.subgraphs.keys():
+            return jsonify({'error': 'Invalid subgraph ID'}), 400
+        
+        plot_unsuccessful_task = request.args.get('plot_unsuccessful_task', 'true').lower() == 'true'
+        plot_recovery_task = request.args.get('plot_recovery_task', 'true').lower() == 'true'
+
+        subgraph = template_manager.subgraphs[subgraph_id]
+
+        def plot_task_node(dot, task):
+            node_id = f'{task.task_id}-{task.task_try_id}'
+            node_label = f'{task.task_id}'
+
+            if task.when_failure_happens:
+                node_label = f'{node_label} (unsuccessful)'
+                style = 'dashed'
+                color = '#FF0000'
+                fontcolor = '#FF0000'
+            else:
+                style = 'solid'
+                color = '#000000'      # black border
+                fontcolor = '#000000'  # black text
+
+            if task.is_recovery_task:
+                node_label = f'{node_label} (recovery)'
+                style = 'filled,dashed'
+                fillcolor = '#FF69B4'
+            else:
+                fillcolor = '#FFFFFF'  # white background
+
+            dot.node(node_id, node_label, shape='ellipse', style=style, color=color, fontcolor=fontcolor, fillcolor=fillcolor)
+
+        def plot_file_node(dot, file):
+            # skip if the file was not produced by any task
+            if len(file.producers) == 0:
+                return
+            file_name = file.filename
+            dot.node(file_name, file_name, shape='box')
+
+        def plot_task2file_edge(dot, task, file):
+            # skip if the file was not produced by any task
+            if len(file.producers) == 0:
+                return
+            # skip if the task unsuccessful (a unsuccessful task can't produce any file)
+            if task.when_failure_happens:
+                return
+            else:
+                task_execution_time = task.time_worker_end - task.time_worker_start
+                dot.edge(f'{task.task_id}-{task.task_try_id}', file.filename, label=f'{task_execution_time:.2f}s')
+        
+        def plot_file2task_edge(dot, file, task):
+            # skip if the file was not produced by any task
+            if len(file.producers) == 0:
+                return
+            # file_creation_time = task.when_running - file.producers[0].time_worker_end
+            file_creation_time = float('inf')
+            for producer_task_id, producer_task_try_id in file.producers:
+                producer_task = template_manager.tasks[(producer_task_id, producer_task_try_id)]
+                if producer_task.time_worker_end:
+                    file_creation_time = min(file_creation_time, producer_task.time_worker_end)
+            file_creation_time = file_creation_time - template_manager.MIN_TIME
+
+            if task.when_failure_happens:
+                dot.edge(file.filename, f'{task.task_id}-{task.task_try_id}', label=f'{file_creation_time:.2f}s')
+            else:
+                dot.edge(file.filename, f'{task.task_id}-{task.task_try_id}', label=f'{file_creation_time:.2f}s')
+
+        svg_file_path_without_suffix = os.path.join(template_manager.svg_files_dir, f'subgraph-{subgraph_id}-{plot_unsuccessful_task}-{plot_recovery_task}')
+        svg_file_path = f'{svg_file_path_without_suffix}.svg'
+
+        if not Path(svg_file_path).exists():
+            dot = graphviz.Digraph()
+            for (task_id, task_try_id) in list(subgraph):
+                task = template_manager.tasks[(task_id, task_try_id)]
+                # skip if the task is a recovery task and we don't want to plot recovery task
+                if task.is_recovery_task and not plot_recovery_task:
+                    continue
+                # skip if the task unsuccessful and we don't want to plot unsuccessful task
+                if task.when_failure_happens and not plot_unsuccessful_task:
+                    continue
+                # task node
+                plot_task_node(dot, task)
+                # input files
+                for file_name in task.input_files:
+                    file = template_manager.files[file_name]
+                    plot_file_node(dot, file)
+                    plot_file2task_edge(dot, file, task)
+                # output files
+                for file_name in task.output_files:
+                    file = template_manager.files[file_name]
+                    # do not plot if the file has not been created
+                    if len(file.transfers) == 0:
+                        continue
+                    plot_file_node(dot, file)
+                    plot_task2file_edge(dot, task, file)
+            dot.attr(rankdir='TB')
+            dot.engine = 'dot'
+            dot.render(svg_file_path_without_suffix, format='svg', view=False)
+
+        data['subgraph_id_list'] = list(template_manager.subgraphs.keys())
+        data['subgraph_num_tasks_list'] = [len(subgraph) for subgraph in template_manager.subgraphs.values()]
+
+        data['subgraph_id'] = subgraph_id
+        data['subgraph_num_tasks'] = len(subgraph)
+        data['subgraph_svg_content'] = open(svg_file_path, 'r').read()
+
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/runtime-templates-list')
 def get_runtime_templates_list():

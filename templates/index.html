@@ -51,6 +51,8 @@
     <script src="{{ url_for('static', filename='js/task_concurrency.js') }}" type="module"></script>
     <script src="{{ url_for('static', filename='js/worker_transfers.js') }}" type="module"></script>
     <script src="{{ url_for('static', filename='js/file_sizes.js') }}" type="module"></script>
+    <script src="{{ url_for('static', filename='js/file_replicas.js') }}" type="module"></script>
+    <script type="module" src="{{ url_for('static', filename='js/subgraphs.js') }}"></script>
 </head>
 <body>
     <div id="vine-tooltip" class="tooltip"></div>  
@@ -187,6 +189,48 @@
             </div>
             <div id="file-sizes-container" class="container-alpha">
                 <svg id="file-sizes" xmlns="http://www.w3.org/2000/svg"></svg>
+            </div>
+        </div>
+
+        <!-- File Replicas -->
+        <div class="section">
+            <div class="section-header">
+                <h2>File Replicas</h2>
+                <div class="section-buttons">
+                    <button id="button-reset-file-replicas" class="report-button">Reset</button>
+                    <button id="button-download-file-replicas" class="report-button">Download</button>
+                </div>
+            </div>
+            <div id="file-replicas-legend" class="legend-container">
+                <!-- Legend items will be added by JavaScript -->
+            </div>
+            <div id="file-replicas-container" class="container-alpha">
+                <svg id="file-replicas" xmlns="http://www.w3.org/2000/svg"></svg>
+            </div>
+        </div>
+
+        <!-- Subgraphs -->
+        <div class="section">
+            <div class="section-header">
+                <h2>Subgraphs</h2>
+                <div class="section-buttons">
+                    <button id="button-download-subgraph" class="report-button">Download</button>
+                </div>
+            </div>
+            <div class="subgraph-controls">
+                <div class="checkbox-group">
+                    <input type="checkbox" id="plot-failed-task" checked>
+                    <label for="plot-failed-task">Show Failed Tasks</label>
+                    <input type="checkbox" id="plot-recovery-task" checked>
+                    <label for="plot-recovery-task">Show Recovery Tasks</label>
+                </div>
+                <select id="subgraph-selector">
+                    <!-- Options will be populated by JavaScript -->
+                </select>
+            </div>
+            <div id="subgraph-container" class="container-alpha">
+                <div id="subgraph-loading" class="loading-spinner"></div>
+                <!-- SVG will be added by JavaScript D3 -->
             </div>
         </div>
 

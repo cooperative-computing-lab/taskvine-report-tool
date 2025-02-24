@@ -80,13 +80,13 @@ class FileInfo:
         self.consumers = []
         self.producers = []
 
-    def add_consumer(self, consumer):
-        if consumer not in self.consumers:
-            self.consumers.append(consumer)
+    def add_consumer(self, consumer_task):
+        if (consumer_task.task_id, consumer_task.task_try_id) not in self.consumers:
+            self.consumers.append((consumer_task.task_id, consumer_task.task_try_id))
 
-    def add_producer(self, producer):
-        if producer not in self.producers:
-            self.producers.append(producer)
+    def add_producer(self, producer_task):
+        if (producer_task.task_id, producer_task.task_try_id) not in self.producers:
+            self.producers.append((producer_task.task_id, producer_task.task_try_id))
 
     def add_transfer(self, source, destination, event, file_type, cache_level):
         transfer_event = TransferEvent(source, destination, event, file_type, cache_level)
@@ -122,7 +122,7 @@ class FileInfo:
     
     def cache_update(self, destination, time_stage_in, file_type, file_cache_level):
         # check if the file was started staging in before the cache update
-        hit = False
+        has_started_staging_in = False
         time_stage_in = float(time_stage_in)
 
         for transfer in self.transfers:
@@ -135,12 +135,12 @@ class FileInfo:
             if transfer.time_start_stage_in > time_stage_in:
                 continue
             transfer.stage_in(time_stage_in, "cache_update")
-            hit = True
+            has_started_staging_in = True
         
         # this means a task-created file
-        if not hit:
-            file_producer_task_id = self.producers[-1]
-            transfer = self.add_transfer(f"Task {file_producer_task_id}", destination, "task_created", file_type, file_cache_level)
+        if not has_started_staging_in:
+            producer_task_name = f"{self.producers[-1]}"
+            transfer = self.add_transfer(producer_task_name, destination, "task_created", file_type, file_cache_level)
             transfer.start_stage_in(time_stage_in, "pending")
             transfer.stage_in(time_stage_in, "cache_update")
 
