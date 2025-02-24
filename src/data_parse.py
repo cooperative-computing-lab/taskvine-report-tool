@@ -1,9 +1,8 @@
-from worker_info import WorkerInfo
-from task_info import TaskInfo
-from file_info import FileInfo
-from manager_info import ManagerInfo
+from src.worker_info import WorkerInfo
+from src.task_info import TaskInfo
+from src.file_info import FileInfo
+from src.manager_info import ManagerInfo
 
-import graphviz
 import os
 import json
 from datetime import datetime

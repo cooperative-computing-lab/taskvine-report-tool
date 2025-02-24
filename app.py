@@ -1,14 +1,12 @@
 from flask import Flask, render_template, jsonify, Response, request, send_from_directory
 import os
 import argparse
-import ast
 import pandas as pd
 from typing import Dict, Any
 from pathlib import Path
 from collections import defaultdict
-import json
 import graphviz
-from data_parse import DataParser
+from src.data_parse import DataParser
 
 LOGS_DIR = 'logs'
 

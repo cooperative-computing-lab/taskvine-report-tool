@@ -1,9 +1,7 @@
 import argparse
 import os
-from data_parse import DataParser
+from src.data_parse import DataParser
 from pathlib import Path
-from data_process import DataProcessor
-import graphviz
 
 
 if __name__ == '__main__':
@@ -18,14 +16,12 @@ if __name__ == '__main__':
     runtime_template = Path(args.runtime_template).name
     runtime_template = os.path.join(os.getcwd(), 'logs', runtime_template)
 
-    print(f"=== parsing data for {runtime_template}")
+    print(f"=== Generating data for {runtime_template}")
     data_parser = DataParser(runtime_template)
 
     if args.restore:
         data_parser.restore_from_checkpoint()
     else:
         data_parser.parse_logs()
-
-    data_parser.generate_subgraphs()
-    data_parser.checkpoint()
-
+        data_parser.generate_subgraphs()
+        data_parser.checkpoint()
