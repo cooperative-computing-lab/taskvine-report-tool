@@ -46,9 +46,12 @@ class TemplateState:
         self.restore_from_checkpoint()
 
         self.MIN_TIME = float(self.manager.time_start)
-        self.MAX_TIME = float(self.manager.time_end)
-        # if the max time is None, it meas the manager exited abnormally or hasn't exited yet
-        if self.MAX_TIME is None:
+
+        if self.manager.time_end:
+            self.MAX_TIME = float(self.manager.time_end)
+        else:
+            # if the max time is None, it meas the manager exited abnormally or hasn't exited yet
+            self.MAX_TIME = 0
             self.MAX_TIME = 0
             for task in self.tasks.values():
                 if task.time_worker_end is not None:
