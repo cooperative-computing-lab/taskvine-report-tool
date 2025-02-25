@@ -129,6 +129,10 @@ def get_execution_details():
         for worker in template_manager.workers.values():
             if not worker.hash:
                 continue
+            # it means the worker didn't exit normally or hasn't exited yet
+            if len(worker.time_disconnected) != len(worker.time_connected):
+                # set the time_disconnected to the max time
+                worker.time_disconnected = [template_manager.MAX_TIME] * (len(worker.time_connected) - len(worker.time_disconnected))
             worker_info = {
                 'hash': worker.hash,
                 'id': worker.id,
