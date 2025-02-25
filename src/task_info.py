@@ -44,7 +44,6 @@ class TaskInfo:
 
         # time info
         self.when_ready = None
-        self.when_input_transfer_ready = None
         self.time_commit_start = None
         self.time_commit_end = None
         self.when_running = None

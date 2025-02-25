@@ -4,7 +4,7 @@ class TransferEvent:
         self.destination = destination
         
         # event describes how the transfer is created
-        assert event in ["manager_put", "manager_get", "task_created", "puturl", "puturl_now"]
+        assert event in ["manager_put", "manager_get", "task_created", "puturl", "puturl_now", "mini_task"]
         self.event = event
 
         self.time_start_stage_in = None

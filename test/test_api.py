@@ -175,19 +175,22 @@ if __name__ == "__main__":
         {"name": "execution-details", "params": None},
         {"name": "storage-consumption", "params": None},
         {"name": "task-execution-time", "params": None},
-        {"name": "task-concurrency", "params": {"types": "tasks_waiting,tasks_executing"}},
         {"name": "worker-transfers", "variants": [
             {"type": "incoming"},   
             {"type": "outgoing"}
         ]},
-        {"name": "file-sizes", "params": {
-            "order": "asc",
-            "type": "all",
-        }},
         {"name": "subgraphs", "params": {"subgraph_id": 1,
                                          "plot_failed_task": 'true',
-                                         "plot_recovery_task": 'true'}},
+                                         "plot_recovery_task": 'true'
+        }},
         {"name": "file-replicas", "params": None},
+        {"name": "task-concurrency", "params": {
+            "types": "tasks_done"
+        }},
+        {"name": "file-sizes", "params": {
+            "order": "asc",
+            "type": "transferred",
+        }},
     ]
     testing_api = api_list[-1]  # Test worker-transfers
 

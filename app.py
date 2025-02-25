@@ -572,7 +572,7 @@ def get_file_sizes():
         file_type = request.args.get('type', 'all')  # default to all
         if order not in ['asc', 'desc', 'created-time']:
             return jsonify({'error': 'Invalid order'}), 400
-        if file_type not in ['temp', 'meta', 'buffer', 'task-created', 'all']:
+        if file_type not in ['temp', 'meta', 'buffer', 'task-created', 'transferred', 'all']:
             return jsonify({'error': 'Invalid file type'}), 400
         
         data = {}
@@ -594,6 +594,8 @@ def get_file_sizes():
                 if file_type == 'buffer' and not file_name.startswith('buffer-'):
                     continue
                 if file_type == 'task-created' and len(file.producers) == 0:
+                    continue
+                if file_type == 'transferred' and len(file.transfers) == 0:
                     continue
             file_created_time = float('inf')
             for transfer in file.transfers:
@@ -622,10 +624,16 @@ def get_file_sizes():
         data['file_sizes'] = df.values.tolist()
 
         # ploting parameters
-        data['xMin'] = 1
-        data['xMax'] = len(df)
-        data['yMin'] = 0
-        data['yMax'] = max_file_size_mb * scale
+        if len(df) == 0:
+            data['xMin'] = 1
+            data['xMax'] = 1
+            data['yMin'] = 0    
+            data['yMax'] = 0
+        else:
+            data['xMin'] = 1
+            data['xMax'] = len(df)
+            data['yMin'] = 0    
+            data['yMax'] = max_file_size_mb * scale
         data['xTickValues'] = [
             round(data['xMin'], 2),
             round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.25, 2),

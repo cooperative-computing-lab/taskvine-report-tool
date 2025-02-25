@@ -26,7 +26,8 @@ const fileTypes = {
     'temp': { label: 'Temporary Files' },
     'meta': { label: 'Meta Files' },
     'buffer': { label: 'Buffer Files' },
-    'task-created': { label: 'Task Created Files' }
+    'task-created': { label: 'Task Created Files' },
+    'transferred': { label: 'Transferred Files' }
 };
 
 const orderTypes = {
