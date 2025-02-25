@@ -1,6 +1,7 @@
 import { downloadSVG } from './tools.js';
 
 const buttonDownload = document.getElementById('button-download-subgraph');
+const buttonReset = document.getElementById('button-reset-subgraph');
 const checkboxFailedTask = document.getElementById('plot-failed-task');
 const checkboxRecoveryTask = document.getElementById('plot-recovery-task');
 const subgraphSelector = document.getElementById('subgraph-selector');
@@ -31,6 +32,10 @@ function updateSubgraphSelector() {
 
 function handleDownloadClick() {
     downloadSVG('subgraph-container', `subgraph-${state.selectedSubgraphId}.svg`);
+}
+
+function handleResetClick() {
+    initialize();
 }
 
 async function initialize() {
@@ -92,6 +97,9 @@ subgraphSelector.addEventListener('change', (event) => {
     state.selectedSubgraphId = parseInt(event.target.value);
     initialize();
 });
+
+// Add reset button event listener
+buttonReset.addEventListener('click', handleResetClick);
 
 window.document.addEventListener('dataLoaded', () => {
     state.selectedSubgraphId = 1;  // Set initial subgraph ID

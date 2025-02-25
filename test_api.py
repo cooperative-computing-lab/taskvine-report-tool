@@ -180,7 +180,6 @@ if __name__ == "__main__":
             {"type": "incoming"},   
             {"type": "outgoing"}
         ]},
-        {"name": "file-replicas", "params": None},
         {"name": "file-sizes", "params": {
             "order": "asc",
             "type": "all",
@@ -188,6 +187,7 @@ if __name__ == "__main__":
         {"name": "subgraphs", "params": {"subgraph_id": 1,
                                          "plot_failed_task": 'true',
                                          "plot_recovery_task": 'true'}},
+        {"name": "file-replicas", "params": None},
     ]
     testing_api = api_list[-1]  # Test worker-transfers
 

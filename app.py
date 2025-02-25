@@ -506,12 +506,15 @@ def get_file_replicas():
         # Get the file size of each file
         data['file_replicas'] = []
         for file in template_manager.files.values():
+            # skip if the file was not staged in at all (outfile of a task but task unsuccessful)
             file_name = file.filename
             file_size = file.size_mb
-            workers = set()
+            if len(file.transfers) == 0:
+                continue
             # skip if not a temp file
             if not file_name.startswith('temp-'):
                 continue
+            workers = set()
             for transfer in file.transfers:
                 # skip if the file is not staged in
                 if not transfer.time_stage_in:
@@ -531,10 +534,16 @@ def get_file_replicas():
         data['file_replicas'] = df.values.tolist()
         
         # ploting parameters
-        data['xMin'] = 1
-        data['xMax'] = len(df)
-        data['yMin'] = 0    
-        data['yMax'] = df['num_replicas'].max()
+        if len(df) == 0:
+            data['xMin'] = 1
+            data['xMax'] = 1
+            data['yMin'] = 0    
+            data['yMax'] = 0
+        else:
+            data['xMin'] = 1
+            data['xMax'] = len(df)
+            data['yMin'] = 0    
+            data['yMax'] = df['num_replicas'].max()
         data['xTickValues'] = [
             round(data['xMin'], 2),
             round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.25, 2),
@@ -590,7 +599,7 @@ def get_file_sizes():
             for transfer in file.transfers:
                 file_created_time = round(min(file_created_time, transfer.time_start_stage_in - template_manager.MIN_TIME), 2)
             if file_created_time == float('inf'):
-                file.print_info()
+                print(f"Warning: file {file_name} has no transfer")
             data['file_sizes'].append((0, file_name, file_size, file_created_time))
             max_file_size_mb = max(max_file_size_mb, file_size)
 

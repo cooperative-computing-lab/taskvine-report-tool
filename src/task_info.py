@@ -1,7 +1,5 @@
 class TaskInfo:
-    def __init__(self, task_id: int, task_try_id: int, manager_info):
-        self.manager_info = manager_info
-
+    def __init__(self, task_id: int, task_try_id: int):
         # basic info
         self.task_id = task_id
         self.task_try_id = task_try_id
@@ -172,10 +170,10 @@ class TaskInfo:
 
     def set_worker_ip_port(self, worker_ip, worker_port):
         if self.worker_ip and worker_ip != self.worker_ip:
-            raise ValueError(f"worker_ip mismatch for task {self.task_id}")
+            raise ValueError(f"worker_ip mismatch for task {self.task_id}: {self.worker_ip} != {worker_ip}")
         self.worker_ip = worker_ip
         if self.worker_port and worker_port != self.worker_port:
-            raise ValueError(f"worker_port mismatch for task {self.task_id}")
+            raise ValueError(f"worker_port mismatch for task {self.task_id}: {self.worker_port} != {worker_port}")
         self.worker_port = worker_port
 
     def set_cores_requested(self, cores_requested):

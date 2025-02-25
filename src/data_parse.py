@@ -58,7 +58,9 @@ class DataParser:
         self.max_id = 0             # starting from 1
 
         # files
-        self.files = {}      # key: filename, value: FileInfo
+        self.files = {}      # key: file_name, value: FileInfo
+        self.sending_back_transfers = {}      # key: (source_ip, source_port), value: TransferInfo
+        self.putting_transfers = {}           # key: (dest_ip, dest_port), value: TransferInfo
 
         # time info
         self.set_time_zone()
@@ -115,10 +117,10 @@ class DataParser:
             self.workers[worker_entry] = WorkerInfo(worker_ip, worker_port, self)
         return self.workers[worker_entry]
     
-    def ensure_file_info_entry(self, filename: str, size_mb: float):
-        if filename not in self.files:
-            self.files[filename] = FileInfo(filename, size_mb)
-        file = self.files[filename]
+    def ensure_file_info_entry(self, file_name: str, size_mb: float):
+        if file_name not in self.files:
+            self.files[file_name] = FileInfo(file_name, size_mb)
+        file = self.files[file_name]
         if size_mb > 0:
             file.set_size_mb(size_mb)
         return file
@@ -215,10 +217,6 @@ class DataParser:
             for line in file:
                 total_lines += 1
 
-        # put a file on a worker
-        putting_transfer_event = None
-        getting_transfer_event = None
-
         # receiving resources info from a worker
         receiving_resources_from_worker = None
 
@@ -280,29 +278,38 @@ class DataParser:
                     put_idx = parts.index("put")
                     ip, port = WorkerInfo.extract_ip_port_from_string(parts[put_idx - 1])
                     worker = self.workers[(ip, port)]
-                    filename = parts[put_idx + 1]
+                    file_name = parts[put_idx + 1]
 
                     file_cache_level = parts[put_idx + 2]
                     file_size_mb = int(parts[put_idx + 3]) / 2**20
 
-                    if filename.startswith('buffer'):
+                    if file_name.startswith('buffer'):
                         file_type = 4
-                    elif filename.startswith('file'):
+                    elif file_name.startswith('file'):
                         file_type = 1
                     else:
-                        raise ValueError(f"pending file type: {filename}")
+                        raise ValueError(f"pending file type: {file_name}")
 
-                    file = self.ensure_file_info_entry(filename, file_size_mb)
-                    putting_transfer_event = file.add_transfer('manager', (worker.ip, worker.port), 'manager_put', file_type, file_cache_level)
-                    putting_transfer_event.start_stage_in(timestamp, "pending")
+                    file = self.ensure_file_info_entry(file_name, file_size_mb)
+                    transfer = file.add_transfer('manager', (worker.ip, worker.port), 'manager_put', file_type, file_cache_level)
+                    transfer.start_stage_in(timestamp, "pending")
+                    assert (worker.ip, worker.port) not in self.putting_transfers
+                    self.putting_transfers[(worker.ip, worker.port)] = transfer
                     continue
-                if putting_transfer_event and "file" in parts:
+                if "received" in parts:
+                    dest_ip, dest_port = WorkerInfo.extract_ip_port_from_string(parts[parts.index("received") - 1])
+                    assert (dest_ip, dest_port) in self.putting_transfers
+                    transfer = self.putting_transfers[(dest_ip, dest_port)]
+                    transfer.stage_in(timestamp, "worker_received")
+                    del self.putting_transfers[(dest_ip, dest_port)]
                     continue
-                if putting_transfer_event and "received" in parts:
-                    putting_transfer_event.stage_in(timestamp, "worker_received")
-                    putting_transfer_event = None
-                    continue
-                if putting_transfer_event:
+
+                if "Failed to send task" in line:
+                    task_id = int(parts[parts.index("task") + 1])
+                    task_entry = (task_id, self.current_try_id[task_id])
+                    task = self.tasks[task_entry]
+                    task.set_task_status(4 << 3)
+                    task.set_when_failure_happens(timestamp)
                     continue
 
                 if "exhausted resources on" in line:
@@ -335,7 +342,7 @@ class DataParser:
 
                 if "puturl" in parts or "puturl_now" in parts:
                     puturl_id = parts.index("puturl") if "puturl" in parts else parts.index("puturl_now")
-                    filename = parts[puturl_id + 2]
+                    file_name = parts[puturl_id + 2]
                     file_cache_level = int(parts[puturl_id + 3])
                     size_in_mb = int(parts[puturl_id + 4]) / 2**20
                     
@@ -349,18 +356,23 @@ class DataParser:
                     else:
                         transfer_event = 'puturl_now'
 
-                    file = self.ensure_file_info_entry(filename, size_in_mb)
+                    file = self.ensure_file_info_entry(file_name, size_in_mb)
                     transfer = file.add_transfer((source_worker.ip, source_worker.port), (dest_worker.ip, dest_worker.port), transfer_event, 2, file_cache_level)
                     transfer.start_stage_in(timestamp, "pending")
                     continue
 
-                if "tx to" in line and "task" in parts:
+                if "tx to" in line and "task" in parts and parts.index("task") + 2 == len(parts):
                     task_idx = parts.index("task")
                     sending_task_id = int(parts[task_idx + 1])
                     sending_task_try_id = self.current_try_id[sending_task_id]
                     sending_task = self.tasks[(sending_task_id, sending_task_try_id)]
-                    worker_ip, worker_port = WorkerInfo.extract_ip_port_from_string(parts[task_idx - 1])
-                    sending_task.set_worker_ip_port(worker_ip, worker_port)
+
+                    try:
+                        worker_ip, worker_port = WorkerInfo.extract_ip_port_from_string(parts[task_idx - 1])
+                        if not sending_task.worker_ip:
+                            sending_task.set_worker_ip_port(worker_ip, worker_port)
+                    except:
+                        print(line)
                     continue
                 if sending_task_id:
                     task = self.tasks[(sending_task_id, self.current_try_id[sending_task_id])]
@@ -377,15 +389,21 @@ class DataParser:
                     elif "category" in parts:
                         task.set_category(parts[parts.index("category") + 1])
                     elif "infile" in parts:
-                        filename = parts[parts.index("infile") + 1]
-                        file = self.ensure_file_info_entry(filename, 0)
+                        file_name = parts[parts.index("infile") + 1]
+                        file = self.ensure_file_info_entry(file_name, 0)
                         file.add_consumer(task)
-                        task.add_input_file(filename)
+                        task.add_input_file(file_name)
                     elif "outfile" in parts:
-                        filename = parts[parts.index("outfile") + 1]
-                        file = self.ensure_file_info_entry(filename, 0)
+                        file_name = parts[parts.index("outfile") + 1]
+                        file = self.ensure_file_info_entry(file_name, 0)
                         file.add_producer(task)
-                        task.add_output_file(filename)
+                        task.add_output_file(file_name)
+                    elif "cmd" in parts:
+                        pass
+                    elif "python3" in parts:
+                        pass
+                    else:
+                        print(f"Warning: unrecognized line: {line}")
                     continue
 
                 if "state change:" in line:
@@ -394,7 +412,7 @@ class DataParser:
                         assert task_id not in self.current_try_id
                         # new task entry
                         self.current_try_id[task_id] += 1
-                        task = TaskInfo(task_id, self.current_try_id[task_id], self)
+                        task = TaskInfo(task_id, self.current_try_id[task_id])
                         task.set_when_ready(timestamp)
                         self.add_task(task)
                         continue
@@ -402,13 +420,18 @@ class DataParser:
                     task_entry = (task_id, self.current_try_id[task_id])
                     task = self.tasks[task_entry]
                     if "READY (1) to RUNNING (2)" in line:                  # as expected 
-                        # update the coremap
-                        worker_entry = (task.worker_ip, task.worker_port)
-                        worker = self.workers[worker_entry]
+                        # it could be that the task related info was unable to be sent (also comes with a "failed to send" message)
+                        # in this case, even the state is switched to running, there is no worker info
                         task.set_when_running(timestamp)
-                        task.committed_worker_hash = worker.hash
-                        task.worker_id = worker.id
-                        worker.run_task(task)
+                        if not task.worker_ip:
+                            continue
+                        else:
+                            # update the coremap
+                            worker_entry = (task.worker_ip, task.worker_port)
+                            worker = self.workers[worker_entry]
+                            task.committed_worker_hash = worker.hash
+                            task.worker_id = worker.id
+                            worker.run_task(task)
                     elif "RUNNING (2) to WAITING_RETRIEVAL (3)" in line:    # as expected
                         task.set_when_waiting_retrieval(timestamp)
                         # update the coremap
@@ -418,34 +441,40 @@ class DataParser:
                     elif "WAITING_RETRIEVAL (3) to RETRIEVED (4)" in line:  # as expected
                         task.set_when_retrieved(timestamp)
                     elif "RETRIEVED (4) to DONE (5)" in line:               # as expected
-                        worker_entry = (task.worker_ip, task.worker_port)
-                        worker = self.workers[worker_entry]
                         task.set_when_done(timestamp)
-                        self.manager.set_when_last_task_done(timestamp)
-                        worker.tasks_completed.append(task)
+                        if task.worker_ip:
+                            worker_entry = (task.worker_ip, task.worker_port)
+                            worker = self.workers[worker_entry]
+                            self.manager.set_when_last_task_done(timestamp)
+                            worker.tasks_completed.append(task)
                     elif "WAITING_RETRIEVAL (3) to READY (1)" in line or \
                          "RUNNING (2) to READY (1)" in line:                # task failure
                         # new task entry
                         self.current_try_id[task_id] += 1
-                        new_task = TaskInfo(task_id, self.current_try_id[task_id], self)
+                        new_task = TaskInfo(task_id, self.current_try_id[task_id])
                         # skip if the task status was set by a complete message
+                        task.set_when_failure_happens(timestamp)
                         if not task.task_status:
-                            task.set_when_failure_happens(timestamp)
-                            worker_entry = (task.worker_ip, task.worker_port)
-                            worker = self.workers[worker_entry]
-                            # it is that the worker disconnected
-                            if len(worker.time_connected) == len(worker.time_disconnected):
-                                task.set_task_status(15 << 3)
-                            # otherwise, we do not know the reason
-                            else:
-                                task.set_task_status(4 << 3)
+                            if task.worker_ip:
+                                worker_entry = (task.worker_ip, task.worker_port)
+                                worker = self.workers[worker_entry]
+                                # it is that the worker disconnected
+                                if len(worker.time_connected) == len(worker.time_disconnected):
+                                    task.set_task_status(15 << 3)
+                        # otherwise, we donot know the reason
+                        if not task.task_status:
+                            task.set_task_status(4 << 3)
                         new_task.set_when_ready(timestamp)
                         self.add_task(new_task)
-                        # update the worker's tasks_failed
-                        worker_entry = (task.worker_ip, task.worker_port)
-                        worker = self.workers[worker_entry]
-                        worker.tasks_failed.append(task)
-                        worker.reap_task(task)
+                        # update the worker's tasks_failed, if the task was successfully committed
+                        if task.worker_ip:
+                            worker_entry = (task.worker_ip, task.worker_port)
+                            worker = self.workers[worker_entry]
+                            worker.tasks_failed.append(task)
+                            worker.reap_task(task)
+                    elif "RUNNING (2) to RETRIEVED (4)" in line:
+                        task.set_when_retrieved(timestamp)
+                        print(f"Warning: task {task_id} state change: from RUNNING (2) to RETRIEVED (4)")
                     else:
                         raise ValueError(f"pending state change: {line}")
                     continue
@@ -492,7 +521,7 @@ class DataParser:
                     task.set_stdout_size_mb(stdout_size_mb)
                     continue
 
-                if "has" in parts and "a" in parts and "ready" in parts and "transfer" in parts:
+                if "has a ready transfer source for all files" in line:
                     has_idx = parts.index("has")
                     task_id = int(parts[has_idx - 1])
                     if task_id not in self.current_try_id:
@@ -508,14 +537,14 @@ class DataParser:
                     ip, port = WorkerInfo.extract_ip_port_from_string(parts[cache_update_id - 1])
                     worker = self.workers[(ip, port)]
 
-                    filename = parts[cache_update_id + 1]
+                    file_name = parts[cache_update_id + 1]
                     file_type = parts[cache_update_id + 2]
                     file_cache_level = parts[cache_update_id + 3]
                     size_in_mb = int(parts[cache_update_id + 4]) / 2**20
                     # start_sending_time = int(parts[cache_update_id + 7]) / 1e6
 
                     # if this is a task-generated file, it is the first time the file is cached on this worker, otherwise we only update the stage in time
-                    file = self.ensure_file_info_entry(filename, size_in_mb)
+                    file = self.ensure_file_info_entry(file_name, size_in_mb)
                     # let the file handle the cache update
                     file.cache_update((worker.ip, worker.port), timestamp, file_type, file_cache_level)
                     continue
@@ -524,19 +553,19 @@ class DataParser:
                     cache_invalid_id = parts.index("cache-invalid")
                     ip, port = WorkerInfo.extract_ip_port_from_string(parts[cache_invalid_id - 1])
                     worker = self.workers[(ip, port)]
-                    filename = parts[cache_invalid_id + 1]
+                    file_name = parts[cache_invalid_id + 1]
 
-                    file = self.files[filename]
+                    file = self.files[file_name]
                     file.cache_invalid((ip, port), timestamp)
                     continue
 
                 if "unlink" in parts:
                     unlink_id = parts.index("unlink")
-                    filename = parts[unlink_id + 1]
+                    file_name = parts[unlink_id + 1]
                     ip, port = WorkerInfo.extract_ip_port_from_string(parts[unlink_id - 1])
                     worker = self.workers[(ip, port)]
 
-                    file = self.files[filename]
+                    file = self.files[file_name]
                     file.unlink((ip, port), timestamp)
                     continue
                     
@@ -554,29 +583,34 @@ class DataParser:
                     task = self.tasks[(task_id, task_try_id)]
                     task.exhausted_resources = True
                 
-                # get an output file from a worker
+                # get an output file from a worker, one worker can only send one file back at a time
                 if "sending back" in line:
-                    assert getting_transfer_event is None
-                    getting_transfer_event = True
+                    back_idx = parts.index("back")
+                    file_name = parts[back_idx + 1]
+                    source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[back_idx - 2])
+                    assert (source_ip, source_port) not in self.sending_back_transfers
+                    file = self.files[file_name]
+                    transfer = file.add_transfer((source_ip, source_port), 'manager', 'manager_get', 1, 1)
+                    transfer.start_stage_in(timestamp, "pending")
+                    self.sending_back_transfers[(source_ip, source_port)] = transfer
                     continue
-                if getting_transfer_event and "get" in parts:
-                    continue
-                if getting_transfer_event and "file" in parts and "Receiving" not in parts:
-                    continue
-                if getting_transfer_event and "Receiving file" in line:
+                if "rx from" in line and "file" in parts:
                     file_idx = parts.index("file")
-                    filename = parts[file_idx + 1]
-                    file_size_mb = int(parts[parts.index("(size:") + 1]) / 2**20
-                    source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[parts.index("from") + 1])
-
-                    file = self.ensure_file_info_entry(filename, file_size_mb)
-                    getting_transfer_event = file.add_transfer((source_ip, source_port), 'manager', 'manager_get', 1, 1)
-                    getting_transfer_event.start_stage_in(timestamp, "pending")
+                    file_name = parts[file_idx + 1]
+                    assert file_name in self.files
+                    source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[parts.index("file") - 1])
+                    assert (source_ip, source_port) in self.workers
+                    assert (source_ip, source_port) in self.sending_back_transfers
                     continue
-                if getting_transfer_event and "sent" in parts:
-                    getting_transfer_event.stage_in(timestamp, "manager_received")
-                    getting_transfer_event = None
-                    continue
+                if "Receiving file" in line:
+                    pass
+                if "sent" in parts:
+                    send_idx = parts.index("sent")
+                    source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[send_idx - 1])
+                    assert (source_ip, source_port) in self.sending_back_transfers
+                    transfer = self.sending_back_transfers[(source_ip, source_port)]
+                    transfer.stage_in(timestamp, "manager_received")
+                    del self.sending_back_transfers[(source_ip, source_port)]
 
                 if "manager end" in line:
                     self.manager.set_time_end(timestamp)

@@ -39,7 +39,7 @@ class TransferEvent:
         self.cache_level = cache_level
 
     def set_eventual_state(self, eventual_state):
-        assert eventual_state in ["pending", "cache_invalid", "cache_update", "worker_received", "manager_received", "worker_removed", "manager_removed", "unlink"]
+        assert eventual_state in ["pending", "cache_invalid", "cache_update", "worker_received", "manager_received", "worker_removed", "manager_removed", "unlink", "failed_to_return", "failed_to_send"]
         self.eventual_state = eventual_state
 
     def start_stage_in(self, time_start_stage_in, eventual_state):
