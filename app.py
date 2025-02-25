@@ -44,8 +44,15 @@ class TemplateState:
         self.data_parser = DataParser(self.runtime_template)
         self.svg_files_dir = self.data_parser.svg_files_dir
         self.restore_from_checkpoint()
+
         self.MIN_TIME = float(self.manager.time_start)
         self.MAX_TIME = float(self.manager.time_end)
+        # if the max time is None, it meas the manager exited abnormally or hasn't exited yet
+        if self.MAX_TIME is None:
+            self.MAX_TIME = 0
+            for task in self.tasks.values():
+                if task.time_worker_end is not None:
+                    self.MAX_TIME = max(self.MAX_TIME, task.time_worker_end)
 
     def ensure_runtime_template(self, runtime_template):
         if not runtime_template:
