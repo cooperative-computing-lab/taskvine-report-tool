@@ -132,7 +132,7 @@ function plotWorkerTransfers() {
             .curve(d3.curveStepAfter);  // Use step-after curve
 
         svg.append('path')
-            .datum({transfers: transfers, workerId: workerId})  // Store workerId with data
+            .datum({transfers: transfers, workerId: workerId})
             .attr('class', 'line')
             .attr('fill', 'none')
             .attr('stroke', colorScale(workerId))
@@ -147,34 +147,53 @@ function plotWorkerTransfers() {
                     .attr('stroke-width', HIGHLIGHT_WIDTH);
 
                 const data = d3.select(this).datum();
-                const point = data.transfers[0];  // Get first point for tooltip
-                if (point) {
-                    tooltip.style.visibility = 'visible';
-                    tooltip.innerHTML = `
-                        Worker: ${data.workerId}<br>
-                        Time: ${point[0].toFixed(2)}s<br>
-                        Concurrent Transfers: ${point[1]}
-                    `;
-                    tooltip.style.top = (e.pageY - 15) + 'px';
-                    tooltip.style.left = (e.pageX + 10) + 'px';
+                const mouseX = xScale.invert(d3.pointer(e)[0]);
+                
+                // Find the closest point
+                let closestPoint = data.transfers[0];
+                let minDistance = Math.abs(mouseX - closestPoint[0]);
+                
+                for (let i = 0; i < data.transfers.length; i++) {
+                    const distance = Math.abs(mouseX - data.transfers[i][0]);
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        closestPoint = data.transfers[i];
+                    }
                 }
+
+                tooltip.style.visibility = 'visible';
+                tooltip.innerHTML = `
+                    Worker: ${data.workerId}<br>
+                    Time: ${closestPoint[0].toFixed(2)}s<br>
+                    Concurrent Transfers: ${closestPoint[1]}
+                `;
+                tooltip.style.top = (e.pageY - 15) + 'px';
+                tooltip.style.left = (e.pageX + 10) + 'px';
             })
             .on('mousemove', function(e) {
                 const data = d3.select(this).datum();
                 const mouseX = xScale.invert(d3.pointer(e)[0]);
-                const bisect = d3.bisector(d => d[0]).left;
-                const index = bisect(data.transfers, mouseX);
-                const point = data.transfers[index];
-
-                if (point) {
-                    tooltip.style.top = (e.pageY - 15) + 'px';
-                    tooltip.style.left = (e.pageX + 10) + 'px';
-                    tooltip.innerHTML = `
-                        Worker: ${data.workerId}<br>
-                        Time: ${point[0].toFixed(2)}s<br>
-                        Concurrent Transfers: ${point[1]}
-                    `;
+                
+                // Find the closest point
+                let closestPoint = data.transfers[0];
+                let minDistance = Math.abs(mouseX - closestPoint[0]);
+                
+                for (let i = 0; i < data.transfers.length; i++) {
+                    const distance = Math.abs(mouseX - data.transfers[i][0]);
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        closestPoint = data.transfers[i];
+                    }
                 }
+
+                tooltip.style.visibility = 'visible';
+                tooltip.innerHTML = `
+                    Worker: ${data.workerId}<br>
+                    Time: ${closestPoint[0].toFixed(2)}s<br>
+                    Concurrent Transfers: ${closestPoint[1]}
+                `;
+                tooltip.style.top = (e.pageY - 15) + 'px';
+                tooltip.style.left = (e.pageX + 10) + 'px';
             })
             .on('mouseout', function() {
                 d3.selectAll('.line')
