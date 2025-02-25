@@ -529,7 +529,11 @@ def get_file_replicas():
         elif order == 'desc':   
             df = df.sort_values(by=['num_replicas'], ascending=False)
         df['file_idx'] = range(1, len(df) + 1)
-        
+
+        # convert numpy int to python int
+        df['num_replicas'] = df['num_replicas'].astype(int)
+        df['file_size'] = df['file_size'].astype(int)
+
         # convert the dataframe to a list of tuples
         data['file_replicas'] = df.values.tolist()
         
@@ -543,7 +547,7 @@ def get_file_replicas():
             data['xMin'] = 1
             data['xMax'] = len(df)
             data['yMin'] = 0    
-            data['yMax'] = df['num_replicas'].max()
+            data['yMax'] = int(df['num_replicas'].max())
         data['xTickValues'] = [
             round(data['xMin'], 2),
             round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.25, 2),
