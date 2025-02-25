@@ -184,19 +184,19 @@ class DataParser:
 
                 if event_type == 'TASK':
                     if status == 'READY':
-                        task_id = int(obj_id)
-                        self.current_try_id[task_id] += 1
-                        assert (task_id, self.current_try_id[task_id]) in self.tasks
+                        # task_id = int(obj_id)
+                        # self.current_try_id[task_id] += 1
+                        # assert (task_id, self.current_try_id[task_id]) in self.tasks
                         continue
-                    task_id = int(obj_id)
-                    task_entry = (task_id, self.current_try_id[task_id])
+                    #task_id = int(obj_id)
+                    #task_entry = (task_id, self.current_try_id[task_id])
 
-                    task = self.tasks[task_entry]
+                    # task = self.tasks[task_entry]
                     if status == 'RUNNING':
-                        resources_allocated = json.loads(info.split(' ', 3)[-1])
-                        task.time_commit_start = float(resources_allocated["time_commit_start"][0])
-                        task.time_commit_end = float(resources_allocated["time_commit_end"][0])
-                        self.manager.set_when_first_task_start_commit(task.time_commit_start)
+                        # resources_allocated = json.loads(info.split(' ', 3)[-1])
+                        # task.time_commit_start = float(resources_allocated["time_commit_start"][0])
+                        # task.time_commit_end = float(resources_allocated["time_commit_end"][0])
+                        # self.manager.set_when_first_task_start_commit(task.time_commit_start)
                         continue
                     if status == 'WAITING_RETRIEVAL':
                         continue
@@ -666,7 +666,7 @@ class DataParser:
 
     def parse_logs(self):
         self.parse_debug()
-        self.parse_transactions()
+        # self.parse_transactions()
 
     def generate_subgraphs(self):
         parent = {}
