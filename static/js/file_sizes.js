@@ -119,9 +119,16 @@ function plotFileSizes() {
         .append('g')
         .attr('transform', `translate(${margin.left},${margin.top})`);
 
+    // Calculate bar width
+    const barWidth = Math.min(
+        (width / state.data.length) * 0.8,  // 80% of available space
+        30  // maximum width of 30 pixels
+    );
+
+    // Adjust xScale to add one bar width of padding on each side
     const xScale = d3.scaleLinear()
-        .domain([state.xMin, state.xMax])
-        .range([0, width]);
+        .domain([state.xMin - 1, state.xMax + 1])  // Add padding of 1 unit on each side
+        .range([barWidth, width - barWidth]);  // Adjust range to leave space for one bar
 
     const yScale = d3.scaleLinear()
         .domain([state.yMin, state.yMax])
@@ -144,13 +151,7 @@ function plotFileSizes() {
         .selectAll('text')
         .style('font-size', state.tickFontSize);
 
-    // Calculate bar width
-    const barWidth = Math.min(
-        (width / state.data.length) * 0.8,  // 80% of available space
-        30  // maximum width of 30 pixels
-    );
-
-    // Add the bars
+    // Add the bars with updated xScale
     svg.selectAll('rect')
         .data(state.data)
         .enter()
