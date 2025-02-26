@@ -674,9 +674,15 @@ class DataParser:
             parent[key] = key
 
         def find(x):
-            if parent[x] != x:
-                parent[x] = find(parent[x])
-            return parent[x]
+            root = x
+            while parent[root] != root:
+                root = parent[root]
+            
+            while x != root:
+                parent[x], x = root, parent[x]
+            
+            return root
+
 
         def union(x, y):
             root_x = find(x)
