@@ -220,6 +220,7 @@ class DataParser:
             datestring = parts[0] + " " + parts[1]
             timestamp = self.datestring_to_timestamp(datestring)
             timestamp = floor_decimal(timestamp, 2)
+            self.manager.update_current_max_time(timestamp)
         except:
             # this line does not start with a timestamp, which sometimes happens
             return

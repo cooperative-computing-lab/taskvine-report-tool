@@ -50,12 +50,8 @@ class TemplateState:
         if self.manager.time_end:
             self.MAX_TIME = float(self.manager.time_end)
         else:
-            # if the max time is None, it meas the manager exited abnormally or hasn't exited yet
-            self.MAX_TIME = 0
-            self.MAX_TIME = 0
-            for task in self.tasks.values():
-                if task.time_worker_end is not None:
-                    self.MAX_TIME = max(self.MAX_TIME, task.time_worker_end)
+            # if the max time is None, it means the manager exited abnormally or hasn't exited yet
+            self.MAX_TIME = self.manager.current_max_time
 
     def ensure_runtime_template(self, runtime_template):
         if not runtime_template:

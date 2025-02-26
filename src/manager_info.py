@@ -29,6 +29,14 @@ class ManagerInfo:
         self.lifetime_s = None
         self.time_start_human = None
         self.time_end_human = None
+        self.current_max_time = None
+
+    def update_current_max_time(self, time):
+        time = float(time)
+        if self.current_max_time is None:
+            self.current_max_time = time
+        else:
+            self.current_max_time = max(self.current_max_time, time)
 
     def set_time_start(self, time_start):
         self.time_start = float(time_start)
