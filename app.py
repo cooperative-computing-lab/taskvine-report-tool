@@ -96,6 +96,8 @@ def get_execution_details():
                     'worker_id': task.worker_id,
                     'core_id': task.core_id[0],
                     'is_recovery_task': task.is_recovery_task,
+                    'num_input_files': len(task.input_files),
+                    'num_output_files': len(task.output_files),
                     'task_status': task.task_status,
                     'category': task.category,
                     'when_ready': task.when_ready - template_manager.MIN_TIME,
@@ -104,7 +106,7 @@ def get_execution_details():
                     'time_worker_end': task.time_worker_end - template_manager.MIN_TIME,
                     'when_waiting_retrieval': task.when_waiting_retrieval - template_manager.MIN_TIME,
                     'when_retrieved': task.when_retrieved - template_manager.MIN_TIME,
-                    'when_done': task.when_done - template_manager.MIN_TIME, 
+                    'when_done': task.when_done - template_manager.MIN_TIME,
                 }
                 data['successfulTasks'].append(done_task_info)
             else:
@@ -117,6 +119,8 @@ def get_execution_details():
                     'worker_id': task.worker_id,
                     'core_id': task.core_id[0],
                     'is_recovery_task': task.is_recovery_task,
+                    'num_input_files': len(task.input_files),
+                    'num_output_files': len(task.output_files),
                     'task_status': task.task_status,
                     'category': task.category,
                     'when_ready': task.when_ready - template_manager.MIN_TIME,
@@ -136,6 +140,7 @@ def get_execution_details():
             worker_info = {
                 'hash': worker.hash,
                 'id': worker.id,
+                'worker_ip_port': f"{worker.ip}:{worker.port}",
                 'time_connected': [t - template_manager.MIN_TIME for t in worker.time_connected],
                 'time_disconnected': [t - template_manager.MIN_TIME for t in worker.time_disconnected],
                 'cores': worker.cores,

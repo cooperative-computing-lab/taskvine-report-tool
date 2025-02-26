@@ -60,6 +60,8 @@ function getTaskInnerHTML(task) {
         core id: ${task.core_id}<br>
         when ready: ${(task.when_ready).toFixed(2)}<br>
         when running: ${(task.when_running).toFixed(2)}<br>
+        num input files: ${task.num_input_files}<br>
+        num output files: ${task.num_output_files}<br>
         time worker start: ${(task.time_worker_start).toFixed(2)}<br>
         time worker end: ${(task.time_worker_end).toFixed(2)}<br>   
         when waiting retrieval: ${(task.when_waiting_retrieval).toFixed(2)}<br>
@@ -268,6 +270,7 @@ function plotExecutionDetails() {
                         tooltip.innerHTML = `
                             cores: ${worker.cores}<br>
                             worker id: ${worker.id}<br>
+                            worker ip port: ${worker.worker_ip_port}<br>
                             when connected: ${(connectTime).toFixed(2)}s<br>
                             when disconnected: ${(disconnectTime).toFixed(2)}s<br>
                             life time: ${(disconnectTime - connectTime).toFixed(2)}s<br>`;
