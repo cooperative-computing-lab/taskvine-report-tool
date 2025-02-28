@@ -540,6 +540,7 @@ function plotAxis(svg, svgWidth, svgHeight) {
     }
     const yAxis = d3.axisLeft(yScale)
         .tickValues(selectedTicks)
+        .tickSizeOuter(0)
         .tickFormat(d => d.split('-')[0]);
     svg.append('g')
         .call(yAxis)

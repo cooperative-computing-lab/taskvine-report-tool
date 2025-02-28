@@ -17,7 +17,7 @@ while IFS= read -r subdir; do
     # Check if vine-logs directory exists and contains debug file
     if [ -d "$subdir/vine-logs" ] && [ -f "$subdir/vine-logs/debug" ]; then
         echo "=== processing $subdir..."
-        python generate_data.py "$subdir"
+        python3 generate_data.py "$subdir"
     else
         echo "=== skipping $subdir (no vine-logs/debug file found)"
     fi

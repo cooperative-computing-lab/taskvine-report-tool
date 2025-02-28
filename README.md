@@ -1,101 +1,153 @@
-## README
+# TaskVine Report Tool
 
-This is an interactive visualization tool for [TaskVine](https://ccl.cse.nd.edu/software/taskvine/), a task scheduler for large workflows to run effiently on HPC clusters, allowing users to efficiently organize and visualize the results from log files. 
+An interactive visualization tool for [TaskVine](https://cctools.readthedocs.io/en/stable/taskvine/), a task scheduler for large workflows to run efficiently on HPC clusters. This tool helps you analyze task execution patterns, file transfers, resource utilization, and other key metrics.
 
-### Quick Install
+## Quick Install
 
-Install these packages via conda
+Install required Python packages via conda:
 
 ```bash
 conda install -y flask pandas tqdm bitarray python-graphviz
 ```
 
-### Use Instruction
+## Usage Guide
 
-The process of generating a report from a log directory involves three steps:
+Follow these steps to use the visualization tool:
 
-1. Organize the logs directory properly. All log entries should be stored in the `logs` directory. 
+### 1. Configure TaskVine Log Location (Recommended)
 
-   By default, when running TaskVine, the manager generates a log directory named `vine-logs` located under `vine-run-info/most-recent`, though `most-recent` can be replaced by any entry within `vine-run-info`. 
+The easiest way to use this tool is to configure TaskVine to generate logs directly in the correct location. When creating your TaskVine manager, set these parameters:
 
-   You need to copy the `most-recent` (or any other entry from `vine-run-info`) into the `logs` directory.
+```python
+manager = vine.Manager(
+    9123,
+    run_info_path="~/taskvine-report-tool",   # Path to this tool's directory
+    run_info_template="experiment1"           # Name for this run's logs
+)
+```
 
-   There is an example in the repository which can be used out of the box:
+This will automatically create the correct directory structure:
+```
+~/taskvine-report-tool/
+└── logs/
+    └── experiment1/
+        └── vine-logs/
+            ├── debug
+            └── transactions
+```
 
-   ~~~
-   logs
-   └── test_example
-       └── vine-logs
-           ├── debug
-           ├── performance
-           ├── taskgraph
-           ├── transactions
-           └── workflow.json
-   ~~~
+After your workflow completes, simply:
+1. Navigate to the tool directory: `cd ~/taskvine-report-tool`
+2. Generate the visualization data: `python3 generate_data.py logs/experiment1`
+3. Refresh your browser to see the new log collection
 
-   Typically, log files under `vine-logs` include at least `debug`, `performance`, `taskgraph`, and `transactions`.
+### 2. Prepare Log Files
 
-   A `workflow.json` file is also normally produced by TaskVine, but it won't be used by this tool.
+All log files should be placed in the `logs` directory. Currently, the tool only parses the `debug` and `transactions` logs, so the other log files are optional. The directory structure should be:
 
-2. Once the logs are properly arranged, you can produce the intermediate CSV and graph files for visualization. 
+```
+logs/
+└── your_log_folder_name/
+    └── vine-logs/
+        ├── debug         (required)
+        ├── performance   (optional)
+        ├── taskgraph     (optional)
+        └── transactions  (required)
+```
 
-   The reason we split this process is that data processing is usually compute-intensive, while visualization alone is relatively fast. 
+For example, if you have multiple log collections, your directory structure might look like this:
 
-   By generating the data once, it can be reused multiple times.
+```
+logs/
+├── experiment1/
+│   └── vine-logs/
+│       ├── debug
+│       └── transactions
+├── large_workflow/
+│   └── vine-logs/
+│       ├── debug
+│       └── transactions
+└── test_run/
+    └── vine-logs/
+        ├── debug
+        ├── performance
+        ├── taskgraph
+        └── transactions
+```
 
-   The first step is to generate some CSV files, which provides the majority of aspects of a run, including how tasks are distributed among workers, what are the execution time of each task, how many tasks are running concurrently at different time, etc.
-   
-   To generate the CSV files, use:
+### 3. Generate Visualization Data
 
-   ```
-   python generate_csv.py logs/[log_name]
-   ```
+For each log collection, generate the visualization data by running:
 
-   For example
+```bash
+python3 generate_data.py logs/your_log_folder_name
+```
 
-   ```
-   python generate_csv.py logs/test_example
-   ```
+Example:
+```bash
+python3 generate_data.py logs/experiment1
+```
 
-   Additionally, users can optionally generate the task graph to further examine the relationships between tasks. We separate this process because it can take a significant amount of time if there are hundreds of thousands of tasks.
+This will create a `pkl-files` directory under your log folder containing the processed data:
+```
+logs/
+└── experiment1/
+    ├── vine-logs/
+    │   ├── debug
+    │   └── transactions
+    └── pkl-files/          # Generated data directory
+        ├── manager.pkl     # Manager information
+        ├── workers.pkl     # Worker statistics
+        ├── tasks.pkl       # Task execution details
+        ├── files.pkl       # File transfer information
+        └── subgraphs.pkl   # Task dependency graphs
+```
 
-   To generate the graph files, use
+### 4. Start Visualization Server
 
-   ```
-   python generate_graph.py logs/[log_name]
-   ```
+After generating the data, start the web server:
 
-   For example
+```bash
+python3 app.py
+```
 
-   ```
-   python generate_graph.py logs/test_example/
-   ```
+By default, the server runs on port 9122. You can specify a different port using the `--port` argument:
 
-3. Once all the data is generated, run the following command to open a port for online visualization
+```bash
+python3 app.py --port 8080
+```
 
-   ```
-   python app.py
-   ```
+### 5. View Visualization Report
 
-   All entries under `logs` are detected, allowing to switch between different entries for exploring and comparing.
+Once the server is running, access the visualization in your browser at:
 
-### Examples
+```
+http://localhost:9122
+```
 
-Here are some quick demostrations of the demonstration page. Note that this demo runs on a larger scale example, which is different from the one in the current repository.
+On the web interface, you can:
+- Switch between different log collections
+- View task execution time distributions
+- Analyze file transfer patterns
+- Monitor resource utilization
+- Export visualization charts
 
-![screenshot_1](imgs/screenshot_1.png)
+## Important Notes
 
-![screenshot_2](imgs/screenshot_2.png)
+1. Ensure correct log folder structure with the required `vine-logs` subdirectory
+2. Each log collection must contain complete log files (debug and transactions)
+3. Data generation may take some time, especially for large workflows
+4. Ensure sufficient disk space for generated data files
+5. For workflows with large task graphs, the initial data generation and graph visualization might take significant time (potentially hours on some machines). However, once processed, the results are cached in the `pkl-files` directory, making subsequent loads much faster.
 
-![screenshot_3](imgs/screenshot_3.png)
+## Troubleshooting
 
-![screenshot_4](imgs/screenshot_4.png)
+If you encounter issues:
+1. Verify the log folder structure is correct
+2. Confirm all required Python packages are properly installed
+3. Check if log files are complete and not corrupted. Note that this tool can usually parse logs from abnormally terminated runs (e.g., due to system crashes or manual interruption), but in some special cases, parsing might fail if the logs are severely corrupted or truncated
 
-![screenshot_5](imgs/screenshot_5.png)
-
-![screenshot_6](imgs/screenshot_6.png)
-
-![screenshot_7](imgs/screenshot_7.png)
-
-
-Optionally, we also provide more lightweight visualizations using matplotlib, take a look at ![pyplot](pyplot)
+Note: Due to ongoing development of TaskVine, there might be occasional mismatches between TaskVine's development version and this tool's log parsing capabilities. This is normal and will be fixed promptly. If you encounter parsing errors:
+1. Save the error message and the relevant section of your log files
+2. Open an issue on the repository with these details
+3. We will help resolve the parsing issue as quickly as possible

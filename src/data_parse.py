@@ -157,63 +157,6 @@ class DataParser:
         if (ip, transfer_port) in self.ip_transfer_port_to_worker:
             return self.ip_transfer_port_to_worker[(ip, transfer_port)]
     
-    def parse_transactions(self):
-        # initialize the current_try_id for all tasks
-        for task_id in self.current_try_id.keys():
-            self.current_try_id[task_id] = 0
-
-        total_lines = 0
-        with open(self.transactions, 'r') as file:
-            for line in file:
-                total_lines += 1
-
-        with open(self.transactions, 'r') as file:
-            pbar = tqdm(total=total_lines, desc="Parsing transactions")
-            for line in file:
-                pbar.update(1)
-                if line.startswith('#'):
-                    continue
-                
-                timestamp, _, event_type, obj_id, status, *info = line.split(maxsplit=5)
-                try:
-                    timestamp = floor_decimal(float(timestamp) / 1e6, 4)
-                except ValueError:
-                    continue
-
-                info = info[0] if info else "{}"
-
-                if event_type == 'TASK':
-                    if status == 'READY':
-                        # task_id = int(obj_id)
-                        # self.current_try_id[task_id] += 1
-                        # assert (task_id, self.current_try_id[task_id]) in self.tasks
-                        continue
-                    #task_id = int(obj_id)
-                    #task_entry = (task_id, self.current_try_id[task_id])
-
-                    # task = self.tasks[task_entry]
-                    if status == 'RUNNING':
-                        # resources_allocated = json.loads(info.split(' ', 3)[-1])
-                        # task.time_commit_start = float(resources_allocated["time_commit_start"][0])
-                        # task.time_commit_end = float(resources_allocated["time_commit_end"][0])
-                        # self.manager.set_when_first_task_start_commit(task.time_commit_start)
-                        continue
-                    if status == 'WAITING_RETRIEVAL':
-                        continue
-                    if status == 'RETRIEVED':
-                        continue
-                    if status == 'DONE':
-                        continue
-
-                if event_type == 'WORKER':
-                    pass
-                
-                if event_type == 'LIBRARY':
-                    if status == 'SENT':
-                        raise ValueError(f"LIBRARY SENT is not supported yet")
-                    if status == 'STARTED':
-                        raise ValueError(f"LIBRARY STARTED is not supported yet")
-
     def parse_debug_line(self, line):
         parts = line.strip().split(" ")
         try:
@@ -256,10 +199,10 @@ class DataParser:
             ip, port = WorkerInfo.extract_ip_port_from_string(parts[release_idx - 1])
             worker = self.workers[(ip, port)]
             worker.add_disconnection(timestamp)
-
+            self.manager.update_when_last_worker_disconnect(timestamp)
+            # files on the worker are removed
             for file in self.files.values():
                 file.worker_removed((ip, port), timestamp)
-            self.manager.update_when_last_worker_disconnect(timestamp)
             return
 
         if "transfer-port" in parts:
@@ -473,30 +416,48 @@ class DataParser:
                     self.manager.set_when_last_task_done(timestamp)
                     worker.tasks_completed.append(task)
             elif "WAITING_RETRIEVAL (3) to READY (1)" in line or \
-                    "RUNNING (2) to READY (1)" in line:                # task failure
-                # new task entry
-                self.current_try_id[task_id] += 1
-                new_task = TaskInfo(task_id, self.current_try_id[task_id])
-                # skip if the task status was set by a complete message
+                    "RUNNING (2) to READY (1)" in line:             # task failure
+                # this indicates that the task failed
                 task.set_when_failure_happens(timestamp)
+                # we need to set the task status if it was not set yet
                 if not task.task_status:
+                    # if it was committed to a worker
                     if task.worker_ip:
+                        # update the worker's tasks_failed, if the task was successfully committed
                         worker_entry = (task.worker_ip, task.worker_port)
                         worker = self.workers[worker_entry]
-                        # it is that the worker disconnected
+                        worker.tasks_failed.append(task)
+                        worker.reap_task(task)
+                        # it could be that the worker disconnected
                         if len(worker.time_connected) == len(worker.time_disconnected):
                             task.set_task_status(15 << 3)
-                # otherwise, we donot know the reason
-                if not task.task_status:
-                    task.set_task_status(4 << 3)
+                        # it could be that its inputs are missing
+                        elif task.input_files:
+                            all_inputs_ready = True
+                            for input_file in task.input_files:
+                                this_input_ready = False
+                                for transfer in self.files[input_file].transfers:
+                                    if transfer.destination == worker_entry and transfer.stage_in is not None:
+                                        this_input_ready = True
+                                        break
+                                if not this_input_ready:
+                                    all_inputs_ready = False
+                                    break
+                            if all_inputs_ready:
+                                task.set_task_status(1)
+                        # otherwise, we donot know the reason
+                        else:
+                            task.set_task_status(4 << 3)
+                    else:
+                        # if the task was not committed to a worker, we donot know the reason
+                        task.set_task_status(4 << 3)
+
+                # create a new task entry for the task
+                self.current_try_id[task_id] += 1
+                new_task = TaskInfo(task_id, self.current_try_id[task_id])
                 new_task.set_when_ready(timestamp)
                 self.add_task(new_task)
-                # update the worker's tasks_failed, if the task was successfully committed
-                if task.worker_ip:
-                    worker_entry = (task.worker_ip, task.worker_port)
-                    worker = self.workers[worker_entry]
-                    worker.tasks_failed.append(task)
-                    worker.reap_task(task)
+
             elif "RUNNING (2) to RETRIEVED (4)" in line:
                 task.set_when_retrieved(timestamp)
                 print(f"Warning: task {task_id} state change: from RUNNING (2) to RETRIEVED (4)")
@@ -644,6 +605,17 @@ class DataParser:
                 else:
                     pass
 
+    def fault_handler(self):
+        # if the manager has not finished yet, we do something to set up the None values to make the plotting tool work
+        # 1. if the manager's time_end is None, we set it to the current timestamp
+        if self.manager.time_end is None:
+            self.manager.set_time_end(self.manager.current_max_time)
+        # 2. if a task's status is None, we set it to 4 << 3, which means the task failed but not yet reported
+        for task in self.tasks.values():
+            if task.task_status is None:
+                task.set_task_status(4 << 3)
+                task.set_when_failure_happens(self.manager.current_max_time)
+
     def parse_debug(self):
         self.current_try_id = defaultdict(int)
 
@@ -667,7 +639,7 @@ class DataParser:
 
     def parse_logs(self):
         self.parse_debug()
-        # self.parse_transactions()
+        self.fault_handler()
 
     def generate_subgraphs(self):
         parent = {}
@@ -683,7 +655,6 @@ class DataParser:
                 parent[x], x = root, parent[x]
             
             return root
-
 
         def union(x, y):
             root_x = find(x)

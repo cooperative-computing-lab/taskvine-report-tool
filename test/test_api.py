@@ -172,7 +172,6 @@ if __name__ == "__main__":
     
     api_list = [
         {"name": "runtime-templates-list", "params": None},
-        {"name": "execution-details", "params": None},
         {"name": "storage-consumption", "params": None},
         {"name": "task-execution-time", "params": None},
         {"name": "worker-transfers", "variants": [
@@ -191,6 +190,7 @@ if __name__ == "__main__":
             "order": "asc",
             "type": "transferred",
         }},
+        {"name": "execution-details", "params": None},
     ]
     testing_api = api_list[-1]  # Test worker-transfers
 

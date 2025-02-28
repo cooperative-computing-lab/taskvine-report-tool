@@ -45,13 +45,8 @@ class TemplateState:
         self.svg_files_dir = self.data_parser.svg_files_dir
         self.restore_from_checkpoint()
 
-        self.MIN_TIME = float(self.manager.time_start)
-
-        if self.manager.time_end:
-            self.MAX_TIME = float(self.manager.time_end)
-        else:
-            # if the max time is None, it means the manager exited abnormally or hasn't exited yet
-            self.MAX_TIME = self.manager.current_max_time
+        self.MIN_TIME = self.manager.time_start
+        self.MAX_TIME = self.manager.time_end
 
     def ensure_runtime_template(self, runtime_template):
         if not runtime_template:
@@ -108,6 +103,7 @@ def get_execution_details():
             else:
                 if len(task.core_id) == 0:    # not run at all
                     continue
+                task.print_info()
                 unsuccessful_task_info = {
                     'task_id': task.task_id,
                     'worker_ip': task.worker_ip,
