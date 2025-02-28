@@ -172,7 +172,6 @@ if __name__ == "__main__":
     
     api_list = [
         {"name": "runtime-templates-list", "params": None},
-        {"name": "storage-consumption", "params": None},
         {"name": "task-execution-time", "params": None},
         {"name": "worker-transfers", "variants": [
             {"type": "incoming"},   
@@ -189,6 +188,9 @@ if __name__ == "__main__":
         {"name": "file-sizes", "params": {
             "order": "asc",
             "type": "transferred",
+        }},
+        {"name": "storage-consumption", "params": {
+            "show_percentage": "true"
         }},
         {"name": "execution-details", "params": None},
     ]

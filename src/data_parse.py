@@ -615,6 +615,33 @@ class DataParser:
             if task.task_status is None:
                 task.set_task_status(4 << 3)
                 task.set_when_failure_happens(self.manager.current_max_time)
+        # 3. if a task succeeds, check if the end time is larger than the start time
+        for task in self.tasks.values():
+            if task.task_status == 0:
+                if task.time_worker_start < task.when_running:
+                    if task.time_worker_start - task.when_running > 1:
+                        print(f"Warning: task {task.task_id} succeeded but the start time is smaller than the running time")
+                    else:
+                        task.set_time_worker_start(task.when_running)
+                if task.time_worker_end < task.time_worker_start:
+                    if task.time_worker_end - task.time_worker_start > 1:
+                        print(f"Warning: task {task.task_id} succeeded but the end time is smaller than the start time")
+                    else:
+                        task.set_time_worker_end(task.time_worker_start)
+                if task.when_retrieved < task.time_worker_end:
+                    if task.when_retrieved - task.time_worker_end > 1:
+                        print(f"Warning: task {task.task_id} succeeded but the retrieved time is smaller than the end time")
+                    else:
+                        task.set_when_retrieved(task.time_worker_end)
+        # 4. for workers, check if the time_disconnected is larger than the time_connected
+        for worker in self.workers.values():
+            for i, (time_connected, time_disconnected) in enumerate(zip(worker.time_connected, worker.time_disconnected)):
+                if time_disconnected < time_connected:
+                    if time_disconnected - time_connected > 1:
+                        print(f"Warning: worker {worker.ip} has a disconnected time that is smaller than the connected time")
+                    else:
+                        worker.time_disconnected[i] = time_connected
+
 
     def parse_debug(self):
         self.current_try_id = defaultdict(int)

@@ -7,6 +7,7 @@ from pathlib import Path
 from collections import defaultdict
 import graphviz
 from src.data_parse import DataParser
+import numpy as np
 
 LOGS_DIR = 'logs'
 
@@ -103,7 +104,6 @@ def get_execution_details():
             else:
                 if len(task.core_id) == 0:    # not run at all
                     continue
-                task.print_info()
                 unsuccessful_task_info = {
                     'task_id': task.task_id,
                     'worker_ip': task.worker_ip,
@@ -158,6 +158,7 @@ def get_execution_details():
 @app.route('/api/storage-consumption')
 def get_storage_consumption():
     try:
+        show_percentage = request.args.get('show_percentage', 'false').lower() == 'true'
         data = {}
 
         files = template_manager.files
@@ -177,62 +178,119 @@ def get_storage_consumption():
                 if destination not in data['worker_storage_consumption']:
                     data['worker_storage_consumption'][destination] = []
 
-                data['worker_storage_consumption'][destination].append((float(transfer.time_stage_in) - template_manager.MIN_TIME, file.size_mb))
-                data['worker_storage_consumption'][destination].append((float(transfer.time_stage_out) - template_manager.MIN_TIME, -file.size_mb))
+                time_in = float(transfer.time_stage_in - template_manager.MIN_TIME)
+                time_out = float(transfer.time_stage_out - template_manager.MIN_TIME)
+                
+                # Skip if times are invalid
+                if np.isnan(time_in) or np.isnan(time_out):
+                    continue
+                    
+                data['worker_storage_consumption'][destination].append((time_in, max(0, file.size_mb)))
+                data['worker_storage_consumption'][destination].append((time_out, -max(0, file.size_mb)))
 
         max_storage_consumption = 0
         # sort the worker storage consumption
-        for destination in data['worker_storage_consumption']:
+        for destination in list(data['worker_storage_consumption'].keys()):
+            if not data['worker_storage_consumption'][destination]:
+                del data['worker_storage_consumption'][destination]
+                continue
+                
             # convert to a pandas dataframe
             df = pd.DataFrame(data['worker_storage_consumption'][destination], columns=['time', 'size'])
-            # sort the dataframe, time ascending, size descending
+            # sort the dataframe by time
             df = df.sort_values(by=['time'])
             # accumulate the size
             df['storage_consumption'] = df['size'].cumsum()
+            df['storage_consumption'] = df['storage_consumption'].clip(lower=0)  # Ensure no negative values
+            
+            if show_percentage:
+                # Use worker's total disk space from worker.disk_mb
+                worker_disk_mb = template_manager.workers[destination].disk_mb
+                if worker_disk_mb > 0:  # Avoid division by zero
+                    df['storage_consumption'] = (df['storage_consumption'] / worker_disk_mb) * 100
+            
             # group by time and keep the maximum storage consumption for each time
             df = df.groupby('time')['storage_consumption'].max().reset_index()
+            
+            # Skip if no valid data
+            if df.empty or df['storage_consumption'].isna().all():
+                del data['worker_storage_consumption'][destination]
+                continue
+                
             # update the max storage consumption
-            max_storage_consumption = max(max_storage_consumption, df['storage_consumption'].max())
+            curr_max = df['storage_consumption'].max()
+            if not np.isnan(curr_max):
+                max_storage_consumption = max(max_storage_consumption, curr_max)
+                
             # keep only time and storage_consumption columns
             data['worker_storage_consumption'][destination] = df[['time', 'storage_consumption']].values.tolist()
-            # add the initial point at time_connected with 0 consumption
-            for time_connected, time_disconnected in zip(template_manager.workers[destination].time_connected, template_manager.workers[destination].time_disconnected):
-                data['worker_storage_consumption'][destination].insert(0, [time_connected - template_manager.MIN_TIME, 0])
-                data['worker_storage_consumption'][destination].append([time_disconnected - template_manager.MIN_TIME, 0])
             
+            # add the initial and final points with 0 consumption
+            worker = template_manager.workers[destination]
+            if worker.time_connected and worker.time_disconnected:
+                for time_connected, time_disconnected in zip(worker.time_connected, worker.time_disconnected):
+                    time_start = float(time_connected - template_manager.MIN_TIME)
+                    time_end = float(time_disconnected - template_manager.MIN_TIME)
+                    if not np.isnan(time_start):
+                        data['worker_storage_consumption'][destination].insert(0, [time_start, 0.0])
+                    if not np.isnan(time_end):
+                        data['worker_storage_consumption'][destination].append([time_end, 0.0])
+
+        # Skip if no valid data for any worker
+        if not data['worker_storage_consumption']:
+            return jsonify({'error': 'No valid storage consumption data available'}), 404
+
         # convert the key to a string
         data['worker_storage_consumption'] = {f"{k[0]}:{k[1]}": v for k, v in data['worker_storage_consumption'].items()}
 
-        data['file_size_unit'], scale = get_unit_and_scale_by_max_file_size_mb(max_storage_consumption)
+        if show_percentage:
+            data['file_size_unit'] = '%'
+            max_storage_consumption = 100
+        else:
+            data['file_size_unit'], scale = get_unit_and_scale_by_max_file_size_mb(max_storage_consumption)
+            # also update the source data
+            if scale != 1:
+                for destination in data['worker_storage_consumption']:
+                    points = data['worker_storage_consumption'][destination]
+                    data['worker_storage_consumption'][destination] = [[p[0], p[1] * scale] for p in points]
+                max_storage_consumption *= scale
 
-        # also update the source data
-        if scale != 1:
-            for destination in data['worker_storage_consumption']:
-                df = pd.DataFrame(data['worker_storage_consumption'][destination], columns=['time', 'size'])
-                df['size'] = df['size'] * scale
-                data['worker_storage_consumption'][destination] = df.values.tolist()
-            max_storage_consumption *= scale
+        # add information about each worker
+        data['worker_resources'] = {}
+        for worker in template_manager.workers.values():
+            data['worker_resources'][f"{worker.ip}:{worker.port}"] = {
+                'cores': worker.cores if worker.cores else 0,
+                'memory_mb': worker.memory_mb if worker.memory_mb else 0,
+                'disk_mb': worker.disk_mb if worker.disk_mb else 0,
+                'gpus': worker.gpus if worker.gpus else 0,
+            }
 
-        # ploting parameters
+        # plotting parameters
         data['xMin'] = 0
-        data['xMax'] = template_manager.MAX_TIME - template_manager.MIN_TIME
+        data['xMax'] = float(template_manager.MAX_TIME - template_manager.MIN_TIME)
         data['yMin'] = 0
-        data['yMax'] = max_storage_consumption
+        data['yMax'] = max(1.0, max_storage_consumption)  # Ensure positive yMax and at least 1.0
+        
+        # Ensure all tick values are valid numbers
+        x_range = data['xMax'] - data['xMin']
         data['xTickValues'] = [
-            round(data['xMin'], 2),
-            round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.25, 2),
-            round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.5, 2),
-            round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.75, 2),
-            round(data['xMax'], 2)
+            float(data['xMin']),
+            float(data['xMin'] + x_range * 0.25),
+            float(data['xMin'] + x_range * 0.5),
+            float(data['xMin'] + x_range * 0.75),
+            float(data['xMax'])
         ]
+        
+        y_range = data['yMax'] - data['yMin']
         data['yTickValues'] = [
-            round(data['yMin'], 2),
-            round(data['yMin'] + (data['yMax'] - data['yMin']) * 0.25, 2),
-            round(data['yMin'] + (data['yMax'] - data['yMin']) * 0.5, 2),
-            round(data['yMin'] + (data['yMax'] - data['yMin']) * 0.75, 2),
-            round(data['yMax'], 2)
+            float(data['yMin']),
+            float(data['yMin'] + y_range * 0.25),
+            float(data['yMin'] + y_range * 0.5),
+            float(data['yMin'] + y_range * 0.75),
+            float(data['yMax'])
         ]
-        data['tickFontSize'] = template_manager.tick_size
+        
+        data['tickFontSize'] = int(template_manager.tick_size)
 
         return jsonify(data)
 

@@ -245,7 +245,7 @@ function plotExecutionDetails() {
         .append('g')
         .attr('transform', `translate(${margin.left}, ${margin.top})`);
 
-    const { xScale, yScale } = plotAxis(svg, svgWidth, svgHeight);
+    const { xScale, yScale, safeHeight } = plotAxis(svg, svgWidth, svgHeight);
 
     // Plot worker connection periods
     if (isTaskTypeChecked('workers') && state.workerInfo) {
@@ -257,12 +257,14 @@ function plotExecutionDetails() {
             for (let i = 0; i < connectTimes.length; i++) {
                 const connectTime = connectTimes[i];
                 const disconnectTime = disconnectTimes[i] || state.maxTime;
+                const height = Math.max(0, safeHeight() * worker.cores + 
+                    (yScale.step() - safeHeight()) * (worker.cores - 1));
 
                 svg.append('rect')
                     .attr('x', xScale(connectTime))
                     .attr('y', yScale(worker.id + '-' + worker.cores))
-                    .attr('width', xScale(disconnectTime) - xScale(connectTime))
-                    .attr('height', yScale.bandwidth() * worker.cores + (yScale.step() - yScale.bandwidth()) * (worker.cores - 1))
+                    .attr('width', Math.max(0, xScale(disconnectTime) - xScale(connectTime)))
+                    .attr('height', height)
                     .attr('fill', colors['workers'])
                     .attr('opacity', 0.3)
                     .on('mouseover', function(event) {
@@ -295,7 +297,7 @@ function plotExecutionDetails() {
                     .attr('x', xScale(task.when_running))
                     .attr('y', yScale(task.worker_id + '-' + task.core_id))
                     .attr('width', xScale(task.time_worker_start) - xScale(task.when_running))
-                    .attr('height', yScale.bandwidth())
+                    .attr('height', safeHeight())
                     .attr('fill', colors['successful-committing-to-worker'])
                     .on('mouseover', function(event) {
                         d3.select(this).attr('fill', HIGHLIGHT_COLOR);
@@ -318,7 +320,7 @@ function plotExecutionDetails() {
                     .attr('x', xScale(task.time_worker_start))
                     .attr('y', yScale(task.worker_id + '-' + task.core_id))
                     .attr('width', xScale(task.time_worker_end) - xScale(task.time_worker_start))
-                    .attr('height', yScale.bandwidth())
+                    .attr('height', safeHeight())
                     .attr('fill', colors['successful-executing-on-worker'])
                     .on('mouseover', function(event) {
                         d3.select(this).attr('fill', HIGHLIGHT_COLOR);
@@ -341,7 +343,7 @@ function plotExecutionDetails() {
                     .attr('x', xScale(task.time_worker_end))
                     .attr('y', yScale(task.worker_id + '-' + task.core_id))
                     .attr('width', xScale(task.when_retrieved) - xScale(task.time_worker_end))
-                    .attr('height', yScale.bandwidth())
+                    .attr('height', safeHeight())
                     .attr('fill', colors['successful-retrieving-to-manager'])
                     .on('mouseover', function(event) {
                         d3.select(this).attr('fill', HIGHLIGHT_COLOR);
@@ -371,7 +373,7 @@ function plotExecutionDetails() {
                             .attr('x', xScale(startTime))
                             .attr('y', yScale(task.worker_id + '-' + task.core_id))
                             .attr('width', xScale(task.when_failure_happens) - xScale(startTime))
-                            .attr('height', yScale.bandwidth())
+                            .attr('height', safeHeight())
                             .attr('fill', FAILURE_TYPES[failureType].color)
                             .on('mouseover', function(event) {
                                 d3.select(this).attr('fill', HIGHLIGHT_COLOR);
@@ -407,7 +409,7 @@ function plotExecutionDetails() {
                             .attr('x', xScale(task.time_worker_start))
                             .attr('y', yScale(task.worker_id + '-' + task.core_id))
                             .attr('width', xScale(task.time_worker_end) - xScale(task.time_worker_start))
-                            .attr('height', yScale.bandwidth())
+                            .attr('height', safeHeight())
                             .attr('fill', colors['recovery-successful'])
                             .on('mouseover', function(event) {
                                 const tooltip = document.getElementById('vine-tooltip');
@@ -448,7 +450,7 @@ function plotExecutionDetails() {
                             .attr('x', xScale(startTime))
                             .attr('y', yScale(task.worker_id + '-' + task.core_id))
                             .attr('width', xScale(endTime) - xScale(startTime))
-                            .attr('height', yScale.bandwidth())
+                            .attr('height', safeHeight())
                             .attr('fill', colors['recovery-unsuccessful'])
                             .on('mouseover', function(event) {
                                 const tooltip = document.getElementById('vine-tooltip');
@@ -515,10 +517,25 @@ function plotAxis(svg, svgWidth, svgHeight) {
             workerCoresMap.push(`${d.id}-${i}`);
         }
     });
+    
+    // Sort workerCoresMap to have smaller IDs at the bottom
+    workerCoresMap.sort((a, b) => {
+        const idA = parseInt(a.split('-')[0]);
+        const idB = parseInt(b.split('-')[0]);
+        return idB - idA;  // Reverse order
+    });
+
     const yScale = d3.scaleBand()
         .domain(workerCoresMap)
-        .range([svgHeight, 0])
+        .range([0, Math.max(0, svgHeight)])  // Ensure non-negative range
         .padding(0.1);
+
+    // Ensure bandwidth is positive
+    if (yScale.bandwidth() <= 0) {
+        console.warn('Invalid bandwidth detected, adjusting scale parameters');
+        yScale.padding(0.05);  // Reduce padding if bandwidth is too small
+    }
+
     // draw x axis
     const xAxis = d3.axisBottom(xScale)
         .tickSizeOuter(0)
@@ -535,8 +552,9 @@ function plotAxis(svg, svgWidth, svgHeight) {
     const maxTicks = 5;
     const tickInterval = Math.ceil(totalWorkers / maxTicks);
     const selectedTicks = [];
-    for (let i = totalWorkers - 1; i >= 0; i -= tickInterval) {
-        selectedTicks.unshift(`${state.workerInfo[i].id}-${state.workerInfo[i].cores}`);
+    // Reverse the order of ticks
+    for (let i = 0; i < totalWorkers; i += tickInterval) {
+        selectedTicks.push(`${state.workerInfo[i].id}-${state.workerInfo[i].cores}`);
     }
     const yAxis = d3.axisLeft(yScale)
         .tickValues(selectedTicks)
@@ -547,7 +565,11 @@ function plotAxis(svg, svgWidth, svgHeight) {
         .selectAll('text')
         .style('font-size', state.tickFontSize);
 
-    return { xScale, yScale };
+    return { 
+        xScale, 
+        yScale,
+        safeHeight: () => Math.max(0, yScale.bandwidth())
+    };
 }
 
 function handleResetClick() {
