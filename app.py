@@ -81,6 +81,11 @@ def get_execution_details():
         data['unsuccessfulTasks'] = []
         for task in template_manager.tasks.values():
             if task.task_status == 0:
+                # note that the task might have not been retrieved yet
+                if not task.when_retrieved:
+                    continue
+                if not task.when_done:
+                    continue
                 done_task_info = {
                     'task_id': task.task_id,
                     'worker_ip': task.worker_ip,
