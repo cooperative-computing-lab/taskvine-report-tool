@@ -628,7 +628,8 @@ class DataParser:
                         print(f"Warning: task {task.task_id} succeeded but the end time is smaller than the start time")
                     else:
                         task.set_time_worker_end(task.time_worker_start)
-                if task.when_retrieved < task.time_worker_end:
+                # note that the task might have not been retrieved yet
+                if task.when_retrieved and task.when_retrieved < task.time_worker_end:
                     if task.when_retrieved - task.time_worker_end > 1:
                         print(f"Warning: task {task.task_id} succeeded but the retrieved time is smaller than the end time")
                     else:
