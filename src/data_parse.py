@@ -20,7 +20,16 @@ def floor_decimal(number, decimal_places):
     quantizer = Decimal(f"1e-{decimal_places}")
     return num.quantize(quantizer, rounding=ROUND_FLOOR)
 
+import platform
+import subprocess
+
 def count_lines(file_name):
+    if platform.system() in ["Linux", "Darwin"]:  # Linux or macOS
+        try:
+            return int(subprocess.check_output(["wc", "-l", file_name]).split()[0])
+        except subprocess.CalledProcessError:
+            pass
+    
     with open(file_name, 'r', encoding='utf-8', errors='ignore') as f:
         return sum(1 for _ in f)
 
