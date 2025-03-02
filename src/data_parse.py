@@ -20,6 +20,10 @@ def floor_decimal(number, decimal_places):
     quantizer = Decimal(f"1e-{decimal_places}")
     return num.quantize(quantizer, rounding=ROUND_FLOOR)
 
+def count_lines(file_name):
+    with open(file_name, 'r', encoding='utf-8', errors='ignore') as f:
+        return sum(1 for _ in f)
+
 
 class DataParser:
     def __init__(self, runtime_template):
@@ -647,10 +651,7 @@ class DataParser:
     def parse_debug(self):
         self.current_try_id = defaultdict(int)
 
-        total_lines = 0
-        with open(self.debug, 'r') as file:
-            for line in file:
-                total_lines += 1
+        total_lines = count_lines(self.debug)
 
         with open(self.debug, 'r') as file:
             pbar = tqdm(total=total_lines, desc="Parsing debug")
