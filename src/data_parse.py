@@ -662,17 +662,16 @@ class DataParser:
 
         total_lines = count_lines(self.debug)
 
-        with open(self.debug, 'r') as file:
+        with open(self.debug, 'rb') as file:
             pbar = tqdm(total=total_lines, desc="Parsing debug")
-            for line in file:
+            for raw_line in file:
                 pbar.update(1)
                 try:
-                    # remove the '\n' at the end of the line
-                    line = line.strip()
+                    line = raw_line.decode('utf-8').strip()
                     self.parse_debug_line(line)
-                except:
-                    raise ValueError(f"Error parsing line: {line}")
-
+                except UnicodeDecodeError:
+                    print(f"Error decoding line to utf-8: {raw_line}")
+            
             pbar.close()
 
     def parse_logs(self):
