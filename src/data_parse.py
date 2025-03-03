@@ -5,6 +5,7 @@ from src.manager_info import ManagerInfo
 
 import os
 import json
+from functools import lru_cache
 from datetime import datetime
 import time
 from tqdm import tqdm
@@ -76,8 +77,9 @@ class DataParser:
         self.putting_transfers = {}           # key: (dest_ip, dest_port), value: TransferInfo
 
         # time info
+        self.time_zone_offset_hours = None
+        self.equivalent_tz = None
         self.set_time_zone()
-        self.manager.time_zone_offset_hours = self.time_zone_offset_hours
 
         # subgraphs
         self.subgraphs = {}   # key: subgraph_id, value: set()
@@ -120,13 +122,14 @@ class DataParser:
             tz_datestring = utc_datestring.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(tz)).strftime('%Y-%m-%d %H:%M')
             if mgr_start_datestring == tz_datestring:
                 self.time_zone_offset_hours = int(pytz.timezone(tz).utcoffset(datetime.now()).total_seconds() / 3600)
+                self.manager.time_zone_offset_hours = self.time_zone_offset_hours
+                self.equivalent_tz = timezone(timedelta(hours=self.time_zone_offset_hours))
                 break
 
+    @lru_cache(maxsize=1024)
     def datestring_to_timestamp(self, datestring):
-        equivalent_tz = timezone(timedelta(hours=self.time_zone_offset_hours))
-        equivalent_datestring = datetime.strptime(datestring, "%Y/%m/%d %H:%M:%S.%f").replace(tzinfo=equivalent_tz)
+        equivalent_datestring = datetime.strptime(datestring, "%Y/%m/%d %H:%M:%S.%f").replace(tzinfo=self.equivalent_tz)
         unix_timestamp = float(equivalent_datestring.timestamp())
-
         return unix_timestamp
     
     def ensure_worker_entry(self, worker_ip: str, worker_port: int):
@@ -367,13 +370,15 @@ class DataParser:
             elif "infile" in parts:
                 file_name = parts[parts.index("infile") + 1]
                 file = self.ensure_file_info_entry(file_name, 0)
-                file.add_consumer(self.sending_task)
-                self.sending_task.add_input_file(file_name)
+                if not file.is_consumer(self.sending_task):
+                    file.add_consumer(self.sending_task)
+                    self.sending_task.add_input_file(file_name)
             elif "outfile" in parts:
                 file_name = parts[parts.index("outfile") + 1]
                 file = self.ensure_file_info_entry(file_name, 0)
-                file.add_producer(self.sending_task)
-                self.sending_task.add_output_file(file_name)
+                if not file.is_producer(self.sending_task):
+                    file.add_producer(self.sending_task)
+                    self.sending_task.add_output_file(file_name)
             elif "cmd" in parts:
                 pass
             elif "python3" in parts:

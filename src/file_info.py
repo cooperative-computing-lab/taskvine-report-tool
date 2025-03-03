@@ -77,16 +77,20 @@ class FileInfo:
 
         self.transfers = []
         
-        self.consumers = []
-        self.producers = []
+        self.consumers = set()
+        self.producers = set()
 
     def add_consumer(self, consumer_task):
-        if (consumer_task.task_id, consumer_task.task_try_id) not in self.consumers:
-            self.consumers.append((consumer_task.task_id, consumer_task.task_try_id))
+        self.consumers.add((consumer_task.task_id, consumer_task.task_try_id))
+    
+    def is_consumer(self, consumer_task):
+        return (consumer_task.task_id, consumer_task.task_try_id) in self.consumers
+    
+    def is_producer(self, producer_task):
+        return (producer_task.task_id, producer_task.task_try_id) in self.producers
 
     def add_producer(self, producer_task):
-        if (producer_task.task_id, producer_task.task_try_id) not in self.producers:
-            self.producers.append((producer_task.task_id, producer_task.task_try_id))
+        self.producers.add((producer_task.task_id, producer_task.task_try_id))
 
     def add_transfer(self, source, destination, event, file_type, cache_level):
         transfer_event = TransferEvent(source, destination, event, file_type, cache_level)
@@ -139,7 +143,7 @@ class FileInfo:
         
         # this means a task-created file
         if not has_started_staging_in:
-            producer_task_name = f"{self.producers[-1]}"
+            producer_task_name = f"{list(self.producers)[-1]}"
             transfer = self.add_transfer(producer_task_name, destination, "task_created", file_type, file_cache_level)
             transfer.start_stage_in(time_stage_in, "pending")
             transfer.stage_in(time_stage_in, "cache_update")
