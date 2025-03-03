@@ -686,54 +686,60 @@ class DataParser:
         self.fault_handler()
 
     def generate_subgraphs(self):
-        parent = {}
-        for key in self.tasks.keys():
-            parent[key] = key
+        tasks_keys = set(self.tasks.keys())
+        parent = {key: key for key in tasks_keys}
+        rank = {key: 0 for key in tasks_keys}
 
         def find(x):
+            # find the root of the tree
             root = x
             while parent[root] != root:
                 root = parent[root]
-            
+            # path compression: let all nodes on the path point to the root
             while x != root:
-                parent[x], x = root, parent[x]
-            
+                next_x = parent[x]
+                parent[x] = root
+                x = next_x
             return root
 
         def union(x, y):
             root_x = find(x)
             root_y = find(y)
-            if root_x != root_y:
+            if root_x == root_y:
+                return
+            # rank those with smaller rank
+            if rank[root_x] < rank[root_y]:
+                parent[root_x] = root_y
+            elif rank[root_x] > rank[root_y]:
                 parent[root_y] = root_x
+            else:
+                parent[root_y] = root_x
+                rank[root_x] += 1
 
         pbar = tqdm(self.files.values(), desc="Parsing subgraphs")
         for file in pbar:
-            if len(file.producers) == 0:
+            if not file.producers:
                 continue
-            tasks_involved = set()
-            for key in self.tasks.keys():
-                if key in file.producers or key in file.consumers:
-                    tasks_involved.add(key)
-            tasks_involved = list(tasks_involved)
+            # use set operations to quickly get the tasks involved
+            tasks_involved = (set(file.producers) | set(file.consumers)) & tasks_keys
             if len(tasks_involved) <= 1:
                 continue
+            tasks_involved = list(tasks_involved)
             first_task = tasks_involved[0]
             for other_task in tasks_involved[1:]:
                 union(first_task, other_task)
 
-        # sort the subgraphs by the number of tasks
+        # group tasks by the root, forming subgraphs
         subgraphs = defaultdict(set)
         for task_key in self.tasks.keys():
             root = find(task_key)
-            task_id, task_try_id = task_key
-            subgraphs[root].add((task_id, task_try_id))
+            subgraphs[root].add(task_key)
         
         sorted_subgraphs = sorted(subgraphs.values(), key=len, reverse=True)
-        self.subgraphs = {}
-        for i, subgraph in enumerate(sorted_subgraphs, 1):
-            self.subgraphs[i] = subgraph
+        self.subgraphs = {i: subgraph for i, subgraph in enumerate(sorted_subgraphs, 1)}
 
         self.checkpoint_subgraphs()
+
 
     def checkpoint_debug(self):
         time_start = time.time()
