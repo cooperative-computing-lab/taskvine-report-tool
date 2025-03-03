@@ -759,8 +759,7 @@ class DataParser:
             with open(os.path.join(self.pkl_files_dir, 'manager.pkl'), 'rb') as f:
                 self.manager = cloudpickle.load(f)
         except Exception as e:
-            print(f"The debug file has not been successfully parsed yet")
-            return
+            raise ValueError(f"The debug file has not been successfully parsed yet")
         time_end = time.time()
         print(f"Restored workers, files, tasks, manager from checkpoint in {round(time_end - time_start, 4)} seconds")
 
@@ -783,14 +782,12 @@ class DataParser:
             with open(os.path.join(self.pkl_files_dir, 'manager.pkl'), 'rb') as f:
                 self.manager = cloudpickle.load(f)
         except Exception as e:
-            print(f"The debug file has not been successfully parsed yet")
-            return
+            raise ValueError(f"The debug file has not been successfully parsed yet")
         try:
             with open(os.path.join(self.pkl_files_dir, 'subgraphs.pkl'), 'rb') as f:
                 self.subgraphs = cloudpickle.load(f)
         except Exception as e:
-            print(f"The subgraphs have not been generated yet")
-            return
+            raise ValueError(f"The subgraphs have not been generated yet")
         time_end = time.time()
-        print(f"Restored from checkpoint in {round(time_end - time_start, 4)} seconds")
+        print(f"Restored workers, files, tasks, manager, and subgraphs from checkpoint in {round(time_end - time_start, 4)} seconds")
 
