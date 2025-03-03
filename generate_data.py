@@ -8,9 +8,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('runtime_template', type=str, help='list of log directories')
-    parser.add_argument('--execution-details-only', action='store_true', help='Only generate data for task execution details')
-    parser.add_argument('--meta-files', action='store_true', help='include meta files in the file_info.csv')
-    parser.add_argument('--restore', action='store_true', help='restore from checkpoint')
+    parser.add_argument('--subgraphs-only', action='store_true', help='had previously parsed the debug file, only generate subgraphs')
     args = parser.parse_args()
 
     runtime_template = Path(args.runtime_template).name
@@ -19,12 +17,10 @@ if __name__ == '__main__':
     print(f"=== Generating data for {runtime_template}")
     data_parser = DataParser(runtime_template)
 
-    if args.restore:
-        data_parser.restore_from_checkpoint()
+    if args.subgraphs_only:
+        data_parser.restore_debug()
+        data_parser.generate_subgraphs()
     else:
         data_parser.parse_logs()
         data_parser.generate_subgraphs()
 
-    for task in data_parser.tasks.values():
-        if task.task_id == 0:
-            task.print_info()

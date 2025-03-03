@@ -747,6 +747,23 @@ class DataParser:
             cloudpickle.dump(self.manager, f)
         print(f"Checkpointed workers, files, tasks, manager in {round(time.time() - time_start, 4)} seconds")
 
+    def restore_debug(self):
+        time_start = time.time()
+        try:
+            with open(os.path.join(self.pkl_files_dir, 'workers.pkl'), 'rb') as f:
+                self.workers = cloudpickle.load(f)
+            with open(os.path.join(self.pkl_files_dir, 'files.pkl'), 'rb') as f:
+                self.files = cloudpickle.load(f)
+            with open(os.path.join(self.pkl_files_dir, 'tasks.pkl'), 'rb') as f:
+                self.tasks = cloudpickle.load(f)
+            with open(os.path.join(self.pkl_files_dir, 'manager.pkl'), 'rb') as f:
+                self.manager = cloudpickle.load(f)
+        except Exception as e:
+            print(f"The debug file has not been successfully parsed yet")
+            return
+        time_end = time.time()
+        print(f"Restored workers, files, tasks, manager from checkpoint in {round(time_end - time_start, 4)} seconds")
+
     def checkpoint_subgraphs(self):
         time_start = time.time()
         with open(os.path.join(self.pkl_files_dir, 'subgraphs.pkl'), 'wb') as f:
