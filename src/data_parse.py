@@ -678,6 +678,8 @@ class DataParser:
                     print(f"Error decoding line to utf-8: {raw_line}")
             
             pbar.close()
+        
+        self.checkpoint_debug()
 
     def parse_logs(self):
         self.parse_debug()
@@ -704,7 +706,7 @@ class DataParser:
             if root_x != root_y:
                 parent[root_y] = root_x
 
-        pbar = tqdm(self.files.values(), desc="Generating subgraphs")
+        pbar = tqdm(self.files.values(), desc="Parsing subgraphs")
         for file in pbar:
             if len(file.producers) == 0:
                 continue
@@ -731,8 +733,9 @@ class DataParser:
         for i, subgraph in enumerate(sorted_subgraphs, 1):
             self.subgraphs[i] = subgraph
 
-    def checkpoint(self):
-        # save the workers, files, and tasks
+        self.checkpoint_subgraphs()
+
+    def checkpoint_debug(self):
         time_start = time.time()
         with open(os.path.join(self.pkl_files_dir, 'workers.pkl'), 'wb') as f:
             cloudpickle.dump(self.workers, f)
@@ -742,24 +745,35 @@ class DataParser:
             cloudpickle.dump(self.tasks, f)
         with open(os.path.join(self.pkl_files_dir, 'manager.pkl'), 'wb') as f:
             cloudpickle.dump(self.manager, f)
+        print(f"Checkpointed workers, files, tasks, manager in {round(time.time() - time_start, 4)} seconds")
+
+    def checkpoint_subgraphs(self):
+        time_start = time.time()
         with open(os.path.join(self.pkl_files_dir, 'subgraphs.pkl'), 'wb') as f:
             cloudpickle.dump(self.subgraphs, f)
-        time_end = time.time()
-        print(f"Checkpoint saved in {round(time_end - time_start, 4)} seconds")
+        print(f"Checkpointed subgraphs in {round(time.time() - time_start, 4)} seconds")
 
     def restore_from_checkpoint(self):
         # restore the workers, files, and tasks
         time_start = time.time()
-        with open(os.path.join(self.pkl_files_dir, 'workers.pkl'), 'rb') as f:
-            self.workers = cloudpickle.load(f)
-        with open(os.path.join(self.pkl_files_dir, 'files.pkl'), 'rb') as f:
-            self.files = cloudpickle.load(f)
-        with open(os.path.join(self.pkl_files_dir, 'tasks.pkl'), 'rb') as f:
-            self.tasks = cloudpickle.load(f)
-        with open(os.path.join(self.pkl_files_dir, 'manager.pkl'), 'rb') as f:
-            self.manager = cloudpickle.load(f)
-        with open(os.path.join(self.pkl_files_dir, 'subgraphs.pkl'), 'rb') as f:
-            self.subgraphs = cloudpickle.load(f)
+        try:
+            with open(os.path.join(self.pkl_files_dir, 'workers.pkl'), 'rb') as f:
+                self.workers = cloudpickle.load(f)
+            with open(os.path.join(self.pkl_files_dir, 'files.pkl'), 'rb') as f:
+                self.files = cloudpickle.load(f)
+            with open(os.path.join(self.pkl_files_dir, 'tasks.pkl'), 'rb') as f:
+                self.tasks = cloudpickle.load(f)
+            with open(os.path.join(self.pkl_files_dir, 'manager.pkl'), 'rb') as f:
+                self.manager = cloudpickle.load(f)
+        except Exception as e:
+            print(f"The debug file has not been successfully parsed yet")
+            return
+        try:
+            with open(os.path.join(self.pkl_files_dir, 'subgraphs.pkl'), 'rb') as f:
+                self.subgraphs = cloudpickle.load(f)
+        except Exception as e:
+            print(f"The subgraphs have not been generated yet")
+            return
         time_end = time.time()
         print(f"Restored from checkpoint in {round(time_end - time_start, 4)} seconds")
 

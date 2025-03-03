@@ -24,7 +24,6 @@ if __name__ == '__main__':
     else:
         data_parser.parse_logs()
         data_parser.generate_subgraphs()
-        data_parser.checkpoint()
 
     for task in data_parser.tasks.values():
         if task.task_id == 0:
