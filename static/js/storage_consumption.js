@@ -29,51 +29,30 @@ async function initialize() {
         d3.select('#storage-consumption').selectAll('*').remove();
         state.worker_storage_consumption = null;
 
-        let retries = 0;
-        const maxRetries = 5;
-        const retryDelay = 2000;
+        const response = await fetch(`/api/storage-consumption?show_percentage=${state.showPercentage}`);
+        const data = await response.json();
 
-        while (retries < maxRetries) {
-            try {
-                const response = await fetch(`/api/storage-consumption?show_percentage=${state.showPercentage}`);
-                const data = await response.json();
+        if (data && data.worker_storage_consumption) {
+            state.worker_storage_consumption = data.worker_storage_consumption;
+            state.file_size_unit = data.file_size_unit;
+            state.xMin = data.xMin;
+            state.xMax = data.xMax;
+            state.yMin = data.yMin;
+            state.yMax = data.yMax;
+            state.xTickValues = data.xTickValues;
+            state.yTickValues = data.yTickValues;
+            state.tickFontSize = data.tickFontSize;
+            state.worker_resources = data.worker_resources;
 
-                if (data && data.worker_storage_consumption) {
-                    state.worker_storage_consumption = data.worker_storage_consumption;
-                    state.file_size_unit = data.file_size_unit;
-                    state.xMin = data.xMin;
-                    state.xMax = data.xMax;
-                    state.yMin = data.yMin;
-                    state.yMax = data.yMax;
-                    state.xTickValues = data.xTickValues;
-                    state.yTickValues = data.yTickValues;
-                    state.tickFontSize = data.tickFontSize;
-                    state.worker_resources = data.worker_resources;
+            plotStorageConsumption();
+            setupZoomAndScroll('#storage-consumption', '#storage-consumption-container');
 
-                    plotStorageConsumption();
-                    setupZoomAndScroll('#storage-consumption', '#storage-consumption-container');
-
-                    buttonDownload.addEventListener('click', () => downloadSVG('storage-consumption'));
-                    buttonReset.addEventListener('click', handleResetClick);
-                    buttonToggleMode.addEventListener('click', handleToggleModeClick);
-                    return;
-                }
-            } catch (error) {
-                if (error.name === 'AbortError') {
-                    console.log('Request timed out, retrying...');
-                } else {
-                    throw error;
-                }
-            }
-
-            retries++;
-            if (retries < maxRetries) {
-                await new Promise(resolve => setTimeout(resolve, retryDelay));
-            }
+            buttonDownload.addEventListener('click', () => downloadSVG('storage-consumption'));
+            buttonReset.addEventListener('click', handleResetClick);
+            buttonToggleMode.addEventListener('click', handleToggleModeClick);
         }
-        console.warn('Failed to get storage consumption data after multiple retries');
     } catch (error) {
-        console.error('Error:', error);
+        console.error('Error fetching storage consumption data:', error);
     }
 }
 

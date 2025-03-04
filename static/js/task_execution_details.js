@@ -55,18 +55,18 @@ const colors = {
 // get the innerHTML of the task
 function getTaskInnerHTML(task) {
     let htmlContent = `
-        task id: ${task.task_id}<br>
-        worker:  ${task.worker_ip}:${task.worker_port}<br>
-        core id: ${task.core_id}<br>
-        when ready: ${(task.when_ready).toFixed(2)}<br>
-        when running: ${(task.when_running).toFixed(2)}<br>
-        num input files: ${task.num_input_files}<br>
-        num output files: ${task.num_output_files}<br>
-        time worker start: ${(task.time_worker_start).toFixed(2)}<br>
-        time worker end: ${(task.time_worker_end).toFixed(2)}<br>   
-        when waiting retrieval: ${(task.when_waiting_retrieval).toFixed(2)}<br>
-        when retrieved: ${(task.when_retrieved).toFixed(2)}<br>
-        when done: ${(task.when_done).toFixed(2)}<br>
+        task id: ${task.task_id || 'N/A'}<br>
+        worker:  ${task.worker_ip || 'N/A'}:${task.worker_port || 'N/A'}<br>
+        core id: ${task.core_id || 'N/A'}<br>
+        when ready: ${task.when_ready ? task.when_ready.toFixed(2) : 'N/A'}<br>
+        when running: ${task.when_running ? task.when_running.toFixed(2) : 'N/A'}<br>
+        num input files: ${task.num_input_files || 'N/A'}<br>
+        num output files: ${task.num_output_files || 'N/A'}<br>
+        time worker start: ${task.time_worker_start ? task.time_worker_start.toFixed(2) : 'N/A'}<br>
+        time worker end: ${task.time_worker_end ? task.time_worker_end.toFixed(2) : 'N/A'}<br>   
+        when waiting retrieval: ${task.when_waiting_retrieval ? task.when_waiting_retrieval.toFixed(2) : 'N/A'}<br>
+        when retrieved: ${task.when_retrieved ? task.when_retrieved.toFixed(2) : 'N/A'}<br>
+        when done: ${task.when_done ? task.when_done.toFixed(2) : 'N/A'}<br>
     `;
 
     return htmlContent;
@@ -92,40 +92,21 @@ function setLegend() {
     const legendContainer = document.getElementById('execution-details-legend');
     legendContainer.innerHTML = '';
 
-    // Count recovery tasks
-    let recoverySuccessfulCount = 0;
-    let recoveryUnsuccessfulCount = 0;
-    
-    if (state.successfulTasks) {
-        recoverySuccessfulCount = state.successfulTasks.filter(task => task.is_recovery_task === true).length;
-    }
-    if (state.unsuccessfulTasks) {
-        recoveryUnsuccessfulCount = state.unsuccessfulTasks.filter(task => task.is_recovery_task === true).length;
-    }
-
-    // Count failures by type
-    const failureCounts = {};
-    if (state.unsuccessfulTasks) {
-        state.unsuccessfulTasks.forEach(task => {
-            failureCounts[task.task_status] = (failureCounts[task.task_status] || 0) + 1;
-        });
-    }
-
-    // Create sorted failure items (only include types that have occurrences)
+    // Create failure items based on num_of_status data
     const failureItems = Object.entries(FAILURE_TYPES)
-        .filter(([_, type]) => failureCounts[type.value] > 0)
+        .filter(([_, type]) => state.num_of_status && state.num_of_status[type.value] > 0)
         .map(([key, value]) => ({
             id: `unsuccessful-${key.toLowerCase()}`,
-            label: `${value.label} (${failureCounts[value.value]})`,
+            label: `${value.label} (${state.num_of_status[value.value]})`,
             color: value.color,
             checked: false,
-            count: failureCounts[value.value]
+            count: state.num_of_status[value.value]
         }))
         .sort((a, b) => b.count - a.count);
 
     const legendGroups = [
         {
-            title: `Successful Tasks (${state.successfulTasks ? state.successfulTasks.length : 0} total)`,
+            title: `Successful Tasks (${state.num_of_status[0] || 0} total)`,
             items: [
                 { id: 'successful-committing-to-worker', label: 'Committing', color: colors['successful-committing-to-worker'], checked: false },
                 { id: 'successful-executing-on-worker', label: 'Executing', color: colors['successful-executing-on-worker'], checked: true },
@@ -133,14 +114,28 @@ function setLegend() {
             ]
         },
         {
-            title: `Unsuccessful Tasks (${state.unsuccessfulTasks ? state.unsuccessfulTasks.length : 0} total)`,
+            title: `Unsuccessful Tasks (${
+                Object.entries(state.num_of_status || {})
+                    .filter(([status, _]) => status !== '0')
+                    .reduce((sum, [_, count]) => sum + count, 0)
+            } total)`,
             items: failureItems
         },
         {
-            title: `Recovery Tasks (${recoverySuccessfulCount + recoveryUnsuccessfulCount} total)`,
+            title: `Recovery Tasks (${(state.num_successful_recovery_tasks || 0) + (state.num_unsuccessful_recovery_tasks || 0)} total)`,
             items: [
-                { id: 'recovery-successful', label: `Successful (${recoverySuccessfulCount})`, color: colors['recovery-successful'], checked: false },
-                { id: 'recovery-unsuccessful', label: `Unsuccessful (${recoveryUnsuccessfulCount})`, color: colors['recovery-unsuccessful'], checked: false }
+                { 
+                    id: 'recovery-successful', 
+                    label: `Successful (${state.num_successful_recovery_tasks || 0})`, 
+                    color: colors['recovery-successful'], 
+                    checked: false 
+                },
+                { 
+                    id: 'recovery-unsuccessful', 
+                    label: `Unsuccessful (${state.num_unsuccessful_recovery_tasks || 0})`, 
+                    color: colors['recovery-unsuccessful'], 
+                    checked: false 
+                }
             ]
         },
         {
@@ -151,7 +146,7 @@ function setLegend() {
         }
     ];
 
-    // Only include Unsuccessful Tasks group if there are failures
+    // Only include groups that have tasks
     const groupsToDisplay = legendGroups.filter(group => 
         group.title !== 'Unsuccessful Tasks' || group.items.length > 0
     );
@@ -481,7 +476,7 @@ function plotExecutionDetails() {
 }
 
 function calculateMargin() {
-    const margin = { top: 40, right: 30, bottom: 40, left: 30 };
+    const margin = { top: 40, right: 30, bottom: 60, left: 30 };  // Increased bottom margin
 
     const tempSvg = svgElement
         .append('g')
@@ -510,6 +505,7 @@ function plotAxis(svg, svgWidth, svgHeight) {
     const xScale = d3.scaleLinear()
         .domain([state.xMin, state.xMax])
         .range([0, svgWidth]);
+
     // set y scale
     const workerCoresMap = [];
     state.workerInfo.forEach(d => {
@@ -518,16 +514,19 @@ function plotAxis(svg, svgWidth, svgHeight) {
         }
     });
     
-    // Sort workerCoresMap to have smaller IDs at the bottom
+    // Sort workerCoresMap to have smaller worker IDs at the bottom and smaller core IDs at the bottom within each worker
     workerCoresMap.sort((a, b) => {
-        const idA = parseInt(a.split('-')[0]);
-        const idB = parseInt(b.split('-')[0]);
-        return idB - idA;  // Reverse order
+        const [workerIdA, coreIdA] = a.split('-').map(Number);
+        const [workerIdB, coreIdB] = b.split('-').map(Number);
+        if (workerIdA !== workerIdB) {
+            return workerIdA - workerIdB;
+        }
+        return coreIdA - coreIdB;
     });
 
     const yScale = d3.scaleBand()
         .domain(workerCoresMap)
-        .range([0, Math.max(0, svgHeight)])  // Ensure non-negative range
+        .range([svgHeight, 0])  // Changed to [svgHeight, 0] to have smaller IDs at bottom
         .padding(0.1);
 
     // Ensure bandwidth is positive
@@ -545,21 +544,39 @@ function plotAxis(svg, svgWidth, svgHeight) {
         .attr('transform', `translate(0, ${svgHeight})`)
         .call(xAxis)
         .selectAll('text')
-        .style('font-size', state.tickFontSize);
+        .style('font-size', state.tickFontSize)
+        .attr('dy', '2em');  // Move tick labels down
 
     // draw y axis
-    const totalWorkers = state.workerInfo.length;
     const maxTicks = 5;
-    const tickInterval = Math.ceil(totalWorkers / maxTicks);
     const selectedTicks = [];
-    // Reverse the order of ticks
-    for (let i = 0; i < totalWorkers; i += tickInterval) {
-        selectedTicks.push(`${state.workerInfo[i].id}-${state.workerInfo[i].cores}`);
+    
+    // Calculate step size based on number of unique worker IDs
+    const uniqueWorkerIds = [...new Set(workerCoresMap.map(id => id.split('-')[0]))];
+    const step = Math.max(1, Math.floor(uniqueWorkerIds.length / maxTicks));
+    
+    // Select ticks based on unique worker IDs
+    for (let i = 0; i < uniqueWorkerIds.length; i += step) {
+        // Find the first core entry for this worker ID
+        const workerId = uniqueWorkerIds[i];
+        const tick = workerCoresMap.find(id => id.split('-')[0] === workerId);
+        if (tick) {
+            selectedTicks.push(tick);
+        }
     }
+    
+    // Always include the last worker's first core if not already included
+    const lastWorkerId = uniqueWorkerIds[uniqueWorkerIds.length - 1];
+    const lastTick = workerCoresMap.find(id => id.split('-')[0] === lastWorkerId);
+    if (lastTick && !selectedTicks.includes(lastTick)) {
+        selectedTicks.push(lastTick);
+    }
+
     const yAxis = d3.axisLeft(yScale)
         .tickValues(selectedTicks)
         .tickSizeOuter(0)
         .tickFormat(d => d.split('-')[0]);
+    
     svg.append('g')
         .call(yAxis)
         .selectAll('text')
@@ -600,6 +617,9 @@ async function initialize() {
         state.xTickValues = data.xTickValues;
         state.xMin = data.xMin;
         state.xMax = data.xMax;
+        state.num_of_status = data.num_of_status;
+        state.num_successful_recovery_tasks = data.num_successful_recovery_tasks;
+        state.num_unsuccessful_recovery_tasks = data.num_unsuccessful_recovery_tasks;
 
         setLegend();
         

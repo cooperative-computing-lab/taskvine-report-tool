@@ -179,10 +179,11 @@ class DataParser:
             datestring = parts[0] + " " + parts[1]
             timestamp = self.datestring_to_timestamp(datestring)
             timestamp = floor_decimal(timestamp, 2)
-            self.manager.update_current_max_time(timestamp)
         except:
             # this line does not start with a timestamp, which sometimes happens
             return
+
+        self.manager.update_current_max_time(timestamp)
 
         if "listening on port" in line:
             try:
@@ -623,48 +624,10 @@ class DataParser:
                 else:
                     pass
 
-    def fault_handler(self):
-        # if the manager has not finished yet, we do something to set up the None values to make the plotting tool work
-        # 1. if the manager's time_end is None, we set it to the current timestamp
-        if self.manager.time_end is None:
-            self.manager.set_time_end(self.manager.current_max_time)
-        # 2. if a task's status is None, we set it to 4 << 3, which means the task failed but not yet reported
-        for task in self.tasks.values():
-            if task.task_status is None:
-                task.set_task_status(4 << 3)
-                task.set_when_failure_happens(self.manager.current_max_time)
-        # 3. if a task succeeds, check if the end time is larger than the start time
-        for task in self.tasks.values():
-            if task.task_status == 0:
-                if task.time_worker_start < task.when_running:
-                    if task.time_worker_start - task.when_running > 1:
-                        print(f"Warning: task {task.task_id} succeeded but the start time is smaller than the running time")
-                    else:
-                        task.set_time_worker_start(task.when_running)
-                if task.time_worker_end < task.time_worker_start:
-                    if task.time_worker_end - task.time_worker_start > 1:
-                        print(f"Warning: task {task.task_id} succeeded but the end time is smaller than the start time")
-                    else:
-                        task.set_time_worker_end(task.time_worker_start)
-                # note that the task might have not been retrieved yet
-                if task.when_retrieved and task.when_retrieved < task.time_worker_end:
-                    if task.when_retrieved - task.time_worker_end > 1:
-                        print(f"Warning: task {task.task_id} succeeded but the retrieved time is smaller than the end time")
-                    else:
-                        task.set_when_retrieved(task.time_worker_end)
-        # 4. for workers, check if the time_disconnected is larger than the time_connected
-        for worker in self.workers.values():
-            for i, (time_connected, time_disconnected) in enumerate(zip(worker.time_connected, worker.time_disconnected)):
-                if time_disconnected < time_connected:
-                    if time_disconnected - time_connected > 1:
-                        print(f"Warning: worker {worker.ip} has a disconnected time that is smaller than the connected time")
-                    else:
-                        worker.time_disconnected[i] = time_connected
-
-
     def parse_debug(self):
-        self.current_try_id = defaultdict(int)
+        time_start = time.time()
 
+        self.current_try_id = defaultdict(int)
         total_lines = count_lines(self.debug)
 
         with open(self.debug, 'rb') as file:
@@ -678,14 +641,18 @@ class DataParser:
                     print(f"Error decoding line to utf-8: {raw_line}")
             
             pbar.close()
-        
+
+        time_end = time.time()
+        print(f"Parsing debug took {round(time_end - time_start, 4)} seconds")
+
+        self.postprocess_debug()
         self.checkpoint_debug()
 
     def parse_logs(self):
         self.parse_debug()
-        self.fault_handler()
 
     def generate_subgraphs(self):
+        time_start = time.time()
         tasks_keys = set(self.tasks.keys())
         parent = {key: key for key in tasks_keys}
         rank = {key: 0 for key in tasks_keys}
@@ -738,32 +705,103 @@ class DataParser:
         sorted_subgraphs = sorted(subgraphs.values(), key=len, reverse=True)
         self.subgraphs = {i: subgraph for i, subgraph in enumerate(sorted_subgraphs, 1)}
 
-        self.checkpoint_subgraphs()
+        time_end = time.time()
+        print(f"Parsing subgraphs took {round(time_end - time_start, 4)} seconds")
 
+        self.checkpoint_subgraphs()
 
     def checkpoint_debug(self):
         time_start = time.time()
         with open(os.path.join(self.pkl_files_dir, 'workers.pkl'), 'wb') as f:
             cloudpickle.dump(self.workers, f)
+        time_end = time.time()
+        print(f"Checkpointing workers.pkl took {round(time_end - time_start, 4)} seconds")
+        time_start = time.time()
         with open(os.path.join(self.pkl_files_dir, 'files.pkl'), 'wb') as f:
             cloudpickle.dump(self.files, f)
+        time_end = time.time()
+        print(f"Checkpointing files.pkl took {round(time_end - time_start, 4)} seconds")
+        time_start = time.time()
         with open(os.path.join(self.pkl_files_dir, 'tasks.pkl'), 'wb') as f:
             cloudpickle.dump(self.tasks, f)
+        time_end = time.time()
+        print(f"Checkpointing tasks.pkl took {round(time_end - time_start, 4)} seconds")
+        time_start = time.time()
         with open(os.path.join(self.pkl_files_dir, 'manager.pkl'), 'wb') as f:
             cloudpickle.dump(self.manager, f)
-        print(f"Checkpointed workers, files, tasks, manager in {round(time.time() - time_start, 4)} seconds")
+        time_end = time.time()
+        print(f"Checkpointing manager.pkl took {round(time_end - time_start, 4)} seconds")
+
+    def postprocess_debug(self):
+        print(f"Postprocessing debug")
+        time_start = time.time()
+        # some post-processing in case the manager does not exit normally or has not finished yet
+        # if the manager has not finished yet, we do something to set up the None values to make the plotting tool work
+        # 1. if the manager's time_end is None, we set it to the current timestamp
+        if self.manager.time_end is None:
+            print(f"Setting manager time_end to {self.manager.current_max_time}")
+            self.manager.set_time_end(self.manager.current_max_time)
+        else:
+            print(f"Manager time_end is already set to {self.manager.time_end}")
+        # post-processing for tasks
+        for task in self.tasks.values():
+            # 2. if a task's status is None, we set it to 4 << 3, which means the task failed but not yet reported
+            if task.task_status is None:
+                task.set_task_status(4 << 3)
+                task.set_when_failure_happens(self.manager.current_max_time)
+            # 3. if a task succeeds, check if the end time is larger than the start time
+            if task.task_status == 0:
+                if task.time_worker_start < task.when_running:
+                    if task.time_worker_start - task.when_running > 1:
+                        print(f"Warning: task {task.task_id} succeeded but the start time is smaller than the running time")
+                    else:
+                        task.set_time_worker_start(task.when_running)
+                if task.time_worker_end < task.time_worker_start:
+                    if task.time_worker_end - task.time_worker_start > 1:
+                        print(f"Warning: task {task.task_id} succeeded but the end time is smaller than the start time")
+                    else:
+                        task.set_time_worker_end(task.time_worker_start)
+                # note that the task might have not been retrieved yet
+                if task.when_retrieved and task.when_retrieved < task.time_worker_end:
+                    if task.when_retrieved - task.time_worker_end > 1:
+                        print(f"Warning: task {task.task_id} succeeded but the retrieved time is smaller than the end time")
+                    else:
+                        task.set_when_retrieved(task.time_worker_end)
+        # post-processing for workers
+        for worker in self.workers.values():
+            # 4. for workers, check if the time_disconnected is larger than the time_connected
+            for i, (time_connected, time_disconnected) in enumerate(zip(worker.time_connected, worker.time_disconnected)):
+                if time_disconnected < time_connected:
+                    if time_disconnected - time_connected > 1:
+                        print(f"Warning: worker {worker.ip} has a disconnected time that is smaller than the connected time")
+                    else:
+                        worker.time_disconnected[i] = time_connected
+        time_end = time.time()
+        print(f"Postprocessing debug took {round(time_end - time_start, 4)} seconds")
 
     def restore_debug(self):
         time_start = time.time()
         try:
+            time_start = time.time()
             with open(os.path.join(self.pkl_files_dir, 'workers.pkl'), 'rb') as f:
                 self.workers = cloudpickle.load(f)
+            time_end = time.time()
+            print(f"Restoring workers.pkl took {round(time_end - time_start, 4)} seconds")
+            time_start = time.time()
             with open(os.path.join(self.pkl_files_dir, 'files.pkl'), 'rb') as f:
                 self.files = cloudpickle.load(f)
+            time_end = time.time()
+            print(f"Restoring files.pkl took {round(time_end - time_start, 4)} seconds")
+            time_start = time.time()
             with open(os.path.join(self.pkl_files_dir, 'tasks.pkl'), 'rb') as f:
                 self.tasks = cloudpickle.load(f)
+            time_end = time.time()
+            print(f"Restoring tasks.pkl took {round(time_end - time_start, 4)} seconds")
+            time_start = time.time()
             with open(os.path.join(self.pkl_files_dir, 'manager.pkl'), 'rb') as f:
                 self.manager = cloudpickle.load(f)
+            time_end = time.time()
+            print(f"Restoring manager.pkl took {round(time_end - time_start, 4)} seconds")
         except Exception as e:
             raise ValueError(f"The debug file has not been successfully parsed yet")
         time_end = time.time()
@@ -773,27 +811,39 @@ class DataParser:
         time_start = time.time()
         with open(os.path.join(self.pkl_files_dir, 'subgraphs.pkl'), 'wb') as f:
             cloudpickle.dump(self.subgraphs, f)
-        print(f"Checkpointed subgraphs in {round(time.time() - time_start, 4)} seconds")
+        time_end = time.time()
+        print(f"Checkpointing subgraphs.pkl took {round(time_end - time_start, 4)} seconds")
 
     def restore_from_checkpoint(self):
-        # restore the workers, files, and tasks
-        time_start = time.time()
         try:
+            time_start = time.time()
             with open(os.path.join(self.pkl_files_dir, 'workers.pkl'), 'rb') as f:
                 self.workers = cloudpickle.load(f)
+            time_end = time.time()
+            print(f"Restoring workers.pkl took {round(time_end - time_start, 4)} seconds")
+            time_start = time.time()
             with open(os.path.join(self.pkl_files_dir, 'files.pkl'), 'rb') as f:
                 self.files = cloudpickle.load(f)
+            time_end = time.time()
+            print(f"Restoring files.pkl took {round(time_end - time_start, 4)} seconds")
+            time_start = time.time()
             with open(os.path.join(self.pkl_files_dir, 'tasks.pkl'), 'rb') as f:
                 self.tasks = cloudpickle.load(f)
+            time_end = time.time()
+            print(f"Restoring tasks.pkl took {round(time_end - time_start, 4)} seconds")
+            time_start = time.time()
             with open(os.path.join(self.pkl_files_dir, 'manager.pkl'), 'rb') as f:
                 self.manager = cloudpickle.load(f)
+            time_end = time.time()
+            print(f"Restoring manager.pkl took {round(time_end - time_start, 4)} seconds")
         except Exception as e:
             raise ValueError(f"The debug file has not been successfully parsed yet")
         try:
+            time_start = time.time()
             with open(os.path.join(self.pkl_files_dir, 'subgraphs.pkl'), 'rb') as f:
                 self.subgraphs = cloudpickle.load(f)
+            time_end = time.time()
+            print(f"Restoring subgraphs.pkl took {round(time_end - time_start, 4)} seconds")
         except Exception as e:
             raise ValueError(f"The subgraphs have not been generated yet")
-        time_end = time.time()
-        print(f"Restored workers, files, tasks, manager, and subgraphs from checkpoint in {round(time_end - time_start, 4)} seconds")
 

@@ -7,7 +7,7 @@ const buttonToggleCDF = document.getElementById('button-toggle-cdf');
 const svgContainer = document.getElementById('task-execution-time-container');
 const svgElement = d3.select('#task-execution-time');
 
-const dotRadius = 1;
+const dotRadius = 1.5;
 const highlightRadius = 3;
 
 const state = {

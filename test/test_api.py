@@ -172,27 +172,26 @@ if __name__ == "__main__":
     
     api_list = [
         {"name": "runtime-templates-list", "params": None},
-        {"name": "task-execution-time", "params": None},
-        {"name": "worker-transfers", "variants": [
-            {"type": "incoming"},   
-            {"type": "outgoing"}
-        ]},
-        {"name": "subgraphs", "params": {"subgraph_id": 1,
-                                         "plot_failed_task": 'true',
-                                         "plot_recovery_task": 'true'
+        {"name": "storage-consumption", "params": {
+            "show_percentage": "true"
         }},
         {"name": "file-replicas", "params": None},
-        {"name": "task-concurrency", "params": {
-            "types": "tasks_done"
-        }},
         {"name": "file-sizes", "params": {
             "order": "asc",
             "type": "transferred",
         }},
-        {"name": "storage-consumption", "params": {
-            "show_percentage": "true"
+        {"name": "worker-transfers", "params": {
+            "type": "incoming"
+        }},
+        {"name": "task-execution-time", "params": None},
+        {"name": "task-concurrency", "params": {
+            "types": "tasks_done"
         }},
         {"name": "execution-details", "params": None},
+        {"name": "subgraphs", "params": {"subgraph_id": 1,
+                                         "plot_unsuccessful_task": 'true',
+                                         "plot_recovery_task": 'true'
+        }},
     ]
     testing_api = api_list[-1]  # Test worker-transfers
 

@@ -5,6 +5,9 @@ const buttonDownload = document.getElementById('button-download-file-replicas');
 const svgElement = d3.select('#file-replicas');
 const svgContainer = document.getElementById('file-replicas-container');
 
+const dotRadius = 1.5;
+const highlightRadius = 3;
+
 const HIGHLIGHT_COLOR = 'orange';
 const LINE_COLOR = '#1f77b4';
 
@@ -71,16 +74,10 @@ function plotFileReplicas() {
         .append('g')
         .attr('transform', `translate(${margin.left},${margin.top})`);
 
-    // Calculate bar width
-    const barWidth = Math.min(
-        (width / state.data.length) * 0.8,
-        30
-    );
-
-    // Adjust xScale to add one bar width of padding on each side
+    // Set up scales
     const xScale = d3.scaleLinear()
-        .domain([state.xMin - 1, state.xMax + 1])  // Add padding of 1 unit on each side
-        .range([barWidth, width - barWidth]);  // Adjust range to leave space for one bar
+        .domain([state.xMin, state.xMax])
+        .range([0, width]);
 
     const yScale = d3.scaleLinear()
         .domain([state.yMin, state.yMax])
@@ -102,22 +99,33 @@ function plotFileReplicas() {
             .tickFormat(d => d))
         .selectAll('text')
         .style('font-size', state.tickFontSize);
-
-    // Add the bars
-    svg.selectAll('rect')
+    
+    const points = svg.selectAll('circle')
         .data(state.data)
         .enter()
-        .append('rect')
-        .attr('x', d => xScale(d[0]) - barWidth/2)
-        .attr('y', d => yScale(d[3]))
-        .attr('width', barWidth)
-        .attr('height', d => height - yScale(d[3]))
+        .append('circle')
+        .attr('cx', d => {
+            const x = xScale(d[0]);
+            if (isNaN(x)) {
+                console.log('Invalid x value:', d[0], 'for data point:', d);
+            }
+            return x;
+        })
+        .attr('cy', d => {
+            const y = yScale(d[3]);
+            if (isNaN(y)) {
+                console.log('Invalid y value:', d[3], 'for data point:', d);
+            }
+            return y;
+        })
+        .attr('r', dotRadius)
         .attr('fill', LINE_COLOR)
         .on('mouseover', function(event, d) {
             d3.select(this)
                 .attr('fill', HIGHLIGHT_COLOR)
-                .attr('width', barWidth * 2);
+                .attr('r', highlightRadius);
             
+            // Show tooltip
             const tooltip = d3.select('#vine-tooltip');
             tooltip.style('visibility', 'visible')
                 .html(`
@@ -131,7 +139,7 @@ function plotFileReplicas() {
         .on('mouseout', function() {
             d3.select(this)
                 .attr('fill', LINE_COLOR)
-                .attr('width', barWidth);
+                .attr('r', dotRadius);
             d3.select('#vine-tooltip').style('visibility', 'hidden');
         });
 }

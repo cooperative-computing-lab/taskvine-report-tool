@@ -32,7 +32,10 @@ class ManagerInfo:
         self.current_max_time = None
 
     def update_current_max_time(self, time):
-        time = float(time)
+        try:
+            time = float(time)
+        except:
+            return
         if self.current_max_time is None:
             self.current_max_time = time
         else:
@@ -79,3 +82,22 @@ class ManagerInfo:
             self.when_last_worker_disconnect = when_last_worker_disconnect
         else:
             self.when_last_worker_disconnect = max(self.when_last_worker_disconnect, when_last_worker_disconnect)
+
+    def print_info(self):
+        print(f"Manager Info:")
+        print(f"  IP: {self.ip}")
+        print(f"  Port: {self.port}")
+        print(f"  Transfer Port: {self.transfer_port}")
+        print(f"  Time Zone Offset Hours: {self.time_zone_offset_hours}")
+        print(f"  Time Start: {self.time_start}")
+        print(f"  Time End: {self.time_end}")
+        print(f"  When First Task Start Commit: {self.when_first_task_start_commit}")
+        print(f"  When Last Task Done: {self.when_last_task_done}")
+        print(f"  When First Worker Connect: {self.when_first_worker_connect}")
+        print(f"  When Last Worker Disconnect: {self.when_last_worker_disconnect}")
+        print(f"  Size of All Files MB: {self.size_of_all_files_mb}")
+        print(f"  Cluster Peak Disk Usage MB: {self.cluster_peak_disk_usage_mb}")
+        print(f"  Lifetime S: {self.lifetime_s}")
+        print(f"  Time Start Human: {self.time_start_human}")
+        print(f"  Time End Human: {self.time_end_human}")
+        print(f"  Current Max Time: {self.current_max_time}")

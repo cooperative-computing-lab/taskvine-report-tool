@@ -18,7 +18,7 @@ if __name__ == '__main__':
     data_parser = DataParser(runtime_template)
 
     if args.subgraphs_only:
-        data_parser.restore_debug()
+        data_parser.parse_logs()
         data_parser.generate_subgraphs()
     else:
         data_parser.parse_logs()

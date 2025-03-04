@@ -8,9 +8,13 @@ from collections import defaultdict
 import graphviz
 from src.data_parse import DataParser
 import numpy as np
+import random
+import traceback
+import time
 
 LOGS_DIR = 'logs'
-
+TARGET_POINTS = 8000  # at lease 3: the beginning, the end, and the global peak
+TARGET_TASK_BARS = 80000   # how many task bars to show
 
 class TemplateState:
     def __init__(self):
@@ -32,7 +36,18 @@ class TemplateState:
 
         self.tick_size = 12
 
-    def restore_from_checkpoint(self):
+    def change_runtime_template(self, runtime_template):
+        if not runtime_template:
+            return
+        if self.runtime_template and Path(runtime_template).name == Path(self.runtime_template).name:
+            print(f"Runtime template already set to: {runtime_template}")
+            return
+        self.runtime_template = os.path.join(os.getcwd(), LOGS_DIR, Path(runtime_template).name)
+        print(f"Restoring data for: {runtime_template}")
+
+        self.data_parser = DataParser(self.runtime_template)
+        self.svg_files_dir = self.data_parser.svg_files_dir
+
         self.data_parser.restore_from_checkpoint()
         self.manager = self.data_parser.manager
         self.workers = self.data_parser.workers
@@ -40,22 +55,8 @@ class TemplateState:
         self.tasks = self.data_parser.tasks
         self.subgraphs = self.data_parser.subgraphs
 
-    def change_runtime_template(self, runtime_template):
-        self.runtime_template = os.path.join(os.getcwd(), LOGS_DIR, Path(runtime_template).name)
-        self.data_parser = DataParser(self.runtime_template)
-        self.svg_files_dir = self.data_parser.svg_files_dir
-        self.restore_from_checkpoint()
-
         self.MIN_TIME = self.manager.time_start
         self.MAX_TIME = self.manager.time_end
-
-    def ensure_runtime_template(self, runtime_template):
-        if not runtime_template:
-            return
-        if self.runtime_template and Path(runtime_template).name == Path(self.runtime_template).name:
-            return
-        self.change_runtime_template(runtime_template)
-
 
 def all_subfolders_exists(parent: str, folder_names: list[str]) -> bool:
     parent_path = Path(parent).resolve()
@@ -79,13 +80,17 @@ def get_execution_details():
         # tasks information
         data['successfulTasks'] = []
         data['unsuccessfulTasks'] = []
+        data['num_of_status'] = defaultdict(int)
+        data['num_successful_recovery_tasks'] = 0
+        data['num_unsuccessful_recovery_tasks'] = 0
         for task in template_manager.tasks.values():
             if task.task_status == 0:
                 # note that the task might have not been retrieved yet
                 if not task.when_retrieved:
                     continue
-                if not task.when_done:
-                    continue
+                data['num_of_status'][task.task_status] += 1
+                if task.is_recovery_task:
+                    data['num_successful_recovery_tasks'] += 1
                 done_task_info = {
                     'task_id': task.task_id,
                     'worker_ip': task.worker_ip,
@@ -101,14 +106,17 @@ def get_execution_details():
                     'when_running': task.when_running - template_manager.MIN_TIME,
                     'time_worker_start': task.time_worker_start - template_manager.MIN_TIME,
                     'time_worker_end': task.time_worker_end - template_manager.MIN_TIME,
+                    'execution_time': task.time_worker_end - task.time_worker_start,
                     'when_waiting_retrieval': task.when_waiting_retrieval - template_manager.MIN_TIME,
                     'when_retrieved': task.when_retrieved - template_manager.MIN_TIME,
-                    'when_done': task.when_done - template_manager.MIN_TIME,
                 }
                 data['successfulTasks'].append(done_task_info)
             else:
                 if len(task.core_id) == 0:    # not run at all
                     continue
+                if task.is_recovery_task:
+                    data['num_unsuccessful_recovery_tasks'] += 1
+                data['num_of_status'][task.task_status] += 1
                 unsuccessful_task_info = {
                     'task_id': task.task_id,
                     'worker_ip': task.worker_ip,
@@ -123,9 +131,23 @@ def get_execution_details():
                     'when_ready': task.when_ready - template_manager.MIN_TIME,
                     'when_running': task.when_running - template_manager.MIN_TIME,
                     'when_failure_happens': task.when_failure_happens - template_manager.MIN_TIME,
+                    'execution_time': task.when_failure_happens - task.when_running,
                 }
                 data['unsuccessfulTasks'].append(unsuccessful_task_info)
 
+        # filter successfulTasks to keep only top 100,000 by execution time if there are more than 100,000 tasks
+        if len(data['successfulTasks']) > TARGET_TASK_BARS:
+            # sort tasks by execution time in descending order and keep top 100,000
+            data['successfulTasks'] = sorted(data['successfulTasks'], 
+                                          key=lambda x: x['execution_time'],
+                                          reverse=True)[:TARGET_TASK_BARS]
+        # filter unsuccessfulTasks to keep only top 100,000 by execution time if there are more than 100,000 tasks
+        if len(data['unsuccessfulTasks']) > TARGET_TASK_BARS:
+            # sort tasks by execution time in descending order and keep top 100,000
+            data['unsuccessfulTasks'] = sorted(data['unsuccessfulTasks'], 
+                                          key=lambda x: x['execution_time'],
+                                          reverse=True)[:TARGET_TASK_BARS]
+        
         data['workerInfo'] = []
         for worker in template_manager.workers.values():
             if not worker.hash:
@@ -141,6 +163,9 @@ def get_execution_details():
                 'time_connected': [t - template_manager.MIN_TIME for t in worker.time_connected],
                 'time_disconnected': [t - template_manager.MIN_TIME for t in worker.time_disconnected],
                 'cores': worker.cores,
+                'memory_mb': worker.memory_mb,
+                'disk_mb': worker.disk_mb,
+                'gpus': worker.gpus,
             }
             data['workerInfo'].append(worker_info)
 
@@ -159,6 +184,27 @@ def get_execution_details():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     
+
+def downsample_storage_data(points):
+    # downsample storage consumption data points while keeping the global peak and randomly sampling other points
+    if len(points) <= TARGET_POINTS:
+        return points
+
+    global_peak_idx = max(range(len(points)), key=lambda i: points[i][1])
+    global_peak = points[global_peak_idx]
+
+    keep_indices = {0, len(points) - 1, global_peak_idx}
+
+    remaining_points = TARGET_POINTS - len(keep_indices)
+    if remaining_points <= 0:
+        return [points[0], global_peak, points[-1]]
+
+    available_indices = list(set(range(len(points))) - keep_indices)
+    sampled_indices = random.sample(available_indices, min(remaining_points, len(available_indices)))
+    keep_indices.update(sampled_indices)
+    
+    result = [points[i] for i in sorted(keep_indices)]
+    return result
 
 @app.route('/api/storage-consumption')
 def get_storage_consumption():
@@ -227,8 +273,10 @@ def get_storage_consumption():
             if not np.isnan(curr_max):
                 max_storage_consumption = max(max_storage_consumption, curr_max)
                 
-            # keep only time and storage_consumption columns
-            data['worker_storage_consumption'][destination] = df[['time', 'storage_consumption']].values.tolist()
+            # Convert to list of points and downsample
+            points = df[['time', 'storage_consumption']].values.tolist()
+            points = downsample_storage_data(points)
+            data['worker_storage_consumption'][destination] = points
             
             # add the initial and final points with 0 consumption
             worker = template_manager.workers[destination]
@@ -304,6 +352,27 @@ def get_storage_consumption():
         return jsonify({'error': str(e)}), 500
     
 
+def downsample_worker_transfers(points):
+    # downsample transfer data points while keeping the global peak and randomly sampling other points
+    if len(points) <= TARGET_POINTS:
+        return points
+
+    global_peak_idx = max(range(len(points)), key=lambda i: points[i][1])
+    global_peak = points[global_peak_idx]
+
+    keep_indices = {0, len(points) - 1, global_peak_idx}
+
+    remaining_points = TARGET_POINTS - len(keep_indices)
+    if remaining_points <= 0:
+        return [points[0], global_peak, points[-1]]
+
+    available_indices = list(set(range(len(points))) - keep_indices)
+    sampled_indices = random.sample(available_indices, min(remaining_points, len(available_indices)))
+    keep_indices.update(sampled_indices)
+
+    result = [points[i] for i in sorted(keep_indices)]
+    return result
+
 @app.route('/api/worker-transfers')
 def get_worker_transfers():
     try:
@@ -347,12 +416,17 @@ def get_worker_transfers():
             df['cumulative_transfers'] = df['event'].cumsum()
             # if two rows have the same time, keep the one with the largest event
             df = df.drop_duplicates(subset=['time'], keep='last')
-            data['transfers'][worker] = df[['time', 'cumulative_transfers']].values.tolist()
+            
+            # Convert to list of points and downsample
+            points = df[['time', 'cumulative_transfers']].values.tolist()
+            points = downsample_worker_transfers(points)
+            data['transfers'][worker] = points
+            
             # append the initial point at time_connected with 0
             for time_connected, time_disconnected in zip(template_manager.workers[worker].time_connected, template_manager.workers[worker].time_disconnected):
                 data['transfers'][worker].insert(0, [time_connected - template_manager.MIN_TIME, 0])
                 data['transfers'][worker].append([time_disconnected - template_manager.MIN_TIME, 0])
-            max_transfers = max(max_transfers, df['cumulative_transfers'].max())
+            max_transfers = max(max_transfers, max(point[1] for point in points))
 
         # convert keys to string-formatted keys
         data['transfers'] = {f"{k[0]}:{k[1]}": v for k, v in data['transfers'].items()}
@@ -383,13 +457,62 @@ def get_worker_transfers():
         print(f"Error in get_worker_transfers: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+def downsample_task_execution_time(points):
+    # downsample task execution time points while keeping the first point, last point, and peak execution time
+    if len(points) <= TARGET_POINTS:
+        return points
+
+    # Find global peak (maximum execution time)
+    global_peak_idx = max(range(len(points)), key=lambda i: points[i][1])  # points[i][1] is execution_time
+    global_peak = points[global_peak_idx]
+
+    # Keep the first point, last point, and global peak
+    keep_indices = {0, len(points) - 1, global_peak_idx}
+
+    # Calculate remaining points to sample
+    remaining_points = TARGET_POINTS - len(keep_indices)
+    if remaining_points <= 0:
+        return [points[0], global_peak, points[-1]]
+
+    # Sort the indices we want to keep to find gaps between them
+    sorted_keep_indices = sorted(keep_indices)
+    
+    # Calculate points to keep in each gap
+    points_per_gap = remaining_points // (len(sorted_keep_indices) - 1)
+    extra_points = remaining_points % (len(sorted_keep_indices) - 1)
+
+    # For each gap between key points, randomly sample points
+    for i in range(len(sorted_keep_indices) - 1):
+        start_idx = sorted_keep_indices[i]
+        end_idx = sorted_keep_indices[i + 1]
+        gap_size = end_idx - start_idx - 1
+        
+        if gap_size <= 0:
+            continue
+            
+        # Calculate how many points to keep in this gap
+        current_gap_points = points_per_gap
+        if extra_points > 0:
+            current_gap_points += 1
+            extra_points -= 1
+            
+        if current_gap_points > 0:
+            # Randomly sample points from this gap
+            available_indices = list(range(start_idx + 1, end_idx))
+            sampled_indices = random.sample(available_indices, min(current_gap_points, len(available_indices)))
+            keep_indices.update(sampled_indices)
+    
+    # Sort all indices and return the corresponding points
+    result = [points[i] for i in sorted(keep_indices)]
+    return result
+
 @app.route('/api/task-execution-time')
 def get_task_execution_time():
     try:
         data = {}
 
         # get the execution time of each task
-        data['task_execution_time'] = []
+        task_execution_time_list = []
         for task in template_manager.tasks.values():
             # skip if the task didn't run to completion
             if task.task_status != 0:
@@ -397,18 +520,26 @@ def get_task_execution_time():
             task_execution_time = round(task.time_worker_end - task.time_worker_start, 2)
             # if a task completes very quickly, we set it to 0.01
             task_execution_time = max(task_execution_time, 0.01)
-            data['task_execution_time'].append((task.task_id, task_execution_time))
+            task_execution_time_list.append((task.task_id, task_execution_time))
 
-        # calculate the cdf of the task execution time using pandas, where the y is the probability
-        df = pd.DataFrame(data['task_execution_time'], columns=['task_id', 'task_execution_time'])
-        df = df.sort_values(by=['task_execution_time'])
+        # sort by execution time for better visualization
+        task_execution_time_list.sort(key=lambda x: x[1])
+        
+        # downsample the data points
+        data['task_execution_time'] = downsample_task_execution_time(task_execution_time_list)
+
+        # calculate the cdf using the original (non-downsampled) data to maintain accuracy
+        df = pd.DataFrame(task_execution_time_list, columns=['task_id', 'task_execution_time'])
         df['cumulative_execution_time'] = df['task_execution_time'].cumsum()
         df['probability'] = df['cumulative_execution_time'] / df['cumulative_execution_time'].max()
         df['probability'] = df['probability'].round(4)
-        data['task_execution_time_cdf'] = df[['task_execution_time', 'probability']].values.tolist()
+        
+        # downsample the CDF data points as well
+        cdf_points = df[['task_execution_time', 'probability']].values.tolist()
+        data['task_execution_time_cdf'] = downsample_task_execution_time(cdf_points)
 
-        # tick values
-        num_tasks = len(df)
+        # tick values - use original data ranges to maintain proper axis scaling
+        num_tasks = len(task_execution_time_list)  # use original length
         data['execution_time_x_tick_values'] = [
             1,
             round(num_tasks * 0.25, 2),
@@ -416,7 +547,8 @@ def get_task_execution_time():
             round(num_tasks * 0.75, 2),
             num_tasks
         ]
-        max_execution_time = df['task_execution_time'].max()
+        
+        max_execution_time = max(x[1] for x in task_execution_time_list)  # use original max
         data['execution_time_y_tick_values'] = [
             0,
             round(max_execution_time * 0.25, 2),
@@ -424,6 +556,7 @@ def get_task_execution_time():
             round(max_execution_time * 0.75, 2),
             max_execution_time
         ]
+        
         data['probability_y_tick_values'] = [0, 0.25, 0.5, 0.75, 1]
         data['probability_x_tick_values'] = [
             0,
@@ -438,14 +571,64 @@ def get_task_execution_time():
         return jsonify(data)
         
     except Exception as e:
+        print(f"Error in get_task_execution_time: {str(e)}")
         return jsonify({'error': str(e)}), 500
     
+def downsample_task_concurrency(points):
+    # If points are fewer than target, return all
+    if len(points) <= TARGET_POINTS:
+        return points
+
+    # Find global peak (maximum concurrency)
+    global_peak_idx = max(range(len(points)), key=lambda i: points[i][1])  # points[i][1] is concurrency
+    global_peak = points[global_peak_idx]
+
+    # Keep first, last and peak points
+    keep_indices = {0, len(points) - 1, global_peak_idx}
+
+    # Calculate remaining points to sample
+    remaining_points = TARGET_POINTS - len(keep_indices)
+    if remaining_points <= 0:
+        return [points[0], global_peak, points[-1]]
+
+    # Sort key indices to find gaps
+    sorted_keep_indices = sorted(keep_indices)
+    
+    # Calculate points per gap
+    points_per_gap = remaining_points // (len(sorted_keep_indices) - 1)
+    extra_points = remaining_points % (len(sorted_keep_indices) - 1)
+
+    # Sample points from each gap
+    for i in range(len(sorted_keep_indices) - 1):
+        start_idx = sorted_keep_indices[i]
+        end_idx = sorted_keep_indices[i + 1]
+        gap_size = end_idx - start_idx - 1
+        
+        if gap_size <= 0:
+            continue
+            
+        # Calculate points for this gap
+        current_gap_points = points_per_gap
+        if extra_points > 0:
+            current_gap_points += 1
+            extra_points -= 1
+            
+        if current_gap_points > 0:
+            # Randomly sample from gap
+            available_indices = list(range(start_idx + 1, end_idx))
+            sampled_indices = random.sample(available_indices, min(current_gap_points, len(available_indices)))
+            keep_indices.update(sampled_indices)
+    
+    # Return sorted points
+    result = [points[i] for i in sorted(keep_indices)]
+    return result
+
 @app.route('/api/task-concurrency')
 def get_task_concurrency():
     try:
         data = {}
         
-        # Get selected types from query parameter, default to all types if not specified
+        # Get selected task types
         selected_types = request.args.get('types', '').split(',')
         if not selected_types or selected_types == ['']:
             selected_types = [
@@ -456,7 +639,7 @@ def get_task_concurrency():
                 'tasks_done'
             ]
         
-        # Initialize all task types with empty lists in response
+        # Initialize task type lists
         all_task_types = {
             'tasks_waiting': [],
             'tasks_committing': [],
@@ -466,73 +649,66 @@ def get_task_concurrency():
         }
         data.update(all_task_types)
         
-        # Only process selected task types
+        # Process selected task types
         for task in template_manager.tasks.values():
             if task.when_failure_happens is not None:
                 continue
-            # waiting: when_ready -> when_running
-            if 'tasks_waiting' in selected_types:
-                if task.when_ready:
-                    data['tasks_waiting'].append((task.when_ready - template_manager.MIN_TIME, 1))
-                    if task.when_running:
-                        data['tasks_waiting'].append((task.when_running - template_manager.MIN_TIME, -1))
-            
-            # committing: when_running -> time_worker_start
-            if 'tasks_committing' in selected_types:
+                
+            # Collect task state data
+            if 'tasks_waiting' in selected_types and task.when_ready:
+                data['tasks_waiting'].append((task.when_ready - template_manager.MIN_TIME, 1))
                 if task.when_running:
-                    data['tasks_committing'].append((task.when_running - template_manager.MIN_TIME, 1))
-                    if task.time_worker_start:
-                        data['tasks_committing'].append((task.time_worker_start - template_manager.MIN_TIME, -1))
+                    data['tasks_waiting'].append((task.when_running - template_manager.MIN_TIME, -1))
             
-            # executing: time_worker_start -> time_worker_end
-            if 'tasks_executing' in selected_types:
+            if 'tasks_committing' in selected_types and task.when_running:
+                data['tasks_committing'].append((task.when_running - template_manager.MIN_TIME, 1))
                 if task.time_worker_start:
-                    data['tasks_executing'].append((task.time_worker_start - template_manager.MIN_TIME, 1))
-                    if task.time_worker_end:
-                        data['tasks_executing'].append((task.time_worker_end - template_manager.MIN_TIME, -1))
+                    data['tasks_committing'].append((task.time_worker_start - template_manager.MIN_TIME, -1))
             
-            # retrieving: time_worker_end -> when_retrieved
-            if 'tasks_retrieving' in selected_types:
+            if 'tasks_executing' in selected_types and task.time_worker_start:
+                data['tasks_executing'].append((task.time_worker_start - template_manager.MIN_TIME, 1))
                 if task.time_worker_end:
-                    data['tasks_retrieving'].append((task.time_worker_end - template_manager.MIN_TIME, 1))
-                    if task.when_retrieved:
-                        data['tasks_retrieving'].append((task.when_retrieved - template_manager.MIN_TIME, -1))
+                    data['tasks_executing'].append((task.time_worker_end - template_manager.MIN_TIME, -1))
             
-            # done: when_retrieved -> when_done
+            if 'tasks_retrieving' in selected_types and task.time_worker_end:
+                data['tasks_retrieving'].append((task.time_worker_end - template_manager.MIN_TIME, 1))
+                if task.when_retrieved:
+                    data['tasks_retrieving'].append((task.when_retrieved - template_manager.MIN_TIME, -1))
+            
             if 'tasks_done' in selected_types:
                 if task.when_done:
                     data['tasks_done'].append((task.when_done - template_manager.MIN_TIME, 1))
 
-            if task.when_failure_happens:
-
-                data['tasks_done'].append((task.when_failure_happens - template_manager.MIN_TIME, 1))
-
-        def sort_tasks(tasks):
+        def process_task_type(tasks):
             if not tasks:
                 return []
+            # Convert to DataFrame and calculate cumulative events
             df = pd.DataFrame(tasks, columns=['time', 'event'])
             df = df.sort_values(by=['time'])
             df['time'] = df['time'].round(2)
             df['cumulative_event'] = df['event'].cumsum()
-            # if two rows have the same time, keep the one with the largest event
+            # Keep last event for duplicate timestamps
             df = df.drop_duplicates(subset=['time'], keep='last')
-            return df[['time', 'cumulative_event']].values.tolist()
+            points = df[['time', 'cumulative_event']].values.tolist()
+            # Downsample data
+            return downsample_task_concurrency(points)
 
-        # Process all task types, but only calculate max for selected ones
+        # Process all task types data
+        max_time = float('-inf')
+        max_concurrent = 0
         for task_type in all_task_types:
-            data[task_type] = sort_tasks(data[task_type])
-
-        # Calculate min/max values based only on selected data
-        data['xMin'] = 0
-        data['xMax'] = template_manager.MAX_TIME - template_manager.MIN_TIME
-        data['yMin'] = 0
-        
-        # Calculate yMax only from selected types
-        max_values = []
-        for task_type in selected_types:
+            data[task_type] = process_task_type(data[task_type])
+            # Update max values
             if data[task_type]:
-                max_values.extend([point[1] for point in data[task_type]])
-        data['yMax'] = max(max_values) if max_values else 0
+                max_time = max(max_time, max(point[0] for point in data[task_type]))
+                if task_type in selected_types:
+                    max_concurrent = max(max_concurrent, max(point[1] for point in data[task_type]))
+
+        # Set axis ranges
+        data['xMin'] = 0
+        data['xMax'] = max_time
+        data['yMin'] = 0
+        data['yMax'] = max_concurrent
 
         # Generate tick values
         data['xTickValues'] = [
@@ -553,6 +729,7 @@ def get_task_concurrency():
 
         return jsonify(data)
     except Exception as e:
+        print(f"Error in get_task_concurrency: {str(e)}")
         return jsonify({'error': str(e)}), 500
     
 # calculate the file size unit, the default is MB
@@ -568,6 +745,55 @@ def get_unit_and_scale_by_max_file_size_mb(max_file_size_mb) -> tuple[str, float
     else:
         return 'MB', 1
     
+def downsample_file_replicas(points):
+    # downsample file replicas data points while keeping the global peak and randomly sampling other points
+    if len(points) <= TARGET_POINTS:
+        return points
+
+    # Find global peak (maximum number of replicas)
+    global_peak_idx = max(range(len(points)), key=lambda i: points[i][3])  # points[i][3] is num_replicas
+    global_peak = points[global_peak_idx]
+
+    # Keep the first point, last point, and global peak
+    keep_indices = {0, len(points) - 1, global_peak_idx}
+
+    # Calculate how many points we need to keep between each key point
+    remaining_points = TARGET_POINTS - len(keep_indices)
+    if remaining_points <= 0:
+        return [points[0], global_peak, points[-1]]
+
+    # Sort the indices we want to keep to find gaps between them
+    sorted_keep_indices = sorted(keep_indices)
+    
+    # Calculate points to keep in each gap
+    points_per_gap = remaining_points // (len(sorted_keep_indices) - 1)
+    extra_points = remaining_points % (len(sorted_keep_indices) - 1)
+
+    # For each gap between key points, randomly sample points
+    for i in range(len(sorted_keep_indices) - 1):
+        start_idx = sorted_keep_indices[i]
+        end_idx = sorted_keep_indices[i + 1]
+        gap_size = end_idx - start_idx - 1
+        
+        if gap_size <= 0:
+            continue
+            
+        # Calculate how many points to keep in this gap
+        current_gap_points = points_per_gap
+        if extra_points > 0:
+            current_gap_points += 1
+            extra_points -= 1
+            
+        if current_gap_points > 0:
+            # Randomly sample points from this gap
+            available_indices = list(range(start_idx + 1, end_idx))
+            sampled_indices = random.sample(available_indices, min(current_gap_points, len(available_indices)))
+            keep_indices.update(sampled_indices)
+    
+    # Sort all indices and return the corresponding points
+    result = [points[i] for i in sorted(keep_indices)]
+    return result
+
 @app.route('/api/file-replicas')
 def get_file_replicas():
     try:
@@ -608,20 +834,22 @@ def get_file_replicas():
         df['num_replicas'] = df['num_replicas'].astype(int)
         df['file_size'] = df['file_size'].astype(int)
 
-        # convert the dataframe to a list of tuples
-        data['file_replicas'] = df.values.tolist()
+        # Convert to list of points and downsample
+        points = df.values.tolist()
+        points = downsample_file_replicas(points)
+        data['file_replicas'] = points
         
         # ploting parameters
-        if len(df) == 0:
+        if len(points) == 0:
             data['xMin'] = 1
             data['xMax'] = 1
             data['yMin'] = 0    
             data['yMax'] = 0
         else:
             data['xMin'] = 1
-            data['xMax'] = len(df)
+            data['xMax'] = len(df)  # Use original length for x-axis
             data['yMin'] = 0    
-            data['yMax'] = int(df['num_replicas'].max())
+            data['yMax'] = int(df['num_replicas'].max())  # Use original max for y-axis
         data['xTickValues'] = [
             round(data['xMin'], 2),
             round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.25, 2),
@@ -642,6 +870,59 @@ def get_file_replicas():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     
+def downsample_file_sizes(points):
+    # downsample file sizes data points while keeping the global peak and randomly sampling other points
+    if len(points) <= TARGET_POINTS:
+        return points
+
+    # Find global peak (maximum file size)
+    global_peak_idx = max(range(len(points)), key=lambda i: points[i][2])  # points[i][2] is file_size
+    global_peak = points[global_peak_idx]
+
+    # Find x-axis maximum (latest file)
+    x_max_idx = max(range(len(points)), key=lambda i: points[i][3])  # points[i][3] is file_created_time
+    x_max_point = points[x_max_idx]
+
+    # Keep the first point, last point, global peak, and x-axis maximum
+    keep_indices = {0, len(points) - 1, global_peak_idx, x_max_idx}
+
+    # Calculate how many points we need to keep between each key point
+    remaining_points = TARGET_POINTS - len(keep_indices)
+    if remaining_points <= 0:
+        return [points[0], global_peak, x_max_point, points[-1]]
+
+    # Sort the indices we want to keep to find gaps between them
+    sorted_keep_indices = sorted(keep_indices)
+    
+    # Calculate points to keep in each gap
+    points_per_gap = remaining_points // (len(sorted_keep_indices) - 1)
+    extra_points = remaining_points % (len(sorted_keep_indices) - 1)
+
+    # For each gap between key points, randomly sample points
+    for i in range(len(sorted_keep_indices) - 1):
+        start_idx = sorted_keep_indices[i]
+        end_idx = sorted_keep_indices[i + 1]
+        gap_size = end_idx - start_idx - 1
+        
+        if gap_size <= 0:
+            continue
+            
+        # Calculate how many points to keep in this gap
+        current_gap_points = points_per_gap
+        if extra_points > 0:
+            current_gap_points += 1
+            extra_points -= 1
+            
+        if current_gap_points > 0:
+            # Randomly sample points from this gap
+            available_indices = list(range(start_idx + 1, end_idx))
+            sampled_indices = random.sample(available_indices, min(current_gap_points, len(available_indices)))
+            keep_indices.update(sampled_indices)
+    
+    # Sort all indices and return the corresponding points
+    result = [points[i] for i in sorted(keep_indices)]
+    return result
+
 @app.route('/api/file-sizes')
 def get_file_sizes():
     try:
@@ -698,20 +979,22 @@ def get_file_sizes():
         data['file_size_unit'], scale = get_unit_and_scale_by_max_file_size_mb(max_file_size_mb)
         df['file_size'] = df['file_size'] * scale
         
-        # convert the dataframe to a list of tuples
-        data['file_sizes'] = df.values.tolist()
+        # Convert to list of points and downsample
+        points = df.values.tolist()
+        points = downsample_file_sizes(points)
+        data['file_sizes'] = points
 
         # ploting parameters
-        if len(df) == 0:
+        if len(points) == 0:
             data['xMin'] = 1
             data['xMax'] = 1
             data['yMin'] = 0    
             data['yMax'] = 0
         else:
             data['xMin'] = 1
-            data['xMax'] = len(df)
+            data['xMax'] = len(df)  # Use original length for x-axis
             data['yMin'] = 0    
-            data['yMax'] = max_file_size_mb * scale
+            data['yMax'] = max_file_size_mb * scale  # Use original max for y-axis
         data['xTickValues'] = [
             round(data['xMin'], 2),
             round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.25, 2),
@@ -749,96 +1032,253 @@ def get_subgraphs():
         plot_recovery_task = request.args.get('plot_recovery_task', 'true').lower() == 'true'
 
         subgraph = template_manager.subgraphs[subgraph_id]
-
-        def plot_task_node(dot, task):
-            node_id = f'{task.task_id}-{task.task_try_id}'
-            node_label = f'{task.task_id}'
-
-            if task.when_failure_happens:
-                node_label = f'{node_label} (unsuccessful)'
-                style = 'dashed'
-                color = '#FF0000'
-                fontcolor = '#FF0000'
-            else:
-                style = 'solid'
-                color = '#000000'      # black border
-                fontcolor = '#000000'  # black text
-
-            if task.is_recovery_task:
-                node_label = f'{node_label} (recovery)'
-                style = 'filled,dashed'
-                fillcolor = '#FF69B4'
-            else:
-                fillcolor = '#FFFFFF'  # white background
-
-            dot.node(node_id, node_label, shape='ellipse', style=style, color=color, fontcolor=fontcolor, fillcolor=fillcolor)
-
-        def plot_file_node(dot, file):
-            # skip if the file was not produced by any task
-            if len(file.producers) == 0:
-                return
-            file_name = file.filename
-            dot.node(file_name, file_name, shape='box')
-
-        def plot_task2file_edge(dot, task, file):
-            # skip if the file was not produced by any task
-            if len(file.producers) == 0:
-                return
-            # skip if the task unsuccessful (a unsuccessful task can't produce any file)
-            if task.when_failure_happens:
-                return
-            else:
-                task_execution_time = task.time_worker_end - task.time_worker_start
-                dot.edge(f'{task.task_id}-{task.task_try_id}', file.filename, label=f'{task_execution_time:.2f}s')
-        
-        def plot_file2task_edge(dot, file, task):
-            # skip if the file was not produced by any task
-            if len(file.producers) == 0:
-                return
-            # file_creation_time = task.when_running - file.producers[0].time_worker_end
-            file_creation_time = float('inf')
-            for producer_task_id, producer_task_try_id in file.producers:
-                producer_task = template_manager.tasks[(producer_task_id, producer_task_try_id)]
-                if producer_task.time_worker_end:
-                    file_creation_time = min(file_creation_time, producer_task.time_worker_end)
-            file_creation_time = file_creation_time - template_manager.MIN_TIME
-
-            if task.when_failure_happens:
-                dot.edge(file.filename, f'{task.task_id}-{task.task_try_id}', label=f'{file_creation_time:.2f}s')
-            else:
-                dot.edge(file.filename, f'{task.task_id}-{task.task_try_id}', label=f'{file_creation_time:.2f}s')
+        print(f"subgraph: {subgraph_id} has {len(subgraph)} tasks")
 
         svg_file_path_without_suffix = os.path.join(template_manager.svg_files_dir, f'subgraph-{subgraph_id}-{plot_unsuccessful_task}-{plot_recovery_task}')
         svg_file_path = f'{svg_file_path_without_suffix}.svg'
 
         if not Path(svg_file_path).exists():
             dot = graphviz.Digraph()
+            
+            # Use sets to cache added file nodes and edges to avoid duplication
+            added_file_nodes = set()
+            added_edges = set()
+            
+            num_of_task_nodes = 0
+            num_of_file_nodes = 0
+            num_of_edges = 0
+            
+            # Preprocess to analyze the execution history of each task_id
+            task_stats = {}  # {task_id: {"failures": count, "attempts": []}}
+            task_execution_order = {}  # {task_id: [ordered list of task_try_ids]}
+            
+            # First build a chronological order of attempts for each task
             for (task_id, task_try_id) in list(subgraph):
                 task = template_manager.tasks[(task_id, task_try_id)]
-                # skip if the task is a recovery task and we don't want to plot recovery task
+                
+                if task_id not in task_execution_order:
+                    task_execution_order[task_id] = []
+                
+                # Add to the execution order list (we'll sort it later)
+                task_execution_order[task_id].append({
+                    "try_id": task_try_id,
+                    "time": task.time_worker_start or 0,  # Use start time for ordering
+                    "success": not task.when_failure_happens,
+                    "is_recovery": task.is_recovery_task
+                })
+            
+            # Sort attempts by time for each task
+            for task_id, attempts in task_execution_order.items():
+                task_execution_order[task_id] = sorted(attempts, key=lambda x: x["time"])
+            
+            # Now compute statistics based on the ordered execution history
+            for task_id, attempts in task_execution_order.items():
+                failures = 0
+                latest_successful_try_id = None
+                final_status_is_success = False
+                is_recovery_task = False
+                
+                # Go through attempts in chronological order
+                for attempt in attempts:
+                    if not attempt["success"]:
+                        failures += 1
+                    else:
+                        latest_successful_try_id = attempt["try_id"]
+                        final_status_is_success = True
+                    
+                    # Check if this is a recovery task
+                    if attempt["is_recovery"]:
+                        is_recovery_task = True
+                
+                # Get the final attempt (chronologically last)
+                final_attempt = attempts[-1] if attempts else None
+                
+                task_stats[task_id] = {
+                    "failures": failures,
+                    "latest_successful_try_id": latest_successful_try_id,
+                    "final_status_is_success": final_status_is_success,
+                    "is_recovery_task": is_recovery_task,
+                    "final_attempt": final_attempt,
+                    "attempts": attempts
+                }
+            
+            def plot_task_node(dot, task):
+                task_id = task.task_id
+                task_try_id = task.task_try_id
+                stats = task_stats[task_id]
+                
+                # Use a single node ID based on task_id
+                node_id = f'{task_id}'
+                
+                # Create a detailed label 
+                node_label = f'{task_id}'
+                
+                # Add recovery task label if applicable
+                if stats["is_recovery_task"]:
+                    node_label += " (Recovery Task)"
+                
+                # Add failed count if applicable
+                if stats["failures"] > 0:
+                    node_label += f" (Failed: {stats['failures']})"
+                
+                # Add information about the number of attempts
+                total_attempts = len(stats["attempts"])
+                if total_attempts > 1:
+                    node_label += f" (Attempts: {total_attempts})"
+                
+                # Style based on task type and final status
+                if not stats["final_status_is_success"]:
+                    # Task ultimately failed
+                    style = 'dashed'
+                    color = '#FF0000'  # Red
+                    fontcolor = '#FF0000'
+                    fillcolor = '#FFFFFF'
+                elif stats["is_recovery_task"]:
+                    # This is a recovery task that succeeded
+                    style = 'filled'
+                    color = '#000000'
+                    fontcolor = '#000000'
+                    fillcolor = '#FFC0CB'  # Light pink
+                elif stats["failures"] > 0:
+                    # Task had failures but succeeded without being a recovery task
+                    style = 'filled'
+                    color = '#000000'
+                    fontcolor = '#000000'
+                    fillcolor = '#FFFACD'  # Light yellow
+                else:
+                    # Normal successful task without failures
+                    style = 'solid'
+                    color = '#000000'
+                    fontcolor = '#000000'
+                    fillcolor = '#FFFFFF'
+                
+                dot.node(node_id, node_label, shape='ellipse', style=style, color=color, 
+                         fontcolor=fontcolor, fillcolor=fillcolor)
+                return True
+
+            def plot_file_node(dot, file):
+                # Skip files not produced by any task
+                if len(file.producers) == 0:
+                    return
+                
+                file_name = file.filename
+                # Check if file node has already been added
+                if file_name not in added_file_nodes:
+                    dot.node(file_name, file_name, shape='box')
+                    added_file_nodes.add(file_name)
+                    nonlocal num_of_file_nodes
+                    num_of_file_nodes += 1
+
+            def plot_task2file_edge(dot, task, file):
+                # Skip files not produced by any task
+                if len(file.producers) == 0:
+                    return
+                # Skip unsuccessful tasks (cannot produce files)
+                if task.when_failure_happens:
+                    return
+                    
+                # Use only task_id (not try_id) to connect to the aggregated task node
+                edge_id = (f'{task.task_id}', file.filename)
+                
+                # Check if edge has already been added
+                if edge_id in added_edges:
+                    return
+                
+                task_execution_time = task.time_worker_end - task.time_worker_start
+                dot.edge(edge_id[0], edge_id[1], label=f'{task_execution_time:.2f}s')
+                added_edges.add(edge_id)
+                nonlocal num_of_edges
+                num_of_edges += 1
+            
+            def plot_file2task_edge(dot, file, task):
+                # Skip files not produced by any task
+                if len(file.producers) == 0:
+                    return
+                    
+                # Use only task_id (not try_id) to connect to the aggregated task node
+                edge_id = (file.filename, f'{task.task_id}')
+                
+                # Check if edge has already been added
+                if edge_id in added_edges:
+                    return
+                
+                # Calculate file creation time
+                file_creation_time = float('inf')
+                for producer_task_id, producer_task_try_id in file.producers:
+                    producer_task = template_manager.tasks[(producer_task_id, producer_task_try_id)]
+                    if producer_task.time_worker_end:
+                        file_creation_time = min(file_creation_time, producer_task.time_worker_end)
+                file_creation_time = file_creation_time - template_manager.MIN_TIME
+
+                dot.edge(edge_id[0], edge_id[1], label=f'{file_creation_time:.2f}s')
+                added_edges.add(edge_id)
+                nonlocal num_of_edges
+                num_of_edges += 1
+
+            # Process tasks for display (one node per task_id)
+            processed_task_ids = set()
+            
+            for task_id, stats in task_stats.items():
+                if task_id in processed_task_ids:
+                    continue
+                
+                # For visualization, prefer to use:
+                # 1. The latest successful attempt if there is one
+                # 2. Otherwise, use the final attempt (which would be a failure)
+                if stats["latest_successful_try_id"] is not None:
+                    task_try_id = stats["latest_successful_try_id"]
+                else:
+                    # If no successful attempts, use the final attempt
+                    task_try_id = stats["final_attempt"]["try_id"] if stats["final_attempt"] else None
+                
+                if task_try_id is None:
+                    continue  # Skip if we can't determine which attempt to use
+                
+                task = template_manager.tasks[(task_id, task_try_id)]
+                
+                # Skip based on display options
                 if task.is_recovery_task and not plot_recovery_task:
                     continue
-                # skip if the task unsuccessful and we don't want to plot unsuccessful task
                 if task.when_failure_happens and not plot_unsuccessful_task:
                     continue
-                # task node
-                plot_task_node(dot, task)
-                # input files
-                for file_name in task.input_files:
-                    file = template_manager.files[file_name]
-                    plot_file_node(dot, file)
-                    plot_file2task_edge(dot, file, task)
-                # output files
-                for file_name in task.output_files:
-                    file = template_manager.files[file_name]
-                    # do not plot if the file has not been created
-                    if len(file.transfers) == 0:
-                        continue
-                    plot_file_node(dot, file)
-                    plot_task2file_edge(dot, task, file)
+                
+                # Plot the node for this task
+                if plot_task_node(dot, task):
+                    num_of_task_nodes += 1
+                    processed_task_ids.add(task_id)
+                    
+                    # Process input files
+                    for file_name in task.input_files:
+                        file = template_manager.files[file_name]
+                        plot_file_node(dot, file)
+                        plot_file2task_edge(dot, file, task)
+                    
+                    # Process output files
+                    # Only plot outputs if this was a successful attempt
+                    if not task.when_failure_happens:
+                        for file_name in task.output_files:
+                            file = template_manager.files[file_name]
+                            # skip files that haven't been created
+                            if len(file.transfers) == 0:
+                                continue
+                            plot_file_node(dot, file)
+                            plot_task2file_edge(dot, task, file)
+
+            print(f"num of task nodes: {num_of_task_nodes}")
+            print(f"num of file nodes: {num_of_file_nodes}")
+            print(f"num of edges: {num_of_edges}")
+            print(f"total nodes: {num_of_task_nodes + num_of_file_nodes}")
+            
             dot.attr(rankdir='TB')
             dot.engine = 'dot'
             dot.render(svg_file_path_without_suffix, format='svg', view=False)
+            
+            import time
+            print(f"rendering subgraph: {subgraph_id}")
+            time_start = time.time()
+            dot.render(svg_file_path_without_suffix, format='svg', view=False)
+            time_end = time.time()
+            print(f"rendering subgraph: {subgraph_id} done in {time_end - time_start} seconds")
 
         data['subgraph_id_list'] = list(template_manager.subgraphs.keys())
         data['subgraph_num_tasks_list'] = [len(subgraph) for subgraph in template_manager.subgraphs.values()]
@@ -849,6 +1289,8 @@ def get_subgraphs():
 
         return jsonify(data)
     except Exception as e:
+        print(f"Error in get_subgraphs: {str(e)}")
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/runtime-templates-list')
@@ -890,4 +1332,4 @@ if __name__ == "__main__":
 
     template_manager = TemplateState()
     
-    app.run(host='0.0.0.0', port=args.port, debug=True)
+    app.run(host='0.0.0.0', port=args.port, debug=True, use_reloader=False)
