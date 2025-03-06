@@ -149,8 +149,9 @@ class FileInfo:
             transfer.stage_in(time_stage_in, "cache_update")
 
     def unlink(self, worker, time_stage_out):
+        # this affects the incoming transfers on the destination worker
         for transfer in self.transfers:
-            if transfer.source != worker and transfer.destination != worker:
+            if transfer.destination != worker:
                 continue
             if transfer.time_stage_out:
                 continue
@@ -159,8 +160,9 @@ class FileInfo:
             transfer.stage_out(time_stage_out, "unlink")
 
     def cache_invalid(self, worker, time_stage_out):
+        # this affects the incoming transfers on the destination worker
         for transfer in self.transfers:
-            if transfer.source != worker and transfer.destination != worker:
+            if transfer.destination != worker:
                 continue
             if transfer.time_stage_out:
                 continue
@@ -169,8 +171,9 @@ class FileInfo:
             transfer.stage_out(time_stage_out, "cache_invalid")
 
     def worker_removed(self, worker, time_stage_out):
+        # this affects incoming transfers on the destination worker
         for transfer in self.transfers:
-            if transfer.source != worker and transfer.destination != worker:
+            if transfer.destination != worker:
                 continue
             if transfer.time_stage_out:
                 continue

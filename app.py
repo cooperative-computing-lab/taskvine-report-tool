@@ -14,7 +14,7 @@ import time
 
 LOGS_DIR = 'logs'
 TARGET_POINTS = 8000  # at lease 3: the beginning, the end, and the global peak
-TARGET_TASK_BARS = 80000   # how many task bars to show
+TARGET_TASK_BARS = 100000   # how many task bars to show
 
 class TemplateState:
     def __init__(self):

@@ -332,7 +332,7 @@ function plotExecutionDetails() {
         }
 
         // Retrieving to manager phase
-        if (task.time_worker_end && task.when_done) {
+        if (task.time_worker_end && task.when_retrieved) {
             if (isTaskTypeChecked('successful-retrieving-to-manager')) {
                 svg.append('rect')
                     .attr('x', xScale(task.time_worker_end))

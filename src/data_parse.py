@@ -739,10 +739,8 @@ class DataParser:
         # if the manager has not finished yet, we do something to set up the None values to make the plotting tool work
         # 1. if the manager's time_end is None, we set it to the current timestamp
         if self.manager.time_end is None:
-            print(f"Setting manager time_end to {self.manager.current_max_time}")
+            print(f"Manager didn't exit normally, setting manager time_end to {self.manager.current_max_time}")
             self.manager.set_time_end(self.manager.current_max_time)
-        else:
-            print(f"Manager time_end is already set to {self.manager.time_end}")
         # post-processing for tasks
         for task in self.tasks.values():
             # 2. if a task's status is None, we set it to 4 << 3, which means the task failed but not yet reported
