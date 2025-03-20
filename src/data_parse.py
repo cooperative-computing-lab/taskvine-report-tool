@@ -733,7 +733,6 @@ class DataParser:
         print(f"Checkpointing manager.pkl took {round(time_end - time_start, 4)} seconds")
 
     def postprocess_debug(self):
-        print(f"Postprocessing debug")
         time_start = time.time()
         # some post-processing in case the manager does not exit normally or has not finished yet
         # if the manager has not finished yet, we do something to set up the None values to make the plotting tool work

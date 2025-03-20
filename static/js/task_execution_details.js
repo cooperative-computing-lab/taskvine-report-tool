@@ -12,6 +12,7 @@ const state = {
     unsuccessfulTasks: null,
     workerInfo: null,
     xTickValues: null,
+    yTickValues: null,
     tickFontSize: null,
 };
 
@@ -514,6 +515,8 @@ function plotAxis(svg, svgWidth, svgHeight) {
         }
     });
     
+    console.log("Generated workerCoresMap:", workerCoresMap);
+
     // Sort workerCoresMap to have smaller worker IDs at the bottom and smaller core IDs at the bottom within each worker
     workerCoresMap.sort((a, b) => {
         const [workerIdA, coreIdA] = a.split('-').map(Number);
@@ -549,29 +552,46 @@ function plotAxis(svg, svgWidth, svgHeight) {
 
     // draw y axis
     const maxTicks = 5;
-    const selectedTicks = [];
+    let selectedTicks = [];
     
-    // Calculate step size based on number of unique worker IDs
-    const uniqueWorkerIds = [...new Set(workerCoresMap.map(id => id.split('-')[0]))];
-    const step = Math.max(1, Math.floor(uniqueWorkerIds.length / maxTicks));
+    if (state.yTickValues && state.yTickValues.length > 0) {
+        // Use yTickValues from backend for worker IDs
+        // For each worker ID in yTickValues, find the first core entry
+        state.yTickValues.forEach(workerId => {
+            const workerStr = workerId.toString();
+            const tick = workerCoresMap.find(id => id.split('-')[0] === workerStr);
+            if (tick) {
+                selectedTicks.push(tick);
+            }
+        });
+    }
     
-    // Select ticks based on unique worker IDs
-    for (let i = 0; i < uniqueWorkerIds.length; i += step) {
-        // Find the first core entry for this worker ID
-        const workerId = uniqueWorkerIds[i];
-        const tick = workerCoresMap.find(id => id.split('-')[0] === workerId);
-        if (tick) {
-            selectedTicks.push(tick);
+    // If no ticks were selected (because backend values didn't match), use a fallback approach
+    if (selectedTicks.length === 0) {
+        // Calculate step size based on number of unique worker IDs
+        const uniqueWorkerIds = [...new Set(workerCoresMap.map(id => id.split('-')[0]))];
+        const step = Math.max(1, Math.floor(uniqueWorkerIds.length / maxTicks));
+        
+        // Select ticks based on unique worker IDs
+        for (let i = 0; i < uniqueWorkerIds.length; i += step) {
+            // Find the first core entry for this worker ID
+            const workerId = uniqueWorkerIds[i];
+            const tick = workerCoresMap.find(id => id.split('-')[0] === workerId);
+            if (tick) {
+                selectedTicks.push(tick);
+            }
+        }
+        
+        // Always include the last worker's first core if not already included
+        const lastWorkerId = uniqueWorkerIds[uniqueWorkerIds.length - 1];
+        const lastTick = workerCoresMap.find(id => id.split('-')[0] === lastWorkerId);
+        if (lastTick && !selectedTicks.includes(lastTick)) {
+            selectedTicks.push(lastTick);
         }
     }
     
-    // Always include the last worker's first core if not already included
-    const lastWorkerId = uniqueWorkerIds[uniqueWorkerIds.length - 1];
-    const lastTick = workerCoresMap.find(id => id.split('-')[0] === lastWorkerId);
-    if (lastTick && !selectedTicks.includes(lastTick)) {
-        selectedTicks.push(lastTick);
-    }
-
+    console.log("Selected y-axis ticks:", selectedTicks);
+    
     const yAxis = d3.axisLeft(yScale)
         .tickValues(selectedTicks)
         .tickSizeOuter(0)
@@ -615,6 +635,11 @@ async function initialize() {
         state.workerInfo = data.workerInfo;
         state.tickFontSize = data.tickFontSize;
         state.xTickValues = data.xTickValues;
+        state.yTickValues = data.yTickValues;
+        
+        console.log("Received from API - yTickValues:", data.yTickValues);
+        console.log("Worker info:", data.workerInfo);
+        
         state.xMin = data.xMin;
         state.xMax = data.xMax;
         state.num_of_status = data.num_of_status;

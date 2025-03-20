@@ -29,7 +29,7 @@ class TemplateState:
         self.subgraphs = None
 
         # for storing the graph files
-        self.svg_files_dir = None   
+        self.svg_files_dir = None
 
         self.MIN_TIME = None
         self.MAX_TIME = None
@@ -178,6 +178,38 @@ def get_execution_details():
             round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.75, 2),
             round(data['xMax'], 2)
         ]
+        
+        # Calculate yTickValues for worker IDs
+        worker_ids = [worker['id'] for worker in data['workerInfo']]
+        print(f"Worker IDs for yTickValues: {worker_ids}")
+        
+        if worker_ids:
+            min_worker_id = 1  # Start with worker ID 1
+            max_worker_id = max(worker_ids)
+            
+            print(f"Min worker ID: {min_worker_id}, Max worker ID: {max_worker_id}")
+            
+            # Generate 5 evenly distributed tick values
+            if min_worker_id == max_worker_id:
+                data['yTickValues'] = [min_worker_id]
+            else:
+                step = (max_worker_id - min_worker_id) / 4  # To get 5 points total
+                data['yTickValues'] = [
+                    min_worker_id,
+                    round(min_worker_id + step, 0),
+                    round(min_worker_id + 2 * step, 0),
+                    round(min_worker_id + 3 * step, 0),
+                    max_worker_id
+                ]
+                # Convert to integers
+                data['yTickValues'] = [int(tick) for tick in data['yTickValues']]
+                # Remove duplicates while preserving order
+                data['yTickValues'] = list(dict.fromkeys(data['yTickValues']))
+                
+            print(f"Generated yTickValues: {data['yTickValues']}")
+        else:
+            data['yTickValues'] = [1]  # Default if no workers
+            print("No workers, using default yTickValues: [1]")
 
         return jsonify(data)
 
@@ -1278,7 +1310,7 @@ def get_subgraphs():
             time_start = time.time()
             dot.render(svg_file_path_without_suffix, format='svg', view=False)
             time_end = time.time()
-            print(f"rendering subgraph: {subgraph_id} done in {time_end - time_start} seconds")
+            print(f"rendering subgraph: {subgraph_id} done in {round(time_end - time_start, 4)} seconds")
 
         data['subgraph_id_list'] = list(template_manager.subgraphs.keys())
         data['subgraph_num_tasks_list'] = [len(subgraph) for subgraph in template_manager.subgraphs.values()]
