@@ -67,14 +67,10 @@ class TaskInfo:
 
     def set_when_ready(self, when_ready):
         when_ready = float(when_ready)
-        if self.when_ready and when_ready != self.when_ready:
-            raise ValueError(f"when_ready mismatch for task {self.task_id}")
         self.when_ready = when_ready
 
     def set_when_running(self, when_running):
         when_running = float(when_running)
-        if self.when_running and when_running != self.when_running:
-            raise ValueError(f"when_running mismatch for task {self.task_id}")
         self.when_running = when_running
 
     def set_when_failure_happens(self, when_failure_happens):
@@ -94,34 +90,15 @@ class TaskInfo:
 
     def set_when_waiting_retrieval(self, when_waiting_retrieval):
         when_waiting_retrieval = float(when_waiting_retrieval)
-        if self.when_waiting_retrieval and when_waiting_retrieval != self.when_waiting_retrieval:
-            raise ValueError(f"when_waiting_retrieval mismatch for task {self.task_id}")
         self.when_waiting_retrieval = when_waiting_retrieval
-        if not self.time_worker_end:
-            return
-        if self.when_waiting_retrieval < self.time_worker_end:
-            assert self.when_waiting_retrieval - self.time_worker_end < 1
-            self.when_waiting_retrieval = self.time_worker_end
 
     def set_when_retrieved(self, when_retrieved):
         when_retrieved = float(when_retrieved)
-        if self.when_retrieved and when_retrieved != self.when_retrieved:
-            raise ValueError(f"when_retrieved mismatch for task {self.task_id}")
         self.when_retrieved = when_retrieved
-        if not self.time_worker_end:
-            return
-        if self.when_retrieved < self.time_worker_end:
-            assert self.when_retrieved - self.time_worker_end < 1
-            self.when_retrieved = self.time_worker_end
 
     def set_when_done(self, when_done):
         when_done = float(when_done)
-        if self.when_done and when_done != self.when_done:
-            raise ValueError(f"when_done mismatch for task {self.task_id}")
         self.when_done = when_done
-        if self.when_done < self.when_retrieved:
-            assert self.when_done - self.when_retrieved < 1
-            self.when_done = self.when_retrieved
 
     def set_output_length(self, output_length):
         if self.output_length and output_length != self.output_length:
@@ -149,8 +126,6 @@ class TaskInfo:
 
     def set_time_worker_start(self, time_worker_start):
         time_worker_start = float(time_worker_start)
-        if self.time_worker_start and time_worker_start != self.time_worker_start:
-            raise ValueError(f"time_worker_start mismatch for task {self.task_id}, {self.time_worker_start} != {time_worker_start}")
         self.time_worker_start = time_worker_start
 
     def set_exit_status(self, exit_status):
@@ -160,8 +135,6 @@ class TaskInfo:
 
     def set_time_worker_end(self, time_worker_end):
         time_worker_end = float(time_worker_end)
-        if self.time_worker_end and time_worker_end != self.time_worker_end:
-            raise ValueError(f"time_worker_end mismatch for task {self.task_id}")
         self.time_worker_end = time_worker_end
         self.execution_time = round(float(self.time_worker_end) - float(self.time_worker_start), 2)
 

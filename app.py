@@ -13,7 +13,7 @@ import traceback
 import time
 
 LOGS_DIR = 'logs'
-TARGET_POINTS = 8000  # at lease 3: the beginning, the end, and the global peak
+TARGET_POINTS = 10000  # at lease 3: the beginning, the end, and the global peak
 TARGET_TASK_BARS = 100000   # how many task bars to show
 
 class TemplateState:
@@ -558,7 +558,8 @@ def get_task_execution_time():
         task_execution_time_list.sort(key=lambda x: x[1])
         
         # downsample the data points
-        data['task_execution_time'] = downsample_task_execution_time(task_execution_time_list)
+        # data['task_execution_time'] = downsample_task_execution_time(task_execution_time_list)
+        data['task_execution_time'] = task_execution_time_list
 
         # calculate the cdf using the original (non-downsampled) data to maintain accuracy
         df = pd.DataFrame(task_execution_time_list, columns=['task_id', 'task_execution_time'])
@@ -568,7 +569,8 @@ def get_task_execution_time():
         
         # downsample the CDF data points as well
         cdf_points = df[['task_execution_time', 'probability']].values.tolist()
-        data['task_execution_time_cdf'] = downsample_task_execution_time(cdf_points)
+        # data['task_execution_time_cdf'] = downsample_task_execution_time(cdf_points)
+        data['task_execution_time_cdf'] = cdf_points
 
         # tick values - use original data ranges to maintain proper axis scaling
         num_tasks = len(task_execution_time_list)  # use original length
