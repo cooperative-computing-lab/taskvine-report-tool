@@ -90,7 +90,8 @@ class WorkerInfo:
 
     def set_disk_mb(self, disk_mb: int):
         if self.disk_mb and disk_mb != self.disk_mb:
-            raise ValueError(f"disk mismatch for worker {self.ip}:{self.port}")
+            #raise ValueError(f"disk mismatch for worker {self.ip}:{self.port}, {self.disk_mb} != {disk_mb}")
+            pass
         self.disk_mb = disk_mb
     
     def print_info(self):

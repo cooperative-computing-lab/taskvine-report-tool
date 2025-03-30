@@ -4,6 +4,7 @@ import { setupZoomAndScroll } from './tools.js';
 const buttonReset = document.getElementById('button-reset-storage-consumption');
 const buttonDownload = document.getElementById('button-download-storage-consumption');
 const buttonToggleMode = document.getElementById('button-toggle-storage-mode');
+const buttonTogglePBB = document.getElementById('button-toggle-pbb-workers');
 const svgContainer = document.getElementById('storage-consumption-container');
 const svgElement = d3.select('#storage-consumption');
 const tooltip = document.getElementById('vine-tooltip');
@@ -21,7 +22,8 @@ const state = {
     yTickValues: null,
     tickFontSize: null,
     showPercentage: false,
-    worker_resources: {}
+    worker_resources: {},
+    showPBBWorkers: false
 }
 
 async function initialize() {
@@ -29,7 +31,10 @@ async function initialize() {
         d3.select('#storage-consumption').selectAll('*').remove();
         state.worker_storage_consumption = null;
 
-        const response = await fetch(`/api/storage-consumption?show_percentage=${state.showPercentage}`);
+        // 将PBB worker显示状态作为参数传递给后端
+        const response = await fetch(
+            `/api/storage-consumption?show_percentage=${state.showPercentage}&show_pbb_workers=${state.showPBBWorkers}`
+        );
         const data = await response.json();
 
         if (data && data.worker_storage_consumption) {
@@ -42,7 +47,12 @@ async function initialize() {
             state.xTickValues = data.xTickValues;
             state.yTickValues = data.yTickValues;
             state.tickFontSize = data.tickFontSize;
-            state.worker_resources = data.worker_resources;
+            state.worker_resources = data.worker_resources || {};
+            state.showPBBWorkers = data.show_pbb_workers;
+
+            if (buttonTogglePBB) {
+                buttonTogglePBB.textContent = state.showPBBWorkers ? 'Hide PBB Workers' : 'Show PBB Workers';
+            }
 
             plotStorageConsumption();
             setupZoomAndScroll('#storage-consumption', '#storage-consumption-container');
@@ -50,6 +60,9 @@ async function initialize() {
             buttonDownload.addEventListener('click', () => downloadSVG('storage-consumption'));
             buttonReset.addEventListener('click', handleResetClick);
             buttonToggleMode.addEventListener('click', handleToggleModeClick);
+            if (buttonTogglePBB) {
+                buttonTogglePBB.addEventListener('click', handleTogglePBBClick);
+            }
         }
     } catch (error) {
         console.error('Error fetching storage consumption data:', error);
@@ -60,6 +73,12 @@ function handleToggleModeClick() {
     state.showPercentage = !state.showPercentage;
     buttonToggleMode.textContent = state.showPercentage ? 'Show Absolute' : 'Show Percentage';
     initialize();
+}
+
+function handleTogglePBBClick() {
+    state.showPBBWorkers = !state.showPBBWorkers;
+    buttonTogglePBB.textContent = state.showPBBWorkers ? 'Hide PBB Workers' : 'Show PBB Workers';
+    initialize();  // 重新从后端获取数据
 }
 
 function calculateMargin() {
@@ -134,7 +153,7 @@ function plotStorageConsumption() {
         .defined(d => !isNaN(d[0]) && !isNaN(d[1]) && d[1] >= 0)  // Skip invalid points
         .curve(d3.curveStepAfter);
 
-    // Draw lines for each worker
+    // Draw lines for each worker 
     Object.entries(state.worker_storage_consumption).forEach(([workerId, points], index) => {
         // Filter out invalid points
         const validPoints = points.filter(p => 
@@ -147,14 +166,15 @@ function plotStorageConsumption() {
 
         const color = d3.schemeCategory10[index % 10];
         const safeWorkerId = workerId.replace(/[.:]/g, '\\$&'); // Escape special characters
-        const workerResources = state.worker_resources[workerId];
+        const workerResource = state.worker_resources[workerId] || {};
+        const isPBBWorker = workerResource.is_pbb || false;
         
         svg.append('path')
             .datum(validPoints)
             .attr('fill', 'none')
             .attr('stroke', color)
             .attr('stroke-width', 0.8)
-            .attr('class', `worker-line worker-${safeWorkerId}`)
+            .attr('class', `worker-line worker-${safeWorkerId} ${isPBBWorker ? 'pbb-worker' : ''}`)
             .attr('d', line)
             .on('mouseover', function(e) {
                 d3.select(this)
@@ -176,12 +196,12 @@ function plotStorageConsumption() {
                 const currentValue = (lastNonZeroIndex >= 0 ? points[lastNonZeroIndex][1] : 0).toFixed(2);
                 tooltip.style.visibility = 'visible';
                 tooltip.innerHTML = `
-                    Worker: ${workerId}<br>
+                    Worker: ${workerId}${isPBBWorker ? ' (PBB)' : ''}<br>
                     Current Usage: ${currentValue} ${state.file_size_unit}<br>
-                    Cores: ${workerResources.cores}<br>
-                    Memory: ${formatSize(workerResources.memory_mb, 'MB')}<br>
-                    Disk: ${formatSize(workerResources.disk_mb, 'MB')}<br>
-                    ${workerResources.gpus ? `GPUs: ${workerResources.gpus}<br>` : ''}
+                    Cores: ${workerResource.cores || 'N/A'}<br>
+                    Memory: ${workerResource.memory_mb ? formatSize(workerResource.memory_mb, 'MB') : 'N/A'}<br>
+                    Disk: ${workerResource.disk_mb ? formatSize(workerResource.disk_mb, 'MB') : 'N/A'}<br>
+                    ${workerResource.gpus ? `GPUs: ${workerResource.gpus}<br>` : ''}
                 `;
                 tooltip.style.top = (e.pageY - 15) + 'px';
                 tooltip.style.left = (e.pageX + 10) + 'px';
@@ -233,5 +253,6 @@ function formatSize(size, unit) {
     return `${size.toFixed(2)} ${unit}`;
 }
 
+// 初始化
 window.document.addEventListener('dataLoaded', initialize);
 window.addEventListener('resize', _.debounce(() => plotStorageConsumption(), 300));
