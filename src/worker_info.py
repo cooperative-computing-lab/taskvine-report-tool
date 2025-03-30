@@ -18,6 +18,7 @@ class WorkerInfo:
         self.time_connected = []
         self.time_disconnected = []
         self.coremap = None
+        self.is_pbb = False
 
         # task info
         self.tasks_completed = []
@@ -34,6 +35,12 @@ class WorkerInfo:
         if self.hash and hash != self.hash:
             raise ValueError(f"hash mismatch for worker {self.ip}:{self.port}")
         self.hash = hash
+
+    def enable_pbb(self):
+        self.is_pbb = True
+
+    def disable_pbb(self):
+        self.is_pbb = False
 
     def set_machine_name(self, machine_name: str):
         if self.machine_name and machine_name != self.machine_name:

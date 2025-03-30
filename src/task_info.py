@@ -66,12 +66,10 @@ class TaskInfo:
         self.execution_time = None
 
     def set_when_ready(self, when_ready):
-        when_ready = float(when_ready)
-        self.when_ready = when_ready
+        self.when_ready = float(when_ready)
 
     def set_when_running(self, when_running):
-        when_running = float(when_running)
-        self.when_running = when_running
+        self.when_running = float(when_running)
 
     def set_when_failure_happens(self, when_failure_happens):
         try:
@@ -124,19 +122,17 @@ class TaskInfo:
             raise ValueError(f"stdout_size_mb mismatch for task {self.task_id}")
         self.stdout_size_mb = stdout_size_mb
 
-    def set_time_worker_start(self, time_worker_start):
-        time_worker_start = float(time_worker_start)
-        self.time_worker_start = time_worker_start
-
     def set_exit_status(self, exit_status):
         if self.exit_status and exit_status != self.exit_status:
             raise ValueError(f"exit_status mismatch for task {self.task_id}")
+
         self.exit_status = exit_status
 
+    def set_time_worker_start(self, time_worker_start):
+        self.time_worker_start = float(time_worker_start)
+
     def set_time_worker_end(self, time_worker_end):
-        time_worker_end = float(time_worker_end)
-        self.time_worker_end = time_worker_end
-        self.execution_time = round(float(self.time_worker_end) - float(self.time_worker_start), 2)
+        self.time_worker_end = float(time_worker_end)
 
     def set_worker_ip_port(self, worker_ip, worker_port):
         if self.worker_ip and worker_ip != self.worker_ip:

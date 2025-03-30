@@ -8,6 +8,7 @@ import json
 from functools import lru_cache
 from datetime import datetime
 import time
+import math
 from tqdm import tqdm
 from collections import defaultdict
 import cloudpickle
@@ -19,7 +20,7 @@ from decimal import Decimal, ROUND_FLOOR
 def floor_decimal(number, decimal_places):
     num = Decimal(str(number))
     quantizer = Decimal(f"1e-{decimal_places}")
-    return num.quantize(quantizer, rounding=ROUND_FLOOR)
+    return float(num.quantize(quantizer, rounding=ROUND_FLOOR))
 
 import platform
 import subprocess
@@ -91,7 +92,7 @@ class DataParser:
 
     def worker_ip_port_to_hash(self, worker_ip: str, worker_port: int):
         return f"{worker_ip}:{worker_port}"
-
+    
     def set_time_zone(self):
         mgr_start_datestring = None
         mgr_start_timestamp = None
@@ -100,9 +101,11 @@ class DataParser:
         with open(self.debug, 'r') as file:
             for line in file:
                 if "listening on port" in line:
-                    parts = line.strip().split(" ")
-                    mgr_start_datestring = parts[0] + " " + parts[1]
-                    mgr_start_datestring = datetime.strptime(mgr_start_datestring, "%Y/%m/%d %H:%M:%S.%f").strftime("%Y-%m-%d %H:%M")
+                    parts = line.strip().split()
+                    mgr_start_datestring = f"{parts[0]} {parts[1]}"
+                    mgr_start_datestring = datetime.strptime(
+                        mgr_start_datestring, "%Y/%m/%d %H:%M:%S.%f"
+                    ).strftime("%Y-%m-%d %H:%M:%S")
                     break
 
         # read the first line containing "MANAGER" and "START" in transactions file
@@ -111,22 +114,36 @@ class DataParser:
                 if line.startswith('#'):
                     continue
                 if "MANAGER" in line and "START" in line:
-                    parts = line.strip().split(" ")
-                    mgr_start_timestamp = int(parts[0])
-                    mgr_start_timestamp = int(mgr_start_timestamp / 1e6)
+                    parts = line.strip().split()
+                    mgr_start_timestamp = int(int(parts[0]) / 1e6)
                     break
 
-        # calculate the time zone offset
-        utc_datestring = datetime.fromtimestamp(mgr_start_timestamp, timezone.utc)
-        for tz in pytz.all_timezones:
-            tz_datestring = utc_datestring.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(tz)).strftime('%Y-%m-%d %H:%M')
-            if mgr_start_datestring == tz_datestring:
-                self.time_zone_offset_hours = int(pytz.timezone(tz).utcoffset(datetime.now()).total_seconds() / 3600)
+        if mgr_start_datestring is None or mgr_start_timestamp is None:
+            raise ValueError("Could not find required timestamps.")
+
+        # calculate the time zone offset (only consider US time zones)
+        US_TIMEZONES = [
+            'US/Eastern',
+            'US/Central',
+            'US/Mountain',
+            'US/Pacific',
+        ]
+
+        utc_time = datetime.fromtimestamp(mgr_start_timestamp, tz=timezone.utc)
+        for tzname in US_TIMEZONES:
+            tz = pytz.timezone(tzname)
+            local_time = utc_time.astimezone(tz).strftime("%Y-%m-%d %H:%M:%S")
+            if local_time == mgr_start_datestring:
+                offset = tz.utcoffset(utc_time.replace(tzinfo=None)).total_seconds() / 3600
+                self.time_zone_offset_hours = int(offset)
                 self.manager.time_zone_offset_hours = self.time_zone_offset_hours
                 self.equivalent_tz = timezone(timedelta(hours=self.time_zone_offset_hours))
+                print(f"Set time zone to {tzname} with offset {self.time_zone_offset_hours}")
                 break
+        else:
+            raise ValueError("Could not match to a known US time zone.")
 
-    @lru_cache(maxsize=1024)
+    @lru_cache(maxsize=4096)
     def datestring_to_timestamp(self, datestring):
         equivalent_datestring = datetime.strptime(datestring, "%Y/%m/%d %H:%M:%S.%f").replace(tzinfo=self.equivalent_tz)
         unix_timestamp = float(equivalent_datestring.timestamp())
@@ -407,6 +424,8 @@ class DataParser:
                 # it could be that the task related info was unable to be sent (also comes with a "failed to send" message)
                 # in this case, even the state is switched to running, there is no worker info
                 task.set_when_running(timestamp)
+                if task.task_id == 1:
+                    print(task.when_running, task.time_worker_start)
                 if not task.worker_ip:
                     return
                 else:
@@ -492,15 +511,15 @@ class DataParser:
             exit_status = int(parts[complete_idx + 2])
             output_length = int(parts[complete_idx + 3])
             bytes_sent = int(parts[complete_idx + 4])
-            time_worker_start = round(float(parts[complete_idx + 5]) / 1e6, 2)
-            time_worker_end = round(float(parts[complete_idx + 6]) / 1e6, 2)
+            time_worker_start = floor_decimal(float(parts[complete_idx + 5]) / 1e6, 2)
+            time_worker_end = floor_decimal(float(parts[complete_idx + 6]) / 1e6, 2)
             sandbox_used = None
             try:
                 task_id = int(parts[complete_idx + 8])
                 sandbox_used = int(parts[complete_idx + 7])
             except:
                 task_id = int(parts[complete_idx + 7])
-                
+
             task_entry = (task_id, self.current_try_id[task_id])
             task = self.tasks[task_entry]
             
@@ -515,6 +534,10 @@ class DataParser:
             task.set_time_worker_start(time_worker_start)
             task.set_time_worker_end(time_worker_end)
             task.set_sandbox_used(sandbox_used)
+
+            if task.task_id == 1:
+                print(task.time_worker_start, task.time_worker_end)
+            
             return
 
         if "stdout" in parts and (parts.index("stdout") + 3 == len(parts)):
@@ -623,6 +646,13 @@ class DataParser:
                         task.set_when_failure_happens(timestamp)
                 else:
                     pass
+
+        if "designated as the PBB (checkpoint) worker" in line:
+            designated_idx = parts.index("designated")
+            ip, port = WorkerInfo.extract_ip_port_from_string(parts[designated_idx - 1])
+            worker = self.workers[(ip, port)]
+            worker.enable_pbb()
+            return
 
     def parse_debug(self):
         time_start = time.time()
@@ -740,8 +770,12 @@ class DataParser:
         if self.manager.time_end is None:
             print(f"Manager didn't exit normally, setting manager time_end to {self.manager.current_max_time}")
             self.manager.set_time_end(self.manager.current_max_time)
+        
+            
         # post-processing for tasks
         for task in self.tasks.values():
+            if task.task_id == 8801:
+                task.print_info()
             # 2. if a task's status is None, we set it to 4 << 3, which means the task failed but not yet reported
             if task.task_status is None:
                 task.set_task_status(4 << 3)
@@ -749,21 +783,16 @@ class DataParser:
             # 3. if a task succeeds, check if the end time is larger than the start time
             if task.task_status == 0:
                 if task.time_worker_start < task.when_running:
-                    if task.time_worker_start - task.when_running > 1:
-                        print(f"Warning: task {task.task_id} succeeded but the start time is smaller than the running time")
-                    else:
-                        task.set_time_worker_start(task.when_running)
+                    #! there is a major issue in taskvine: machines may run remotely, their returned timestamps could be in a different timezone
+                    #! if this happens, we temporarily modify the time_worker_start to when_running, and time_worker_end to when_waiting_retrieval
+                    task.time_worker_start = task.when_running
+                    task.time_worker_end = task.when_waiting_retrieval
+                    print(f"Warning: task {task.task_id} time_worker_start is smaller than when_running: {task.when_running} - {task.time_worker_start}")
                 if task.time_worker_end < task.time_worker_start:
-                    if task.time_worker_end - task.time_worker_start > 1:
-                        print(f"Warning: task {task.task_id} succeeded but the end time is smaller than the start time")
-                    else:
-                        task.set_time_worker_end(task.time_worker_start)
+                    raise ValueError(f"task {task.task_id} time_worker_end is smaller than time_worker_start: {task.time_worker_start} - {task.time_worker_end}")
                 # note that the task might have not been retrieved yet
                 if task.when_retrieved and task.when_retrieved < task.time_worker_end:
-                    if task.when_retrieved - task.time_worker_end > 1:
-                        print(f"Warning: task {task.task_id} succeeded but the retrieved time is smaller than the end time")
-                    else:
-                        task.set_when_retrieved(task.time_worker_end)
+                    raise ValueError(f"task {task.task_id} when_retrieved is smaller than time_worker_end: {task.time_worker_end} - {task.when_retrieved}")
         # post-processing for workers
         for worker in self.workers.values():
             # 4. for workers, check if the time_disconnected is larger than the time_connected
@@ -773,6 +802,14 @@ class DataParser:
                         print(f"Warning: worker {worker.ip} has a disconnected time that is smaller than the connected time")
                     else:
                         worker.time_disconnected[i] = time_connected
+        # post-processing for files
+        for file in self.files.values():
+            for transfer in file.transfers:
+                if transfer.time_stage_in is None:
+                    pass
+                if transfer.time_stage_out is None:
+                    # set the time_stage_out as the manager's time_end
+                    transfer.time_stage_out = self.manager.time_end
         time_end = time.time()
         print(f"Postprocessing debug took {round(time_end - time_start, 4)} seconds")
 

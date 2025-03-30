@@ -242,24 +242,37 @@ def downsample_storage_data(points):
 def get_storage_consumption():
     try:
         show_percentage = request.args.get('show_percentage', 'false').lower() == 'true'
+        show_pbb_workers = request.args.get('show_pbb_workers', 'true').lower() == 'true'
         data = {}
 
         files = template_manager.files
 
         # construct the succeeded file transfers
         data['worker_storage_consumption'] = {}
+        data['worker_resources'] = {}
+        
+        all_worker_storage = {}
+        
         for file in files.values():
             for transfer in file.transfers:
                 # skip if this is not a transfer to a worker
                 if not isinstance(transfer.destination, tuple):
                     continue
                 # skip if the transfer was not successful
-                if transfer.time_stage_in is None or transfer.time_stage_out is None:
+                if transfer.time_stage_in is None:
                     continue
-                # add the transfer to the worker
+
                 destination = transfer.destination
-                if destination not in data['worker_storage_consumption']:
-                    data['worker_storage_consumption'][destination] = []
+
+                # skip if this is a PBB worker
+                if destination in template_manager.workers:
+                    if template_manager.workers[destination].is_pbb:
+                        if not show_pbb_workers:
+                            continue
+
+                # add the transfer to the worker
+                if destination not in all_worker_storage:
+                    all_worker_storage[destination] = []
 
                 time_in = float(transfer.time_stage_in - template_manager.MIN_TIME)
                 time_out = float(transfer.time_stage_out - template_manager.MIN_TIME)
@@ -268,11 +281,13 @@ def get_storage_consumption():
                 if np.isnan(time_in) or np.isnan(time_out):
                     continue
                     
-                data['worker_storage_consumption'][destination].append((time_in, max(0, file.size_mb)))
-                data['worker_storage_consumption'][destination].append((time_out, -max(0, file.size_mb)))
+                all_worker_storage[destination].append((time_in, max(0, file.size_mb)))
+                all_worker_storage[destination].append((time_out, -max(0, file.size_mb)))
+
+        for destination in list(all_worker_storage.keys()):          
+            data['worker_storage_consumption'][destination] = all_worker_storage[destination]
 
         max_storage_consumption = 0
-        # sort the worker storage consumption
         for destination in list(data['worker_storage_consumption'].keys()):
             if not data['worker_storage_consumption'][destination]:
                 del data['worker_storage_consumption'][destination]
@@ -340,15 +355,19 @@ def get_storage_consumption():
                     data['worker_storage_consumption'][destination] = [[p[0], p[1] * scale] for p in points]
                 max_storage_consumption *= scale
 
-        # add information about each worker
-        data['worker_resources'] = {}
-        for worker in template_manager.workers.values():
-            data['worker_resources'][f"{worker.ip}:{worker.port}"] = {
-                'cores': worker.cores if worker.cores else 0,
-                'memory_mb': worker.memory_mb if worker.memory_mb else 0,
-                'disk_mb': worker.disk_mb if worker.disk_mb else 0,
-                'gpus': worker.gpus if worker.gpus else 0,
-            }
+        # Add worker resource information
+        for worker_entry, worker in template_manager.workers.items():
+            worker_id = f"{worker_entry[0]}:{worker_entry[1]}"
+            if worker_id in data['worker_storage_consumption']:
+                data['worker_resources'][worker_id] = {
+                    'cores': worker.cores,
+                    'memory_mb': worker.memory_mb,
+                    'disk_mb': worker.disk_mb,
+                    'gpus': worker.gpus,
+                    'is_pbb': getattr(worker, 'is_pbb', False)
+                }
+
+        data['show_pbb_workers'] = show_pbb_workers
 
         # plotting parameters
         data['xMin'] = 0
@@ -381,6 +400,7 @@ def get_storage_consumption():
 
     except Exception as e:
         print(f"Error in get_storage_consumption: {str(e)}")
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
     
 
