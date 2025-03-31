@@ -771,11 +771,8 @@ class DataParser:
             print(f"Manager didn't exit normally, setting manager time_end to {self.manager.current_max_time}")
             self.manager.set_time_end(self.manager.current_max_time)
         
-            
         # post-processing for tasks
         for task in self.tasks.values():
-            if task.task_id == 8801:
-                task.print_info()
             # 2. if a task's status is None, we set it to 4 << 3, which means the task failed but not yet reported
             if task.task_status is None:
                 task.set_task_status(4 << 3)
@@ -787,7 +784,6 @@ class DataParser:
                     #! if this happens, we temporarily modify the time_worker_start to when_running, and time_worker_end to when_waiting_retrieval
                     task.time_worker_start = task.when_running
                     task.time_worker_end = task.when_waiting_retrieval
-                    print(f"Warning: task {task.task_id} time_worker_start is smaller than when_running: {task.when_running} - {task.time_worker_start}")
                 if task.time_worker_end < task.time_worker_start:
                     raise ValueError(f"task {task.task_id} time_worker_end is smaller than time_worker_start: {task.time_worker_start} - {task.time_worker_end}")
                 # note that the task might have not been retrieved yet
