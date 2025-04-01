@@ -93,6 +93,7 @@ class DataParser:
     def worker_ip_port_to_hash(self, worker_ip: str, worker_port: int):
         return f"{worker_ip}:{worker_port}"
     
+
     def set_time_zone(self):
         mgr_start_datestring = None
         mgr_start_timestamp = None
@@ -105,7 +106,7 @@ class DataParser:
                     mgr_start_datestring = f"{parts[0]} {parts[1]}"
                     mgr_start_datestring = datetime.strptime(
                         mgr_start_datestring, "%Y/%m/%d %H:%M:%S.%f"
-                    ).strftime("%Y-%m-%d %H:%M:%S")
+                    ).replace(microsecond=0)
                     break
 
         # read the first line containing "MANAGER" and "START" in transactions file
@@ -121,27 +122,26 @@ class DataParser:
         if mgr_start_datestring is None or mgr_start_timestamp is None:
             raise ValueError("Could not find required timestamps.")
 
-        # calculate the time zone offset (only consider US time zones)
-        US_TIMEZONES = [
-            'US/Eastern',
-            'US/Central',
-            'US/Mountain',
-            'US/Pacific',
-        ]
-
         utc_time = datetime.fromtimestamp(mgr_start_timestamp, tz=timezone.utc)
-        for tzname in US_TIMEZONES:
+
+        for tzname in pytz.all_timezones:
             tz = pytz.timezone(tzname)
-            local_time = utc_time.astimezone(tz).strftime("%Y-%m-%d %H:%M:%S")
-            if local_time == mgr_start_datestring:
-                offset = tz.utcoffset(utc_time.replace(tzinfo=None)).total_seconds() / 3600
-                self.time_zone_offset_hours = int(offset)
-                self.manager.time_zone_offset_hours = self.time_zone_offset_hours
-                self.equivalent_tz = timezone(timedelta(hours=self.time_zone_offset_hours))
-                print(f"Set time zone to {tzname} with offset {self.time_zone_offset_hours}")
-                break
+            try:
+                local_dt = utc_time.astimezone(tz).replace(microsecond=0)
+                target_local = tz.localize(mgr_start_datestring)
+                delta = abs((local_dt - target_local).total_seconds())
+                if delta <= 2:
+                    offset = tz.utcoffset(utc_time.replace(tzinfo=None)).total_seconds() / 3600
+                    self.time_zone_offset_hours = int(offset)
+                    self.manager.time_zone_offset_hours = self.time_zone_offset_hours
+                    self.equivalent_tz = timezone(timedelta(hours=self.time_zone_offset_hours))
+                    break
+            except Exception:
+                continue
         else:
-            raise ValueError("Could not match to a known US time zone.")
+            raise ValueError("Could not match to a known time zone.")
+        
+        print(f"Set time zone to {self.equivalent_tz} offset {self.time_zone_offset_hours}")
 
     @lru_cache(maxsize=4096)
     def datestring_to_timestamp(self, datestring):
@@ -424,8 +424,6 @@ class DataParser:
                 # it could be that the task related info was unable to be sent (also comes with a "failed to send" message)
                 # in this case, even the state is switched to running, there is no worker info
                 task.set_when_running(timestamp)
-                if task.task_id == 1:
-                    print(task.when_running, task.time_worker_start)
                 if not task.worker_ip:
                     return
                 else:
@@ -534,9 +532,6 @@ class DataParser:
             task.set_time_worker_start(time_worker_start)
             task.set_time_worker_end(time_worker_end)
             task.set_sandbox_used(sandbox_used)
-
-            if task.task_id == 1:
-                print(task.time_worker_start, task.time_worker_end)
             
             return
 
