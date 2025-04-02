@@ -565,17 +565,6 @@ class DataParser:
             # let the file handle the cache update
             file.cache_update((worker.ip, worker.port), timestamp, file_type, file_cache_level)
 
-            # 10.32.85.31
-            num_pending_transfers = 0
-            if worker.is_pbb:
-                for f in self.files.values():
-                    for transfer in f.transfers:
-                        if transfer.destination == (ip, port):
-                            if transfer.time_stage_in is None:
-                                num_pending_transfers += 1
-            if num_pending_transfers > 0:
-                print(f"num_pending_transfers: {num_pending_transfers}")
-
             return
             
         if "cache-invalid" in parts:
