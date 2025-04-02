@@ -140,7 +140,7 @@ class FileInfo:
                 continue
             transfer.stage_in(time_stage_in, "cache_update")
             has_started_staging_in = True
-        
+
         # this means a task-created file
         if not has_started_staging_in:
             producer_task_name = f"{list(self.producers)[-1]}"

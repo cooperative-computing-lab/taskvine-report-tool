@@ -564,6 +564,18 @@ class DataParser:
             file = self.ensure_file_info_entry(file_name, size_in_mb)
             # let the file handle the cache update
             file.cache_update((worker.ip, worker.port), timestamp, file_type, file_cache_level)
+
+            # 10.32.85.31
+            num_pending_transfers = 0
+            if worker.is_pbb:
+                for f in self.files.values():
+                    for transfer in f.transfers:
+                        if transfer.destination == (ip, port):
+                            if transfer.time_stage_in is None:
+                                num_pending_transfers += 1
+            if num_pending_transfers > 0:
+                print(f"num_pending_transfers: {num_pending_transfers}")
+
             return
             
         if "cache-invalid" in parts:
@@ -645,8 +657,7 @@ class DataParser:
         if "designated as the PBB (checkpoint) worker" in line:
             designated_idx = parts.index("designated")
             ip, port = WorkerInfo.extract_ip_port_from_string(parts[designated_idx - 1])
-            worker = self.workers[(ip, port)]
-            worker.enable_pbb()
+            self.workers[(ip, port)].enable_pbb()
             return
 
     def parse_debug(self):
