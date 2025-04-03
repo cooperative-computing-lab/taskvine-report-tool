@@ -664,7 +664,10 @@ class DataParser:
             ip, port = WorkerInfo.extract_ip_port_from_string(parts[designated_idx - 1])
             self.workers[(ip, port)].enable_pbb()
             return
-
+        
+        if "Removing instances of worker" in line:
+            pass
+            
     def parse_debug(self):
         time_start = time.time()
 
