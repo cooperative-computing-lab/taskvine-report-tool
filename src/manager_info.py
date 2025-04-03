@@ -56,7 +56,6 @@ class ManagerInfo:
         return datestring_custom
             
     def set_when_first_task_start_commit(self, when_first_task_start_commit):
-        when_first_task_start_commit = round(float(when_first_task_start_commit), 2)
         if self.when_first_task_start_commit is None:
             self.when_first_task_start_commit = when_first_task_start_commit
         else:

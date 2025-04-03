@@ -432,6 +432,8 @@ class DataParser:
             if "READY (1) to RUNNING (2)" in line:                  # as expected 
                 # it could be that the task related info was unable to be sent (also comes with a "failed to send" message)
                 # in this case, even the state is switched to running, there is no worker info
+                if self.manager.when_first_task_start_commit is None:
+                    self.manager.set_when_first_task_start_commit(timestamp)
                 task.set_when_running(timestamp)
                 if not task.worker_ip:
                     return
