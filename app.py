@@ -55,7 +55,7 @@ class TemplateState:
         self.tasks = self.data_parser.tasks
         self.subgraphs = self.data_parser.subgraphs
 
-        self.MIN_TIME = self.manager.time_start
+        self.MIN_TIME = self.manager.when_first_task_start_commit
         self.MAX_TIME = self.manager.time_end
 
 def all_subfolders_exists(parent: str, folder_names: list[str]) -> bool:
