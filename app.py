@@ -181,7 +181,6 @@ def get_execution_details():
         
         # Calculate yTickValues for worker IDs
         worker_ids = [worker['id'] for worker in data['workerInfo']]
-        print(f"Worker IDs for yTickValues: {worker_ids}")
         
         if worker_ids:
             min_worker_id = 1  # Start with worker ID 1

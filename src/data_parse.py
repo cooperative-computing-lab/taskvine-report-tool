@@ -363,6 +363,15 @@ class DataParser:
         if "tx to" in line and "task" in parts and parts.index("task") + 2 == len(parts):
             task_idx = parts.index("task")
             task_id = int(parts[task_idx + 1])
+
+            if (task_id, self.current_try_id[task_id]) not in self.tasks:
+                # this is a library task
+                self.current_try_id[task_id] += 1
+                task = TaskInfo(task_id, self.current_try_id[task_id])
+                task.set_when_ready(timestamp)
+                task.is_library_task = True
+                self.add_task(task)
+
             self.sending_task = self.tasks[(task_id, self.current_try_id[task_id])]
 
             try:
@@ -370,7 +379,7 @@ class DataParser:
                 if not self.sending_task.worker_ip:
                     self.sending_task.set_worker_ip_port(worker_ip, worker_port)
             except:
-                print(line)
+                raise
             return
         if self.sending_task:
             if "end" in parts:
@@ -496,7 +505,12 @@ class DataParser:
 
             elif "RUNNING (2) to RETRIEVED (4)" in line:
                 task.set_when_retrieved(timestamp)
-                print(f"Warning: task {task_id} state change: from RUNNING (2) to RETRIEVED (4)")
+                if not task.is_library_task:
+                    print(f"Warning: non-library task {task_id} state change: from RUNNING (2) to RETRIEVED (4)")
+            elif "INITIAL (0) to RUNNING (2)" in line:
+                # this is a library task
+                task.set_when_running(timestamp)
+                task.is_library_task = True
             else:
                 raise ValueError(f"pending state change: {line}")
             return

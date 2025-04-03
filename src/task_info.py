@@ -65,6 +65,8 @@ class TaskInfo:
         self.disk_requested_mb = None
         self.execution_time = None
 
+        self.is_library_task = False
+
     def set_when_ready(self, when_ready):
         self.when_ready = float(when_ready)
 
@@ -143,6 +145,8 @@ class TaskInfo:
         self.worker_port = worker_port
 
     def set_cores_requested(self, cores_requested):
+        if cores_requested == 0:
+            cores_requested = 1
         if self.cores_requested and cores_requested != self.cores_requested:
             raise ValueError(f"cores_requested mismatch for task {self.task_id}")
         self.cores_requested = cores_requested
