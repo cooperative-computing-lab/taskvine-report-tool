@@ -77,11 +77,6 @@ class DataParser:
         self.sending_back_transfers = {}      # key: (source_ip, source_port), value: TransferInfo
         self.putting_transfers = {}           # key: (dest_ip, dest_port), value: TransferInfo
 
-        # time info
-        self.time_zone_offset_hours = None
-        self.equivalent_tz = None
-        self.set_time_zone()
-
         # subgraphs
         self.subgraphs = {}   # key: subgraph_id, value: set()
 
@@ -92,7 +87,6 @@ class DataParser:
 
     def worker_ip_port_to_hash(self, worker_ip: str, worker_port: int):
         return f"{worker_ip}:{worker_port}"
-    
 
     def set_time_zone(self):
         mgr_start_datestring = None
@@ -132,20 +126,19 @@ class DataParser:
                 delta = abs((local_dt - target_local).total_seconds())
                 if delta <= 2:
                     offset = tz.utcoffset(utc_time.replace(tzinfo=None)).total_seconds() / 3600
-                    self.time_zone_offset_hours = int(offset)
-                    self.manager.time_zone_offset_hours = self.time_zone_offset_hours
-                    self.equivalent_tz = timezone(timedelta(hours=self.time_zone_offset_hours))
+                    self.manager.time_zone_offset_hours = int(offset)
+                    self.manager.equivalent_tz = timezone(timedelta(hours=self.manager.time_zone_offset_hours))
                     break
             except Exception:
                 continue
         else:
             raise ValueError("Could not match to a known time zone.")
         
-        print(f"Set time zone to {self.equivalent_tz} offset {self.time_zone_offset_hours}")
+        print(f"Set time zone to {self.manager.equivalent_tz} offset {self.manager.time_zone_offset_hours}")
 
     @lru_cache(maxsize=4096)
     def datestring_to_timestamp(self, datestring):
-        equivalent_datestring = datetime.strptime(datestring, "%Y/%m/%d %H:%M:%S.%f").replace(tzinfo=self.equivalent_tz)
+        equivalent_datestring = datetime.strptime(datestring, "%Y/%m/%d %H:%M:%S.%f").replace(tzinfo=self.manager.equivalent_tz)
         unix_timestamp = float(equivalent_datestring.timestamp())
         return unix_timestamp
     
@@ -693,6 +686,8 @@ class DataParser:
         self.checkpoint_debug()
 
     def parse_logs(self):
+        self.set_time_zone()
+        
         self.parse_debug()
 
     def generate_subgraphs(self):

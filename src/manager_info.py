@@ -30,6 +30,7 @@ class ManagerInfo:
         self.time_start_human = None
         self.time_end_human = None
         self.current_max_time = None
+        self.equivalent_tz = None
 
     def update_current_max_time(self, time):
         try:
@@ -100,3 +101,5 @@ class ManagerInfo:
         print(f"  Time Start Human: {self.time_start_human}")
         print(f"  Time End Human: {self.time_end_human}")
         print(f"  Current Max Time: {self.current_max_time}")
+        print(f"  Equivalent Time Zone: {self.equivalent_tz}")
+        print(f"  Time Zone Offset Hours: {self.time_zone_offset_hours}")
