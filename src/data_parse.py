@@ -419,6 +419,15 @@ class DataParser:
                 task.set_when_ready(timestamp)
                 self.add_task(task)
                 return
+            elif "INITIAL (0) to RUNNING (2)" in line:
+                # this is a library task
+                if task_id not in self.current_try_id:
+                    self.current_try_id[task_id] = 1
+                task = TaskInfo(task_id, self.current_try_id[task_id])
+                task.set_when_running(timestamp)
+                task.is_library_task = True
+                self.add_task(task)
+                return
 
             task_entry = (task_id, self.current_try_id[task_id])
             task = self.tasks[task_entry]
@@ -502,10 +511,6 @@ class DataParser:
                 task.set_when_retrieved(timestamp)
                 if not task.is_library_task:
                     print(f"Warning: non-library task {task_id} state change: from RUNNING (2) to RETRIEVED (4)")
-            elif "INITIAL (0) to RUNNING (2)" in line:
-                # this is a library task
-                task.set_when_running(timestamp)
-                task.is_library_task = True
             else:
                 raise ValueError(f"pending state change: {line}")
             return
