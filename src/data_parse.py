@@ -423,10 +423,12 @@ class DataParser:
                 # this is a library task
                 if task_id not in self.current_try_id:
                     self.current_try_id[task_id] = 1
-                task = TaskInfo(task_id, self.current_try_id[task_id])
+                    task = TaskInfo(task_id, self.current_try_id[task_id])
+                    task.set_when_ready(timestamp)
+                    self.add_task(task)
+                task = self.tasks[(task_id, self.current_try_id[task_id])]
                 task.set_when_running(timestamp)
                 task.is_library_task = True
-                self.add_task(task)
                 return
 
             task_entry = (task_id, self.current_try_id[task_id])
