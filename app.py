@@ -273,12 +273,13 @@ def get_storage_consumption():
                 if destination not in all_worker_storage:
                     all_worker_storage[destination] = []
 
-                time_in = float(transfer.time_stage_in - template_manager.MIN_TIME)
+                # time_in = float(transfer.time_stage_in - template_manager.MIN_TIME)
+                time_in = float(transfer.time_start_stage_in - template_manager.MIN_TIME)
                 time_out = float(transfer.time_stage_out - template_manager.MIN_TIME)
                 
                 # Skip if times are invalid
-                if np.isnan(time_in) or np.isnan(time_out):
-                    continue
+                #if np.isnan(time_in):
+                    #continue
                     
                 all_worker_storage[destination].append((time_in, max(0, file.size_mb)))
                 all_worker_storage[destination].append((time_out, -max(0, file.size_mb)))
