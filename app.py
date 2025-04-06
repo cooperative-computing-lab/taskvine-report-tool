@@ -322,7 +322,7 @@ def get_storage_consumption():
                 
             # Convert to list of points and downsample
             points = df[['time', 'storage_consumption']].values.tolist()
-            points = downsample_storage_data(points)
+            # points = downsample_storage_data(points)
             data['worker_storage_consumption'][destination] = points
             
             # add the initial and final points with 0 consumption
