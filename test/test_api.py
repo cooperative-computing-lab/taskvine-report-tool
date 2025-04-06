@@ -193,6 +193,6 @@ if __name__ == "__main__":
                                          "plot_recovery_task": 'true'
         }},
     ]
-    testing_api = api_list[1]  # Test worker-transfers
+    testing_api = api_list[1] 
 
     test_api(base_url, args.runtime_template, testing_api)

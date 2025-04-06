@@ -514,7 +514,7 @@ class DataParser:
                 if not task.is_library_task:
                     print(f"Warning: non-library task {task_id} state change: from RUNNING (2) to RETRIEVED (4)")
             else:
-                raise ValueError(f"pending state change: {line}")
+                raise ValueError(f"unrecognized state change: {line}")
             return
 
         if "complete" in parts:
