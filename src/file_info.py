@@ -173,7 +173,7 @@ class FileInfo:
     def worker_removed(self, worker, time_stage_out):
         # this affects incoming transfers on the destination worker
         for transfer in self.transfers:
-            if transfer.destination != worker and transfer.source != worker:
+            if transfer.destination != worker:
                 continue
             if transfer.time_stage_out:
                 continue
