@@ -221,7 +221,7 @@ class DataParser:
             worker.set_machine_name(parts[info_idx - 2])
             return
 
-        if "removed" in parts:
+        if "removed" in parts and "worker" in parts:
             release_idx = parts.index("removed")
             ip, port = WorkerInfo.extract_ip_port_from_string(parts[release_idx - 1])
             worker = self.workers[(ip, port)]
@@ -658,6 +658,13 @@ class DataParser:
                         task.set_when_failure_happens(timestamp)
                 else:
                     pass
+
+        if "calculated penalty for file" in line:
+            file_idx = parts.index("file")
+            file_name = parts[file_idx + 1][:-1]
+            penalty = float(parts[file_idx + 2])
+            self.files[file_name].set_penalty(penalty)
+            return
 
         if "designated as the PBB (checkpoint) worker" in line:
             designated_idx = parts.index("designated")

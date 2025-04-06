@@ -38,6 +38,8 @@ class TransferEvent:
         assert cache_level in [0, 1, 2, 3]
         self.cache_level = cache_level
 
+        self.penalty = None
+
     def set_eventual_state(self, eventual_state):
         assert eventual_state in ["pending", "cache_invalid", "cache_update", "worker_received", "manager_received", "worker_removed", "manager_removed", "unlink", "failed_to_return", "failed_to_send"]
         self.eventual_state = eventual_state
@@ -188,11 +190,16 @@ class FileInfo:
         if size_mb > 0:
             self.size_mb = size_mb
 
+    def set_penalty(self, penalty):
+        self.penalty = penalty
+    
+
     def print_info(self):
         print(f"filename: {self.filename}")
         print(f"size_mb: {self.size_mb}")
         print(f"consumers: {self.consumers}")
         print(f"producers: {self.producers}")
+        print(f"penalty: {self.penalty}")
         print(f"transfers: {len(self.transfers)}")
         len_start_stage_in = len([transfer for transfer in self.transfers if transfer.time_start_stage_in])
         len_stage_in = len([transfer for transfer in self.transfers if transfer.time_stage_in])
