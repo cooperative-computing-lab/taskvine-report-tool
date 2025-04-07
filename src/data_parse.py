@@ -674,6 +674,12 @@ class DataParser:
         
         if "Removing instances of worker" in line:
             pass
+
+        if "Checkpoint queue processing time" in line:
+            time_idx = parts.index("time:")
+            time_us = float(parts[time_idx + 1])
+            self.manager.aggregate_checkpoint_processing_time(time_us)
+            return
             
     def parse_debug(self):
         time_start = time.time()

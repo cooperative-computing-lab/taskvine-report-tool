@@ -63,7 +63,8 @@ class WorkerInfo:
                 cores_found += 1
                 if cores_found == task.cores_requested:
                     return i
-        raise ValueError(f"not enough cores available for task {task.task_id}, {cores_found} != {task.cores_requested}")
+        print(f"Warning: not enough cores available for task {task.task_id}, {cores_found} != {task.cores_requested}")
+        return -1
     
     def reap_task(self, task):
         assert self.coremap is not None

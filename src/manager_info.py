@@ -31,6 +31,7 @@ class ManagerInfo:
         self.time_end_human = None
         self.current_max_time = None
         self.equivalent_tz = None
+        self.checkpoint_processing_time_us = 0
 
     def update_current_max_time(self, time):
         try:
@@ -82,6 +83,9 @@ class ManagerInfo:
             self.when_last_worker_disconnect = when_last_worker_disconnect
         else:
             self.when_last_worker_disconnect = max(self.when_last_worker_disconnect, when_last_worker_disconnect)
+
+    def aggregate_checkpoint_processing_time(self, time_us):
+        self.checkpoint_processing_time_us += float(time_us)
 
     def print_info(self):
         print(f"Manager Info:")
