@@ -71,6 +71,7 @@ class WorkerInfo:
         for core_id in task.core_id:
             print(f"Reaping task {task.task_id} from core {core_id}")
             print(f"Coremap: {self.coremap}")
+            print(f"self.ip: {self.ip}, self.port: {self.port}")
             self.coremap[core_id] = 0
     
     def set_cores(self, cores: int):
