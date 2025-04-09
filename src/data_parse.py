@@ -642,8 +642,9 @@ class DataParser:
         if "rx from" in line and "file" in parts:
             file_idx = parts.index("file")
             file_name = parts[file_idx + 1]
-            assert file_name in self.files
             source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[parts.index("file") - 1])
+            if file_name not in self.files:
+                raise ValueError(f"file {file_name} not found in self.files, line: {line}")
             assert (source_ip, source_port) in self.workers
             assert (source_ip, source_port) in self.sending_back_transfers
             return
