@@ -70,6 +70,9 @@ class WorkerInfo:
         assert self.coremap is not None
         for core_id in task.core_id:
             print(f"Reaping task {task.task_id} from core {core_id}")
+            if core_id not in self.coremap:
+                print(f"Warning: core {core_id} not found in coremap for worker {self.ip}:{self.port}")
+                print(f"Coremap: {self.coremap}")
             self.coremap[core_id] = 0
     
     def set_cores(self, cores: int):
