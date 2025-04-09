@@ -72,7 +72,7 @@ class WorkerInfo:
             self.coremap[core_id] = 0
     
     def set_cores(self, cores: int):
-        if cores < self.cores:
+        if self.cores and cores < self.cores:
             return
         self.cores = cores
         self.coremap = bitarray(self.cores + 1)
