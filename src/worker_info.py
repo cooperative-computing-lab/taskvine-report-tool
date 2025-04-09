@@ -79,9 +79,10 @@ class WorkerInfo:
         self.cores = cores
         self.coremap = bitarray(self.cores + 1)
         self.coremap.setall(0)
-        for i in range(len(previous_coremap)):
-            if previous_coremap[i] == 1:
-                self.run_task(i)
+        if previous_coremap:
+            for i in range(len(previous_coremap)):
+                if previous_coremap[i] == 1:
+                    self.run_task(i)
 
     def set_gpus(self, gpus: int):
         if self.gpus and gpus != self.gpus:
