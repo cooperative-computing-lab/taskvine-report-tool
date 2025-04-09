@@ -404,8 +404,8 @@ class DataParser:
                 function_slots = int(parts[parts.index("function_slots") + 1])
                 self.sending_task.set_function_slots(function_slots)
                 sending_to_worker = self.workers[(self.sending_task.worker_ip, self.sending_task.worker_port)]
-                if sending_to_worker.cores < function_slots:
-                    sending_to_worker.set_cores(function_slots)
+                # if sending_to_worker.cores < function_slots:
+                    # sending_to_worker.set_cores(function_slots)
             elif "cmd" in parts:
                 pass
             elif "python3" in parts:

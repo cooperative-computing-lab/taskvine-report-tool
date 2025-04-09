@@ -79,6 +79,8 @@ class WorkerInfo:
         self.cores = cores
         self.coremap = bitarray(self.cores + 1)
         self.coremap.setall(0)
+
+        return
         if previous_coremap:
             for i in range(len(previous_coremap)):
                 if previous_coremap[i] == 1:
