@@ -84,6 +84,7 @@ class DataParser:
         self.receiving_resources_from_worker = None
         self.sending_task = None
         self.mini_task_transferring = None
+        self.sending_back = None
 
     def worker_ip_port_to_hash(self, worker_ip: str, worker_port: int):
         return f"{worker_ip}:{worker_port}"
@@ -630,6 +631,7 @@ class DataParser:
         
         # get an output file from a worker, one worker can only send one file back at a time
         if "sending back" in line:
+            self.sending_back = True
             back_idx = parts.index("back")
             file_name = parts[back_idx + 1]
             source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[back_idx - 2])
@@ -639,7 +641,7 @@ class DataParser:
             transfer.start_stage_in(timestamp, "pending")
             self.sending_back_transfers[(source_ip, source_port)] = transfer
             return
-        if "rx from" in line and "file" in parts:
+        if self.sending_back and "rx from" in line and "file" in parts:
             file_idx = parts.index("file")
             file_name = parts[file_idx + 1]
             source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[parts.index("file") - 1])
@@ -648,16 +650,17 @@ class DataParser:
             assert (source_ip, source_port) in self.workers
             assert (source_ip, source_port) in self.sending_back_transfers
             return
-        if "Receiving file" in line:
+        if self.sending_back and "Receiving file" in line:
             pass
-        if "sent" in parts:
+        if self.sending_back and "sent" in parts:
             send_idx = parts.index("sent")
             source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[send_idx - 1])
             assert (source_ip, source_port) in self.sending_back_transfers
             transfer = self.sending_back_transfers[(source_ip, source_port)]
             transfer.stage_in(timestamp, "manager_received")
             del self.sending_back_transfers[(source_ip, source_port)]
-
+            self.sending_back = False
+            
         if "manager end" in line:
             self.manager.set_time_end(timestamp)
             for task in self.tasks.values():
