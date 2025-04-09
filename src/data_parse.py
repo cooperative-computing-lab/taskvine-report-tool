@@ -573,9 +573,6 @@ class DataParser:
         if "cache-update" in parts:
             # cache-update cachename, &type, &cache_level, &size, &mtime, &transfer_time, &start_time, id
             cache_update_id = parts.index("cache-update")
-            ip, port = WorkerInfo.extract_ip_port_from_string(parts[cache_update_id - 1])
-            worker = self.workers[(ip, port)]
-
             file_name = parts[cache_update_id + 1]
             file_type = parts[cache_update_id + 2]
             file_cache_level = parts[cache_update_id + 3]
@@ -584,10 +581,12 @@ class DataParser:
 
             # if this is a task-generated file, it is the first time the file is cached on this worker, otherwise we only update the stage in time
             file = self.ensure_file_info_entry(file_name, size_in_mb)
-
             if len(file.producers) == 0:
                 # special case: this file was created by a previous manager
                 return
+            
+            ip, port = WorkerInfo.extract_ip_port_from_string(parts[cache_update_id - 1])
+            worker = self.workers[(ip, port)]
             # let the file handle the cache update
             file.cache_update((worker.ip, worker.port), timestamp, file_type, file_cache_level)
 
