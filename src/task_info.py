@@ -66,6 +66,7 @@ class TaskInfo:
         self.execution_time = None
 
         self.is_library_task = False
+        self.function_slots = None
 
     def set_when_ready(self, when_ready):
         self.when_ready = float(when_ready)
@@ -143,6 +144,11 @@ class TaskInfo:
         if self.worker_port and worker_port != self.worker_port:
             raise ValueError(f"worker_port mismatch for task {self.task_id}: {self.worker_port} != {worker_port}")
         self.worker_port = worker_port
+
+    def set_function_slots(self, function_slots):
+        if self.function_slots and function_slots != self.function_slots:
+            raise ValueError(f"function_slots mismatch for task {self.task_id}")
+        self.function_slots = function_slots
 
     def set_cores_requested(self, cores_requested):
         if cores_requested == 0:

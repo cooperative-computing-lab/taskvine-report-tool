@@ -399,6 +399,12 @@ class DataParser:
                 if not file.is_producer(self.sending_task):
                     file.add_producer(self.sending_task)
                     self.sending_task.add_output_file(file_name)
+            elif "function_slots" in parts:
+                function_slots = int(parts[parts.index("function_slots") + 1])
+                self.sending_task.set_function_slots(function_slots)
+                sending_to_worker = self.workers[(self.sending_task.worker_ip, self.sending_task.worker_port)]
+                if sending_to_worker.cores < function_slots:
+                    sending_to_worker.set_cores(function_slots)
             elif "cmd" in parts:
                 pass
             elif "python3" in parts:
