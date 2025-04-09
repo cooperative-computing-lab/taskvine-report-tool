@@ -595,13 +595,12 @@ class DataParser:
             
         if "cache-invalid" in parts:
             cache_invalid_id = parts.index("cache-invalid")
-            ip, port = WorkerInfo.extract_ip_port_from_string(parts[cache_invalid_id - 1])
-            worker = self.workers[(ip, port)]
             file_name = parts[cache_invalid_id + 1]
-
             if file_name not in self.files:
                 # special case: this file was created by a previous manager
                 return
+            ip, port = WorkerInfo.extract_ip_port_from_string(parts[cache_invalid_id - 1])
+            worker = self.workers[(ip, port)]
             file = self.files[file_name]
             file.cache_invalid((ip, port), timestamp)
             return
