@@ -73,10 +73,7 @@ class WorkerInfo:
     
     def set_cores(self, cores: int):
         self.cores = cores
-        if self.coremap:
-            # clear the coremap
-            self.coremap.setall(0)
-        self.coremap = bitarray(cores + 1)
+        self.coremap = bitarray(self.cores + 1)
         self.coremap.setall(0)
 
     def set_gpus(self, gpus: int):
