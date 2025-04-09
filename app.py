@@ -88,6 +88,10 @@ def get_execution_details():
                 # note that the task might have not been retrieved yet
                 if not task.when_retrieved:
                     continue
+                if task.is_library_task:
+                    continue
+                if len(task.core_id) == 0:
+                    raise ValueError(f"Task {task.task_id} has no core_id, but when_running is {task.when_running}, when_failure_happens is {task.when_failure_happens}, when_waiting_retrieval is {task.when_waiting_retrieval}, when_retrieved is {task.when_retrieved}, when_done is {task.when_done}")
                 data['num_of_status'][task.task_status] += 1
                 if task.is_recovery_task:
                     data['num_successful_recovery_tasks'] += 1
@@ -213,7 +217,9 @@ def get_execution_details():
         return jsonify(data)
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        error_message = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
+        print(error_message)
+        return jsonify({'error': str(e), 'details': error_message}), 500
     
 
 def downsample_storage_data(points):

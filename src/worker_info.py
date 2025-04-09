@@ -81,7 +81,6 @@ class WorkerInfo:
         else:
             pass
 
-
     def set_gpus(self, gpus: int):
         if self.gpus and gpus != self.gpus:
             raise ValueError(f"gpus mismatch for worker {self.ip}:{self.port}")
