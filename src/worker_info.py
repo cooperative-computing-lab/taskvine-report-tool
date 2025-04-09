@@ -72,19 +72,15 @@ class WorkerInfo:
             self.coremap[core_id] = 0
     
     def set_cores(self, cores: int):
-        if self.cores:
-            return
-        # save the previous coremap and map to the new cores
-        previous_coremap = self.coremap
+        if self.cores and cores != self.cores:
+            raise ValueError(f"cores mismatch for worker {self.ip}:{self.port}, {self.cores} != {cores}")
         self.cores = cores
-        self.coremap = bitarray(self.cores + 1)
-        self.coremap.setall(0)
+        if not self.coremap:
+            self.coremap = bitarray(self.cores + 1)
+            self.coremap.setall(0)
+        else:
+            pass
 
-        return
-        if previous_coremap:
-            for i in range(len(previous_coremap)):
-                if previous_coremap[i] == 1:
-                    self.run_task(i)
 
     def set_gpus(self, gpus: int):
         if self.gpus and gpus != self.gpus:
