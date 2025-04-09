@@ -401,7 +401,6 @@ class DataParser:
                     self.sending_task.add_output_file(file_name)
             elif "function_slots" in parts:
                 function_slots = int(parts[parts.index("function_slots") + 1])
-                print(f"Setting function slots to {function_slots} for task {self.sending_task.task_id} on worker {self.sending_task.worker_ip}:{self.sending_task.worker_port}")
                 self.sending_task.set_function_slots(function_slots)
                 sending_to_worker = self.workers[(self.sending_task.worker_ip, self.sending_task.worker_port)]
                 if sending_to_worker.cores < function_slots:

@@ -69,12 +69,11 @@ class WorkerInfo:
     def reap_task(self, task):
         assert self.coremap is not None
         for core_id in task.core_id:
-            print(f"Reaping task {task.task_id} from core {core_id}")
-            print(f"Coremap: {self.coremap}")
-            print(f"self.ip: {self.ip}, self.port: {self.port}")
             self.coremap[core_id] = 0
     
     def set_cores(self, cores: int):
+        if cores < self.cores:
+            return
         self.cores = cores
         self.coremap = bitarray(self.cores + 1)
         self.coremap.setall(0)
