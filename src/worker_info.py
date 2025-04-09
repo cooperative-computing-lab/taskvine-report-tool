@@ -72,7 +72,7 @@ class WorkerInfo:
             self.coremap[core_id] = 0
     
     def set_cores(self, cores: int):
-        if self.cores and cores < self.cores:
+        if self.cores:
             return
         # save the previous coremap and map to the new cores
         previous_coremap = self.coremap
