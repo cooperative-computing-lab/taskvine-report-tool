@@ -584,6 +584,10 @@ class DataParser:
 
             # if this is a task-generated file, it is the first time the file is cached on this worker, otherwise we only update the stage in time
             file = self.ensure_file_info_entry(file_name, size_in_mb)
+
+            if len(file.producers) == 0:
+                # special case: this file was created by a previous manager
+                return
             # let the file handle the cache update
             file.cache_update((worker.ip, worker.port), timestamp, file_type, file_cache_level)
 
@@ -595,6 +599,9 @@ class DataParser:
             worker = self.workers[(ip, port)]
             file_name = parts[cache_invalid_id + 1]
 
+            if file_name not in self.files:
+                # special case: this file was created by a previous manager
+                return
             file = self.files[file_name]
             file.cache_invalid((ip, port), timestamp)
             return

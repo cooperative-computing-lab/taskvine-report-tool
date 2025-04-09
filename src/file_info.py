@@ -145,9 +145,6 @@ class FileInfo:
 
         # this means a task-created file
         if not has_started_staging_in:
-            if len(self.producers) == 0:
-                print(f"Warning: no producers for {self.filename}")
-                return
             producer_task_name = f"{list(self.producers)[-1]}"
             transfer = self.add_transfer(producer_task_name, destination, "task_created", file_type, file_cache_level)
             transfer.start_stage_in(time_stage_in, "pending")
