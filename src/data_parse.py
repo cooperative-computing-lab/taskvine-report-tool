@@ -461,6 +461,7 @@ class DataParser:
                     if task_id not in self.current_try_id:
                         self.current_try_id[task_id] = 1
             elif "RUNNING (2) to RUNNING (2)" in line:
+                print(f"Warning: task {task_id} state change: from RUNNING (2) to RUNNING (2)")
                 pass
             elif "RUNNING (2) to WAITING_RETRIEVAL (3)" in line:    # as expected
                 task.set_when_waiting_retrieval(timestamp)
