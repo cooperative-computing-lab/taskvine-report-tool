@@ -458,6 +458,8 @@ class DataParser:
                     # check if this is the first try
                     if task_id not in self.current_try_id:
                         self.current_try_id[task_id] = 1
+            elif "RUNNING (2) to RUNNING (2)" in line:
+                pass
             elif "RUNNING (2) to WAITING_RETRIEVAL (3)" in line:    # as expected
                 task.set_when_waiting_retrieval(timestamp)
                 # update the coremap
