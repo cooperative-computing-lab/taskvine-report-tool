@@ -376,7 +376,7 @@ class DataParser:
                 raise
             return
         if self.sending_task:
-            if "end" in parts:
+            if "end" in parts or "failed to send" in line:
                 self.sending_task = None
             elif "cores" in parts:
                 self.sending_task.set_cores_requested(int(float(parts[parts.index("cores") + 1])))
@@ -388,6 +388,8 @@ class DataParser:
                 self.sending_task.set_disk_requested_mb(int(float(parts[parts.index("disk") + 1])))
             elif "category" in parts:
                 self.sending_task.set_category(parts[parts.index("category") + 1])
+            elif "needs file" in line and "as infile" in line:
+                pass
             elif "infile" in parts:
                 file_name = parts[parts.index("infile") + 1]
                 file = self.ensure_file_info_entry(file_name, 0)
