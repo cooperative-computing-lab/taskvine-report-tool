@@ -64,6 +64,8 @@ class WorkerInfo:
                 if cores_found == task.cores_requested:
                     return i
         print(f"Warning: not enough cores available for task {task.task_id}, {cores_found} != {task.cores_requested}")
+        # more detailed information about the coremap
+        print(self.coremap)
         return -1
     
     def reap_task(self, task):
