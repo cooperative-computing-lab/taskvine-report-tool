@@ -468,6 +468,9 @@ class DataParser:
             elif "RUNNING (2) to DONE (5)" in line:
                 print(f"Warning: task {task_id} state change: from RUNNING (2) to DONE (5)")
                 pass
+            elif "DONE (5) to WAITING_RETRIEVAL (3)" in line:
+                print(f"Warning: task {task_id} state change: from DONE (5) to WAITING_RETRIEVAL (3)")
+                pass
             elif "RUNNING (2) to WAITING_RETRIEVAL (3)" in line:    # as expected
                 task.set_when_waiting_retrieval(timestamp)
                 # update the coremap
