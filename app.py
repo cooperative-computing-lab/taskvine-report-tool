@@ -10,6 +10,7 @@ from src.data_parse import DataParser
 import numpy as np
 import random
 import traceback
+import functools
 import time
 
 LOGS_DIR = 'logs'
@@ -129,6 +130,7 @@ class TemplateState:
 
 def check_and_reload_data():
     def decorator(func):
+        @functools.wraps(func)
         def wrapper(*args, **kwargs):
             if template_manager.check_pkl_files_changed():
                 template_manager.reload_data()
