@@ -36,6 +36,73 @@ class TemplateState:
 
         self.tick_size = 12
 
+        self.pkl_files_info = {}
+
+    def get_file_stat(self, file_path):
+        try:
+            stat = os.stat(file_path)
+            return {
+                'mtime': stat.st_mtime,
+                'size': stat.st_size
+            }
+        except Exception as e:
+            print(f"Error getting file info for {file_path}: {e}")
+            return None
+
+    def check_pkl_files_changed(self):
+        if not self.runtime_template or not self.data_parser:
+            return False
+
+        pkl_dir = self.data_parser.pkl_files_dir
+        pkl_files = ['workers.pkl', 'files.pkl', 'tasks.pkl', 'manager.pkl', 'subgraphs.pkl']
+        
+        for pkl_file in pkl_files:
+            file_path = os.path.join(pkl_dir, pkl_file)
+            current_stat = self.get_file_stat(file_path)
+            
+            if not current_stat:
+                continue
+
+            if (file_path not in self.pkl_files_info or 
+                current_stat['mtime'] != self.pkl_files_info[file_path]['mtime'] or 
+                current_stat['size'] != self.pkl_files_info[file_path]['size']):
+                print(f"Detected changes in {pkl_file}")
+                return True
+
+        return False
+
+    def update_pkl_files_info(self):
+        if not self.runtime_template or not self.data_parser:
+            return
+
+        pkl_dir = self.data_parser.pkl_files_dir
+        pkl_files = ['workers.pkl', 'files.pkl', 'tasks.pkl', 'manager.pkl', 'subgraphs.pkl']
+        
+        for pkl_file in pkl_files:
+            file_path = os.path.join(pkl_dir, pkl_file)
+            info = self.get_file_stat(file_path)
+            if info:
+                self.pkl_files_info[file_path] = info
+
+    def reload_data(self):
+        try:
+            print("Reloading data from checkpoint...")
+            self.data_parser.restore_from_checkpoint()
+            self.manager = self.data_parser.manager
+            self.workers = self.data_parser.workers
+            self.files = self.data_parser.files
+            self.tasks = self.data_parser.tasks
+            self.subgraphs = self.data_parser.subgraphs
+
+            self.MIN_TIME = self.manager.when_first_task_start_commit
+            self.MAX_TIME = self.manager.time_end
+
+            self.update_pkl_files_info()
+            print("Data reload completed successfully")
+        except Exception as e:
+            print(f"Error reloading data: {e}")
+            traceback.print_exc()
+
     def change_runtime_template(self, runtime_template):
         if not runtime_template:
             return
@@ -58,6 +125,17 @@ class TemplateState:
         self.MIN_TIME = self.manager.when_first_task_start_commit
         self.MAX_TIME = self.manager.time_end
 
+        self.update_pkl_files_info()
+
+def check_and_reload_data():
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            if template_manager.check_pkl_files_changed():
+                template_manager.reload_data()
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
+
 def all_subfolders_exists(parent: str, folder_names: list[str]) -> bool:
     parent_path = Path(parent).resolve()
     for folder_name in folder_names:
@@ -70,6 +148,7 @@ def all_subfolders_exists(parent: str, folder_names: list[str]) -> bool:
 app = Flask(__name__)
 
 @app.route('/api/execution-details')
+@check_and_reload_data()
 def get_execution_details():
     try:
         data: Dict[str, Any] = {}
@@ -244,6 +323,7 @@ def downsample_storage_data(points):
     return result
 
 @app.route('/api/storage-consumption')
+@check_and_reload_data()
 def get_storage_consumption():
     try:
         show_percentage = request.args.get('show_percentage', 'false').lower() == 'true'
@@ -432,6 +512,7 @@ def downsample_worker_transfers(points):
     return result
 
 @app.route('/api/worker-transfers')
+@check_and_reload_data()
 def get_worker_transfers():
     try:
         # Get the transfer type from query parameters
@@ -565,6 +646,7 @@ def downsample_task_execution_time(points):
     return result
 
 @app.route('/api/task-execution-time')
+@check_and_reload_data()
 def get_task_execution_time():
     try:
         data = {}
@@ -684,6 +766,7 @@ def downsample_task_concurrency(points):
     return result
 
 @app.route('/api/task-concurrency')
+@check_and_reload_data()
 def get_task_concurrency():
     try:
         data = {}
@@ -855,6 +938,7 @@ def downsample_file_replicas(points):
     return result
 
 @app.route('/api/file-replicas')
+@check_and_reload_data()
 def get_file_replicas():
     try:
         order = request.args.get('order', 'desc')  # default to descending
@@ -984,6 +1068,7 @@ def downsample_file_sizes(points):
     return result
 
 @app.route('/api/file-sizes')
+@check_and_reload_data()
 def get_file_sizes():
     try:
         # Get the transfer type from query parameters
@@ -1077,6 +1162,7 @@ def get_file_sizes():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/subgraphs')
+@check_and_reload_data()
 def get_subgraphs():
     try:
         data = {}
