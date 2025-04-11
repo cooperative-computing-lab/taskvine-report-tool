@@ -462,6 +462,9 @@ class DataParser:
                         self.current_try_id[task_id] = 1
             elif "RUNNING (2) to RUNNING (2)" in line:
                 raise ValueError(f"task {task_id} state change: from RUNNING (2) to RUNNING (2)")
+            elif "RETRIEVED (4) to RUNNING (2)" in line:
+                print(f"Warning: task {task_id} state change: from RETRIEVED (4) to RUNNING (2)")
+                task.set_when_running(timestamp)
             elif "RUNNING (2) to WAITING_RETRIEVAL (3)" in line:    # as expected
                 task.set_when_waiting_retrieval(timestamp)
                 # update the coremap
