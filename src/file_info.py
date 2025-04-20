@@ -186,7 +186,8 @@ class FileInfo:
     def set_size_mb(self, size_mb):
         size_mb = float(size_mb)
         if self.size_mb > 0 and size_mb > 0 and size_mb != self.size_mb:
-            raise ValueError(f"size mismatch for {self.filename}, {self.size_mb} != {size_mb}")
+            # it could be that the file was created multiple times with different sizes
+            print(f"Warning: size mismatch for {self.filename}, {self.size_mb} != {size_mb}")
         if size_mb > 0:
             self.size_mb = size_mb
 
