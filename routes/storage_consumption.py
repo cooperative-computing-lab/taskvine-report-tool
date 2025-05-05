@@ -5,7 +5,7 @@ storage_consumption_bp = Blueprint('storage_consumption', __name__, url_prefix='
 
 def downsample_storage_data(points):
     # downsample storage consumption data points while keeping the global peak and randomly sampling other points
-    if len(points) <= TARGET_POINTS:
+    if len(points) <= SAMPLING_POINTS:
         return points
 
     global_peak_idx = max(range(len(points)), key=lambda i: points[i][1])
@@ -13,7 +13,7 @@ def downsample_storage_data(points):
 
     keep_indices = {0, len(points) - 1, global_peak_idx}
 
-    remaining_points = TARGET_POINTS - len(keep_indices)
+    remaining_points = SAMPLING_POINTS - len(keep_indices)
     if remaining_points <= 0:
         return [points[0], global_peak, points[-1]]
 

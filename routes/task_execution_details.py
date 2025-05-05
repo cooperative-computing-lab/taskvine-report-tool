@@ -75,17 +75,17 @@ def get_execution_details():
                 data['unsuccessfulTasks'].append(unsuccessful_task_info)
 
         # filter successfulTasks to keep only top 100,000 by execution time if there are more than 100,000 tasks
-        if len(data['successfulTasks']) > TARGET_TASK_BARS:
+        if len(data['successfulTasks']) > SAMPLING_TASK_BARS:
             # sort tasks by execution time in descending order and keep top 100,000
             data['successfulTasks'] = sorted(data['successfulTasks'], 
                                           key=lambda x: x['execution_time'],
-                                          reverse=True)[:TARGET_TASK_BARS]
+                                          reverse=True)[:SAMPLING_TASK_BARS]
         # filter unsuccessfulTasks to keep only top 100,000 by execution time if there are more than 100,000 tasks
-        if len(data['unsuccessfulTasks']) > TARGET_TASK_BARS:
+        if len(data['unsuccessfulTasks']) > SAMPLING_TASK_BARS:
             # sort tasks by execution time in descending order and keep top 100,000
             data['unsuccessfulTasks'] = sorted(data['unsuccessfulTasks'], 
                                           key=lambda x: x['execution_time'],
-                                          reverse=True)[:TARGET_TASK_BARS]
+                                          reverse=True)[:SAMPLING_TASK_BARS]
         
         data['workerInfo'] = []
         for worker in runtime_state.workers.values():

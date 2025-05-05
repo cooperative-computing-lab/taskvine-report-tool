@@ -3,10 +3,17 @@ const logSelector = document.getElementById('log-selector');
 
 async function initializeLogViewer() {
     try {
-        const response = await fetch('/api/runtime-templates-list');
+        const response = await fetch('/api/runtime-template-list');
         const logFolders = await response.json();
         
         logSelector.innerHTML = '';
+        
+        // Add a default "please select" option
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = '--- select log ---';
+        defaultOption.selected = true;
+        logSelector.appendChild(defaultOption);
         
         logFolders.forEach(folder => {
             const option = document.createElement('option');
@@ -21,18 +28,20 @@ async function initializeLogViewer() {
         const savedFolder = localStorage.getItem('selectedLogFolder');
         if (savedFolder && logFolders.includes(savedFolder)) {
             logSelector.value = savedFolder;
-        } else if (logSelector.options.length > 0) {
-            logSelector.selectedIndex = 0;
+            // Only trigger change event if there was a saved selection
+            logSelector.dispatchEvent(new Event('change'));
         }
-
-        // Trigger change event to load the selected log
-        logSelector.dispatchEvent(new Event('change'));
     } catch (error) {
         console.error('Error initializing log viewer:', error);
     }
 }
 
 async function handleLogChange() {
+    // Only proceed if a valid option is selected (not the default one)
+    if (!logSelector.value) {
+        return;
+    }
+    
     try {
         document.querySelectorAll('.error-tip').forEach(tip => {
             tip.style.visibility = 'hidden';

@@ -5,7 +5,7 @@ task_concurrency_bp = Blueprint('task_concurrency', __name__, url_prefix='/api')
 
 def downsample_task_concurrency(points):
     # If points are fewer than target, return all
-    if len(points) <= TARGET_POINTS:
+    if len(points) <= SAMPLING_POINTS:
         return points
 
     # Find global peak (maximum concurrency)
@@ -16,7 +16,7 @@ def downsample_task_concurrency(points):
     keep_indices = {0, len(points) - 1, global_peak_idx}
 
     # Calculate remaining points to sample
-    remaining_points = TARGET_POINTS - len(keep_indices)
+    remaining_points = SAMPLING_POINTS - len(keep_indices)
     if remaining_points <= 0:
         return [points[0], global_peak, points[-1]]
 

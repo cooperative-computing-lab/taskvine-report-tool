@@ -28,8 +28,8 @@ from routes.subgraphs import subgraphs_bp
 app.register_blueprint(subgraphs_bp)
 
 # runtime template
-from routes.runtime_template_management import runtime_template_management_bp
-app.register_blueprint(runtime_template_management_bp)
+from routes.runtime_template import runtime_template_bp
+app.register_blueprint(runtime_template_bp)
 
 
 

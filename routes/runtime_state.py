@@ -14,8 +14,8 @@ import functools
 import time
 
 LOGS_DIR = 'logs'
-TARGET_POINTS = 10000  # at lease 3: the beginning, the end, and the global peak
-TARGET_TASK_BARS = 100000   # how many task bars to show
+SAMPLING_POINTS = 10000  # at lease 3: the beginning, the end, and the global peak
+SAMPLING_TASK_BARS = 100000   # how many task bars to show
 
 
 def check_and_reload_data():

@@ -5,7 +5,7 @@ file_transfers_bp = Blueprint('file_transfers', __name__, url_prefix='/api')
 
 def downsample_file_transfers(points):
     # downsample transfer data points while keeping the global peak and randomly sampling other points
-    if len(points) <= TARGET_POINTS:
+    if len(points) <= SAMPLING_POINTS:
         return points
 
     global_peak_idx = max(range(len(points)), key=lambda i: points[i][1])
@@ -13,7 +13,7 @@ def downsample_file_transfers(points):
 
     keep_indices = {0, len(points) - 1, global_peak_idx}
 
-    remaining_points = TARGET_POINTS - len(keep_indices)
+    remaining_points = SAMPLING_POINTS - len(keep_indices)
     if remaining_points <= 0:
         return [points[0], global_peak, points[-1]]
 
@@ -25,7 +25,6 @@ def downsample_file_transfers(points):
     return result
 
 @file_transfers_bp.route('/file-transfers')
-@file_transfers_bp.route('/worker-transfers')
 @check_and_reload_data()
 def get_file_transfers():
     try:
@@ -36,14 +35,14 @@ def get_file_transfers():
 
         data = {}
 
-        # construct the worker transfers
+        # construct the file transfers
         data['transfers'] = defaultdict(list)     # for destinations/sources
         for file in runtime_state.files.values():
             for transfer in file.transfers:
                 destination = transfer.destination
                 source = transfer.source
 
-                # only consider worker-to-worker transfers
+                # only consider file transfers
                 if not isinstance(destination, tuple) or not isinstance(source, tuple):
                     continue
 

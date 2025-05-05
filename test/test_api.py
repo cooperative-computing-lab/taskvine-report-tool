@@ -171,7 +171,7 @@ if __name__ == "__main__":
     base_url = f"http://localhost:{args.port}"
     
     api_list = [
-        {"name": "runtime-templates-list", "params": None},
+        {"name": "runtime-template-list", "params": None},
         {"name": "storage-consumption", "params": {
             "show_percentage": "true"
         }},
