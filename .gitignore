@@ -1,2 +1,6 @@
-/Users/jinzhou/applications/taskvine-report-tool/logs
-/Users/jinzhou/applications/taskvine-report-tool/imgs
+.logs
+.imgs
+.test/api_response.json
+src/__pycache__
+.DS_Store
+.__pycache__
