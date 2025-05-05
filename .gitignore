@@ -1,6 +1,5 @@
-.logs
-.imgs
-.test/api_response.json
-src/__pycache__
+logs
+imgs
+test/api_response.json
+__pycache__
 .DS_Store
-.__pycache__
