@@ -193,7 +193,6 @@ class FileInfo:
 
     def set_penalty(self, penalty):
         self.penalty = penalty
-    
 
     def print_info(self):
         print(f"filename: {self.filename}")

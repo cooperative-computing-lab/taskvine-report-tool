@@ -364,10 +364,6 @@ def get_storage_consumption():
                 # time_in = float(transfer.time_stage_in - template_manager.MIN_TIME)
                 time_in = float(transfer.time_start_stage_in - template_manager.MIN_TIME)
                 time_out = float(transfer.time_stage_out - template_manager.MIN_TIME)
-                
-                # Skip if times are invalid
-                #if np.isnan(time_in):
-                    #continue
                     
                 all_worker_storage[destination].append((time_in, max(0, file.size_mb)))
                 all_worker_storage[destination].append((time_out, -max(0, file.size_mb)))
@@ -380,7 +376,7 @@ def get_storage_consumption():
             if not data['worker_storage_consumption'][destination]:
                 del data['worker_storage_consumption'][destination]
                 continue
-                
+
             # convert to a pandas dataframe
             df = pd.DataFrame(data['worker_storage_consumption'][destination], columns=['time', 'size'])
             # sort the dataframe by time
