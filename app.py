@@ -3,18 +3,6 @@ from routes.runtime_state import *
 
 app = Flask(__name__)
 
-
-def check_and_reload_data():
-    def decorator(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            if runtime_state.check_pkl_files_changed():
-                runtime_state.reload_data()
-            return func(*args, **kwargs)
-        return wrapper
-    return decorator
-
-
 # tasks
 from routes.task_execution_details import task_execution_details_bp
 app.register_blueprint(task_execution_details_bp)

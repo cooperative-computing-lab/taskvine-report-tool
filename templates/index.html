@@ -49,7 +49,7 @@
     <script src="{{ url_for('static', filename='js/storage_consumption.js') }}" type="module"></script>
     <script src="{{ url_for('static', filename='js/sidebar.js') }}" type="module"></script>
     <script src="{{ url_for('static', filename='js/task_concurrency.js') }}" type="module"></script>
-    <script src="{{ url_for('static', filename='js/worker_transfers.js') }}" type="module"></script>
+    <script src="{{ url_for('static', filename='js/file_transfers.js') }}" type="module"></script>
     <script src="{{ url_for('static', filename='js/file_sizes.js') }}" type="module"></script>
     <script src="{{ url_for('static', filename='js/file_replicas.js') }}" type="module"></script>
     <script type="module" src="{{ url_for('static', filename='js/subgraphs.js') }}"></script>
@@ -160,19 +160,19 @@
             </div>
         </div>
         
-        <!-- Worker Transfers section -->
+        <!-- File Transfers section -->
         <div class="section">
             <div class="section-header">
-                <h2 class="section-title">Worker Transfers (<span id="transfer-type-display">Incoming</span>)</h2>
+                <h2 class="section-title">File Transfers (<span id="transfer-type-display">Incoming</span>)</h2>
                 <div class="section-buttons">
-                    <button id="button-reset-worker-transfers" class="report-button">Reset</button>
-                    <button id="button-download-worker-transfers" class="report-button">Download</button>
+                    <button id="button-reset-file-transfers" class="report-button">Reset</button>
+                    <button id="button-download-file-transfers" class="report-button">Download</button>
                     <button id="button-toggle-transfer-type" class="report-button">Show Outgoing</button>
                 </div>
             </div>
             <div class="section-content">
-                <div id="worker-transfers-container" class="container-alpha">
-                    <svg id="worker-transfers" xmlns="http://www.w3.org/2000/svg"></svg>
+                <div id="file-transfers-container" class="container-alpha">
+                    <svg id="file-transfers" xmlns="http://www.w3.org/2000/svg"></svg>
                 </div>
             </div>
         </div>

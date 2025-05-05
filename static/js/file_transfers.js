@@ -1,11 +1,11 @@
 import { downloadSVG } from './tools.js';
 import { setupZoomAndScroll } from './tools.js';
 
-const buttonReset = document.getElementById('button-reset-worker-transfers');
-const buttonDownload = document.getElementById('button-download-worker-transfers');
+const buttonReset = document.getElementById('button-reset-file-transfers');
+const buttonDownload = document.getElementById('button-download-file-transfers');
 const buttonToggleType = document.getElementById('button-toggle-transfer-type');
-const svgContainer = document.getElementById('worker-transfers-container');
-const svgElement = d3.select('#worker-transfers');
+const svgContainer = document.getElementById('file-transfers-container');
+const svgElement = d3.select('#file-transfers');
 const tooltip = document.getElementById('vine-tooltip');
 const transferTypeDisplay = document.getElementById('transfer-type-display');
 
@@ -39,7 +39,7 @@ async function fetchData() {
         state.yTickValues = null;
 
         const transferType = state.showIncoming ? 'incoming' : 'outgoing';
-        const response = await fetch(`/api/worker-transfers?type=${transferType}`);
+        const response = await fetch(`/api/file-transfers?type=${transferType}`);
         const data = await response.json();
 
         if (data) {
@@ -52,10 +52,10 @@ async function fetchData() {
             state.yTickValues = data.yTickValues;
             state.tickFontSize = data.tickFontSize;
 
-            document.querySelector('#worker-transfers').style.width = '100%';
-            document.querySelector('#worker-transfers').style.height = '100%';
+            document.querySelector('#file-transfers').style.width = '100%';
+            document.querySelector('#file-transfers').style.height = '100%';
             plotWorkerTransfers();
-            setupZoomAndScroll('#worker-transfers', '#worker-transfers-container');
+            setupZoomAndScroll('#file-transfers', '#file-transfers-container');
         }
     } catch (error) {
         console.error('Error:', error);
@@ -222,8 +222,8 @@ function plotWorkerTransfers() {
 }
 
 function handleResetClick() {
-    document.querySelector('#worker-transfers').style.width = '100%';
-    document.querySelector('#worker-transfers').style.height = '100%';
+    document.querySelector('#file-transfers').style.width = '100%';
+    document.querySelector('#file-transfers').style.height = '100%';
     plotWorkerTransfers();
 }
 
@@ -250,7 +250,7 @@ function setupEventListeners() {
 }
 
 function handleDownloadClick() {
-    downloadSVG('worker-transfers');
+    downloadSVG('file-transfers');
 }
 
 async function initialize() {

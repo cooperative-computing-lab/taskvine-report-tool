@@ -108,23 +108,23 @@ def test_task_concurrency(client):
     assert data['yMin'] <= data['yMax']
     assert isinstance(data['tickFontSize'], (int, float))
 
-def test_worker_transfers(client, runtime_template):
+def test_file_transfers(client, runtime_template):
     # First change the runtime template
     response = client.get(f'/api/change-runtime-template?runtime_template={runtime_template}')
     assert response.status_code == 200
     assert response.json['success']
 
     # Test incoming transfers
-    response = client.get('/api/worker-transfers?type=incoming')
+    response = client.get('/api/file-transfers?type=incoming')
     assert response.status_code == 200
     data = response.json
-    save_api_response('worker-transfers-incoming', data)
+    save_api_response('file-transfers-incoming', data)
 
     # Test outgoing transfers
-    response = client.get('/api/worker-transfers?type=outgoing')
+    response = client.get('/api/file-transfers?type=outgoing')
     assert response.status_code == 200
     data = response.json
-    save_api_response('worker-transfers-outgoing', data)
+    save_api_response('file-transfers-outgoing', data)
 
     # Basic structure checks for both responses
     for response_data in [data]:
@@ -159,7 +159,7 @@ def test_worker_transfers(client, runtime_template):
         assert isinstance(response_data['tickFontSize'], (int, float))
 
     # Test invalid transfer type
-    response = client.get('/api/worker-transfers?type=invalid')
+    response = client.get('/api/file-transfers?type=invalid')
     assert response.status_code == 400
 
 if __name__ == "__main__":
@@ -180,7 +180,7 @@ if __name__ == "__main__":
             "order": "asc",
             "type": "transferred",
         }},
-        {"name": "worker-transfers", "params": {
+        {"name": "file-transfers", "params": {
             "type": "incoming"
         }},
         {"name": "task-execution-time", "params": None},
