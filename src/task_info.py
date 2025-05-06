@@ -79,12 +79,13 @@ class TaskInfo:
             # it could be a float indicating that the task was failed
             when_failure_happens = float(when_failure_happens)
             if self.when_failure_happens and when_failure_happens != self.when_failure_happens:
-                raise ValueError(f"when_failure_happens mismatch for task {self.task_id}")
+                raise ValueError(
+                    f"when_failure_happens mismatch for task {self.task_id}")
             self.when_failure_happens = when_failure_happens
             if self.when_failure_happens < self.when_ready:
                 assert self.when_failure_happens - self.when_ready < 1
                 self.when_failure_happens = self.when_ready
-        except:
+        except Exception:
             # it could be a string indicating that the task was not failed
             self.when_failure_happens = when_failure_happens
             pass
@@ -122,7 +123,8 @@ class TaskInfo:
 
     def set_stdout_size_mb(self, stdout_size_mb):
         if self.stdout_size_mb and stdout_size_mb != self.stdout_size_mb:
-            raise ValueError(f"stdout_size_mb mismatch for task {self.task_id}")
+            raise ValueError(
+                f"stdout_size_mb mismatch for task {self.task_id}")
         self.stdout_size_mb = stdout_size_mb
 
     def set_exit_status(self, exit_status):
@@ -139,37 +141,44 @@ class TaskInfo:
 
     def set_worker_ip_port(self, worker_ip, worker_port):
         if self.worker_ip and worker_ip != self.worker_ip:
-            raise ValueError(f"worker_ip mismatch for task {self.task_id}: {self.worker_ip} != {worker_ip}")
+            raise ValueError(
+                f"worker_ip mismatch for task {self.task_id}: {self.worker_ip} != {worker_ip}")
         self.worker_ip = worker_ip
         if self.worker_port and worker_port != self.worker_port:
-            raise ValueError(f"worker_port mismatch for task {self.task_id}: {self.worker_port} != {worker_port}")
+            raise ValueError(
+                f"worker_port mismatch for task {self.task_id}: {self.worker_port} != {worker_port}")
         self.worker_port = worker_port
 
     def set_function_slots(self, function_slots):
         if self.function_slots and function_slots != self.function_slots:
-            raise ValueError(f"function_slots mismatch for task {self.task_id}")
+            raise ValueError(
+                f"function_slots mismatch for task {self.task_id}")
         self.function_slots = function_slots
 
     def set_cores_requested(self, cores_requested):
         if cores_requested == 0:
             cores_requested = 1
         if self.cores_requested and cores_requested != self.cores_requested:
-            raise ValueError(f"cores_requested mismatch for task {self.task_id}")
+            raise ValueError(
+                f"cores_requested mismatch for task {self.task_id}")
         self.cores_requested = cores_requested
 
     def set_gpus_requested(self, gpus_requested):
         if self.gpus_requested and gpus_requested != self.gpus_requested:
-            raise ValueError(f"gpus_requested mismatch for task {self.task_id}")
+            raise ValueError(
+                f"gpus_requested mismatch for task {self.task_id}")
         self.gpus_requested = gpus_requested
 
     def set_memory_requested_mb(self, memory_requested_mb):
         if self.memory_requested_mb and memory_requested_mb != self.memory_requested_mb:
-            raise ValueError(f"memory_requested_mb mismatch for task {self.task_id}")
+            raise ValueError(
+                f"memory_requested_mb mismatch for task {self.task_id}")
         self.memory_requested_mb = memory_requested_mb
 
     def set_disk_requested_mb(self, disk_requested_mb):
         if self.disk_requested_mb and disk_requested_mb != self.disk_requested_mb:
-            raise ValueError(f"disk_requested_mb mismatch for task {self.task_id}")
+            raise ValueError(
+                f"disk_requested_mb mismatch for task {self.task_id}")
         self.disk_requested_mb = disk_requested_mb
 
     def add_input_file(self, input_file):

@@ -1,3 +1,12 @@
+from routes.runtime_template import runtime_template_bp
+from routes.subgraphs import subgraphs_bp
+from routes.storage_consumption import storage_consumption_bp
+from routes.file_transfers import file_transfers_bp
+from routes.file_sizes import file_sizes_bp
+from routes.file_replicas import file_replicas_bp
+from routes.task_concurrency import task_concurrency_bp
+from routes.task_execution_time import task_execution_time_bp
+from routes.task_execution_details import task_execution_details_bp
 from routes.runtime_state import *
 
 
@@ -9,7 +18,7 @@ def setup_request_logging(app, runtime_state):
     def log_request_info():
         runtime_state.log_request(request)
         request._start_time = time.time()
-    
+
     @app.after_request
     def log_response_info(response):
         if hasattr(request, '_start_time'):
@@ -26,40 +35,33 @@ def setup_request_logging(app, runtime_state):
 
     return app
 
+
 setup_request_logging(app, runtime_state)
 
 # tasks
-from routes.task_execution_details import task_execution_details_bp
 app.register_blueprint(task_execution_details_bp)
-from routes.task_execution_time import task_execution_time_bp
 app.register_blueprint(task_execution_time_bp)
-from routes.task_concurrency import task_concurrency_bp
 app.register_blueprint(task_concurrency_bp)
 
 # files
-from routes.file_replicas import file_replicas_bp
 app.register_blueprint(file_replicas_bp)
-from routes.file_sizes import file_sizes_bp
 app.register_blueprint(file_sizes_bp)
-from routes.file_transfers import file_transfers_bp
 app.register_blueprint(file_transfers_bp)
 
 # storage
-from routes.storage_consumption import storage_consumption_bp
 app.register_blueprint(storage_consumption_bp)
 
 # subgraphs
-from routes.subgraphs import subgraphs_bp
 app.register_blueprint(subgraphs_bp)
 
 # runtime template
-from routes.runtime_template import runtime_template_bp
 app.register_blueprint(runtime_template_bp)
 
 
 @app.route('/')
 def index():
-    log_folders = [name for name in os.listdir(LOGS_DIR) if os.path.isdir(os.path.join(LOGS_DIR, name))]
+    log_folders = [name for name in os.listdir(
+        LOGS_DIR) if os.path.isdir(os.path.join(LOGS_DIR, name))]
     log_folders_sorted = sorted(log_folders)
     return render_template('index.html', log_folders=log_folders_sorted)
 
@@ -68,6 +70,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', default=9122, help='Port number')
     args = parser.parse_args()
-    
+
     runtime_state.log_info(f"Starting application on port {args.port}")
     app.run(host='0.0.0.0', port=args.port, debug=True, use_reloader=False)

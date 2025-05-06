@@ -2,9 +2,10 @@ class TransferEvent:
     def __init__(self, source, destination, event, file_type, cache_level):
         self.source = source
         self.destination = destination
-        
+
         # event describes how the transfer is created
-        assert event in ["manager_put", "manager_get", "task_created", "puturl", "puturl_now", "mini_task"]
+        assert event in ["manager_put", "manager_get",
+                         "task_created", "puturl", "puturl_now", "mini_task"]
         self.event = event
 
         self.time_start_stage_in = None
@@ -41,7 +42,8 @@ class TransferEvent:
         self.penalty = None
 
     def set_eventual_state(self, eventual_state):
-        assert eventual_state in ["pending", "cache_invalid", "cache_update", "worker_received", "manager_received", "worker_removed", "manager_removed", "unlink", "failed_to_return", "failed_to_send"]
+        assert eventual_state in ["pending", "cache_invalid", "cache_update", "worker_received",
+                                  "manager_received", "worker_removed", "manager_removed", "unlink", "failed_to_return", "failed_to_send"]
         self.eventual_state = eventual_state
 
     def start_stage_in(self, time_start_stage_in, eventual_state):
@@ -69,7 +71,7 @@ class TransferEvent:
         print(f"time_stage_in: {self.time_stage_in}")
         print(f"time_stage_out: {self.time_stage_out}")
         print(f"eventual_state: {self.eventual_state}")
-        print(f"\n")
+        print("\n")
 
 
 class FileInfo:
@@ -78,16 +80,16 @@ class FileInfo:
         self.size_mb = size_mb
 
         self.transfers = []
-        
+
         self.consumers = set()
         self.producers = set()
 
     def add_consumer(self, consumer_task):
         self.consumers.add((consumer_task.task_id, consumer_task.task_try_id))
-    
+
     def is_consumer(self, consumer_task):
         return (consumer_task.task_id, consumer_task.task_try_id) in self.consumers
-    
+
     def is_producer(self, producer_task):
         return (producer_task.task_id, producer_task.task_try_id) in self.producers
 
@@ -95,37 +97,38 @@ class FileInfo:
         self.producers.add((producer_task.task_id, producer_task.task_try_id))
 
     def add_transfer(self, source, destination, event, file_type, cache_level):
-        transfer_event = TransferEvent(source, destination, event, file_type, cache_level)
+        transfer_event = TransferEvent(
+            source, destination, event, file_type, cache_level)
         self.transfers.append(transfer_event)
         return transfer_event
-    
+
     def get_transfers_on_source(self, source, eventual_state=None):
         if eventual_state:
             return [transfer for transfer in self.transfers if transfer.source == source and transfer.eventual_state == eventual_state]
         else:
             return [transfer for transfer in self.transfers if transfer.source == source]
-    
+
     def get_emitted_transfers(self):
         return len(self.transfers)
-    
+
     def get_succeeded_transfers(self):
         return len([transfer for transfer in self.transfers if transfer.time_stage_in])
-    
+
     def get_failed_transfers(self):
         return len([transfer for transfer in self.transfers if transfer.time_stage_in is None])
-    
+
     def get_distinct_sources(self):
         sources = set()
         for transfer in self.transfers:
             sources.add(transfer.source)
         return list(sources)
-    
+
     def get_distinct_destinations(self):
         destinations = set()
         for transfer in self.transfers:
             destinations.add(transfer.destination)
         return list(destinations)
-    
+
     def cache_update(self, destination, time_stage_in, file_type, file_cache_level):
         # check if the file was started staging in before the cache update
         has_started_staging_in = False
@@ -146,7 +149,8 @@ class FileInfo:
         # this means a task-created file
         if not has_started_staging_in:
             producer_task_name = f"{list(self.producers)[-1]}"
-            transfer = self.add_transfer(producer_task_name, destination, "task_created", file_type, file_cache_level)
+            transfer = self.add_transfer(
+                producer_task_name, destination, "task_created", file_type, file_cache_level)
             transfer.start_stage_in(time_stage_in, "pending")
             transfer.stage_in(time_stage_in, "cache_update")
 
@@ -187,7 +191,8 @@ class FileInfo:
         size_mb = float(size_mb)
         if self.size_mb > 0 and size_mb > 0 and size_mb != self.size_mb:
             # it could be that the file was created multiple times with different sizes
-            print(f"Warning: size mismatch for {self.filename}, {self.size_mb} != {size_mb}")
+            print(
+                f"Warning: size mismatch for {self.filename}, {self.size_mb} != {size_mb}")
         if size_mb > 0:
             self.size_mb = size_mb
 
@@ -201,10 +206,13 @@ class FileInfo:
         print(f"producers: {self.producers}")
         print(f"penalty: {self.penalty}")
         print(f"transfers: {len(self.transfers)}")
-        len_start_stage_in = len([transfer for transfer in self.transfers if transfer.time_start_stage_in])
-        len_stage_in = len([transfer for transfer in self.transfers if transfer.time_stage_in])
-        len_stage_out = len([transfer for transfer in self.transfers if transfer.time_stage_out])
+        len_start_stage_in = len(
+            [transfer for transfer in self.transfers if transfer.time_start_stage_in])
+        len_stage_in = len(
+            [transfer for transfer in self.transfers if transfer.time_stage_in])
+        len_stage_out = len(
+            [transfer for transfer in self.transfers if transfer.time_stage_out])
         print(f" len_start_stage_in: {len_start_stage_in}")
         print(f" len_stage_in: {len_stage_in}")
         print(f" len_stage_out: {len_stage_out}")
-        print(f"\n")
+        print("\n")

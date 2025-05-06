@@ -4,6 +4,7 @@ import sys
 import argparse
 import time
 
+
 def save_api_response(api_name, data):
     """Save API response to a JSON file with proper formatting."""
     try:
@@ -15,35 +16,39 @@ def save_api_response(api_name, data):
                 response_data = existing_data
         except (FileNotFoundError, json.JSONDecodeError):
             pass
-        
+
         with open('api_response.json', 'w') as f:
             json.dump(response_data, f, indent=2)
-            
+
     except Exception as e:
         print(f"Error saving API response: {e}")
+
 
 def test_api(base_url, runtime_template, api_config):
     try:
         # First change runtime template
-        response = requests.get(f"{base_url}/api/change-runtime-template", 
-                              params={"runtime_template": runtime_template})
+        response = requests.get(f"{base_url}/api/change-runtime-template",
+                                params={"runtime_template": runtime_template})
         response.raise_for_status()
         if not response.json()['success']:
             raise Exception("Failed to change runtime template")
 
         api_name = api_config["name"]
-        
+
         # Handle API with variants
         if "variants" in api_config:
             for variant in api_config["variants"]:
-                response = requests.get(f"{base_url}/api/{api_name}", params=variant)
+                response = requests.get(
+                    f"{base_url}/api/{api_name}", params=variant)
                 response.raise_for_status()
-                save_api_response(f"{api_name}-{variant['type']}", response.json())
+                save_api_response(
+                    f"{api_name}-{variant['type']}", response.json())
                 print(f"Saved {api_name}-{variant['type']} response")
         else:
             # Handle regular APIs
             params = api_config.get("params", None)
-            response = requests.get(f"{base_url}/api/{api_name}", params=params)
+            response = requests.get(
+                f"{base_url}/api/{api_name}", params=params)
             response.raise_for_status()
             save_api_response(api_name, response.json())
             print(f"Saved {api_name} response")
@@ -51,6 +56,7 @@ def test_api(base_url, runtime_template, api_config):
     except Exception as e:
         print(f"Error: {e}")
         sys.exit(1)
+
 
 def test_task_concurrency(client):
     response = client.get('/api/task-concurrency')
@@ -108,9 +114,11 @@ def test_task_concurrency(client):
     assert data['yMin'] <= data['yMax']
     assert isinstance(data['tickFontSize'], (int, float))
 
+
 def test_file_transfers(client, runtime_template):
     # First change the runtime template
-    response = client.get(f'/api/change-runtime-template?runtime_template={runtime_template}')
+    response = client.get(
+        f'/api/change-runtime-template?runtime_template={runtime_template}')
     assert response.status_code == 200
     assert response.json['success']
 
@@ -152,8 +160,10 @@ def test_file_transfers(client, runtime_template):
         # Check tick values and bounds
         assert len(response_data['xTickValues']) == 5
         assert len(response_data['yTickValues']) == 5
-        assert all(isinstance(x, (int, float)) for x in response_data['xTickValues'])
-        assert all(isinstance(y, (int, float)) for y in response_data['yTickValues'])
+        assert all(isinstance(x, (int, float))
+                   for x in response_data['xTickValues'])
+        assert all(isinstance(y, (int, float))
+                   for y in response_data['yTickValues'])
         assert response_data['xMin'] <= response_data['xMax']
         assert response_data['yMin'] <= response_data['yMax']
         assert isinstance(response_data['tickFontSize'], (int, float))
@@ -162,14 +172,16 @@ def test_file_transfers(client, runtime_template):
     response = client.get('/api/file-transfers?type=invalid')
     assert response.status_code == 400
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('runtime_template', help='Specific runtime template to query')
+    parser.add_argument('runtime_template',
+                        help='Specific runtime template to query')
     parser.add_argument('--port', default=9122, help='Port number')
     args = parser.parse_args()
-    
+
     base_url = f"http://localhost:{args.port}"
-    
+
     api_list = [
         {"name": "runtime-template-list", "params": None},
         {"name": "storage-consumption", "params": {
@@ -191,8 +203,8 @@ if __name__ == "__main__":
         {"name": "subgraphs", "params": {"subgraph_id": 1,
                                          "plot_unsuccessful_task": 'true',
                                          "plot_recovery_task": 'true'
-        }},
+                                         }},
     ]
-    testing_api = api_list[1] 
+    testing_api = api_list[1]
 
     test_api(base_url, args.runtime_template, testing_api)

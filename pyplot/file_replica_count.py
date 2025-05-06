@@ -8,7 +8,8 @@ def plot_file_count(show=True):
     fig_width = PLOT_SETTINGS["subplot_width"] * 0.9 * num_logs
 
     fig = plt.figure(figsize=(fig_width, fig_height))
-    gs = GridSpec(1, num_logs, figure=fig, wspace=0.15, left=0.1, right=0.9, top=0.9, bottom=0.1)
+    gs = GridSpec(1, num_logs, figure=fig, wspace=0.15,
+                  left=0.1, right=0.9, top=0.9, bottom=0.1)
 
     all_num_workers_holding = []
 
@@ -18,13 +19,16 @@ def plot_file_count(show=True):
             continue
 
         file_info_df = pd.read_csv(file_info_csv)
-        file_info_df = file_info_df[file_info_df['filename'].str.startswith('temp-')]
+        file_info_df = file_info_df[file_info_df['filename'].str.startswith(
+            'temp-')]
 
         if 'num_workers_holding' not in file_info_df.columns:
-            print(f"File {file_info_csv} is missing 'num_workers_holding' column.")
+            print(
+                f"File {file_info_csv} is missing 'num_workers_holding' column.")
             continue
 
-        all_num_workers_holding.extend(file_info_df['num_workers_holding'].tolist())
+        all_num_workers_holding.extend(
+            file_info_df['num_workers_holding'].tolist())
 
     global_min = min(all_num_workers_holding) if all_num_workers_holding else 0
     global_max = max(all_num_workers_holding) if all_num_workers_holding else 0
@@ -34,12 +38,14 @@ def plot_file_count(show=True):
             continue
 
         file_info_df = pd.read_csv(file_info_csv)
-        file_info_df = file_info_df[file_info_df['filename'].str.startswith('temp-')]
+        file_info_df = file_info_df[file_info_df['filename'].str.startswith(
+            'temp-')]
 
         if 'num_workers_holding' not in file_info_df.columns:
             continue
 
-        file_info_df = file_info_df.sort_values(by='num_workers_holding').reset_index(drop=True)
+        file_info_df = file_info_df.sort_values(
+            by='num_workers_holding').reset_index(drop=True)
 
         ax = fig.add_subplot(gs[0, i])
 
@@ -54,18 +60,21 @@ def plot_file_count(show=True):
         ax.set_xlabel('File Index', fontsize=PLOT_SETTINGS['label_fontsize'])
 
         if i == 0:
-            ax.set_ylabel('Replica Count', fontsize=PLOT_SETTINGS['label_fontsize'])
+            ax.set_ylabel('Replica Count',
+                          fontsize=PLOT_SETTINGS['label_fontsize'])
         else:
             ax.tick_params(labelleft=False)
 
         ax.set_ylim(0, global_max)
-        ax.yaxis.set_major_locator(MultipleLocator(1)) 
+        ax.yaxis.set_major_locator(MultipleLocator(1))
 
         ax.tick_params(axis='both', labelsize=PLOT_SETTINGS['tick_fontsize'])
-        ax.grid(visible=True, linestyle="--", linewidth=0.6, alpha=PLOT_SETTINGS["grid_alpha"])
+        ax.grid(visible=True, linestyle="--", linewidth=0.6,
+                alpha=PLOT_SETTINGS["grid_alpha"])
 
     plt.tight_layout()
-    plt.savefig(os.path.join(SAVE_TO, 'temp_replication_count.png'), bbox_inches='tight')
+    plt.savefig(os.path.join(SAVE_TO, 'temp_replication_count.png'),
+                bbox_inches='tight')
     if show:
         plt.show()
 

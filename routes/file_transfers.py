@@ -18,18 +18,21 @@ def downsample_file_transfers(points):
         return [points[0], global_peak, points[-1]]
 
     available_indices = list(set(range(len(points))) - keep_indices)
-    sampled_indices = random.sample(available_indices, min(remaining_points, len(available_indices)))
+    sampled_indices = random.sample(available_indices, min(
+        remaining_points, len(available_indices)))
     keep_indices.update(sampled_indices)
 
     result = [points[i] for i in sorted(keep_indices)]
     return result
+
 
 @file_transfers_bp.route('/file-transfers')
 @check_and_reload_data()
 def get_file_transfers():
     try:
         # Get the transfer type from query parameters
-        transfer_type = request.args.get('type', 'incoming')  # default to incoming
+        transfer_type = request.args.get(
+            'type', 'incoming')  # default to incoming
         if transfer_type not in ['incoming', 'outgoing']:
             return jsonify({'error': 'Invalid transfer type'}), 400
 
@@ -48,40 +51,51 @@ def get_file_transfers():
 
                 # if transfer_type is incoming, process destinations
                 if transfer_type == 'incoming' and isinstance(destination, tuple):
-                    data['transfers'][destination].append((round(transfer.time_start_stage_in - runtime_state.MIN_TIME, 2), 1))
+                    data['transfers'][destination].append(
+                        (round(transfer.time_start_stage_in - runtime_state.MIN_TIME, 2), 1))
                     if transfer.time_stage_in:
-                        data['transfers'][destination].append((round(transfer.time_stage_in - runtime_state.MIN_TIME, 2), -1))
+                        data['transfers'][destination].append(
+                            (round(transfer.time_stage_in - runtime_state.MIN_TIME, 2), -1))
                     elif transfer.time_stage_out:
-                        data['transfers'][destination].append((round(transfer.time_stage_out - runtime_state.MIN_TIME, 2), -1))
+                        data['transfers'][destination].append(
+                            (round(transfer.time_stage_out - runtime_state.MIN_TIME, 2), -1))
                 # if transfer_type is outgoing, process sources
                 elif transfer_type == 'outgoing' and isinstance(source, tuple):
-                    data['transfers'][source].append((round(transfer.time_start_stage_in - runtime_state.MIN_TIME, 2), 1))
+                    data['transfers'][source].append(
+                        (round(transfer.time_start_stage_in - runtime_state.MIN_TIME, 2), 1))
                     if transfer.time_stage_in:
-                        data['transfers'][source].append((round(transfer.time_stage_in - runtime_state.MIN_TIME, 2), -1))
+                        data['transfers'][source].append(
+                            (round(transfer.time_stage_in - runtime_state.MIN_TIME, 2), -1))
                     elif transfer.time_stage_out:
-                        data['transfers'][source].append((round(transfer.time_stage_out - runtime_state.MIN_TIME, 2), -1))
+                        data['transfers'][source].append(
+                            (round(transfer.time_stage_out - runtime_state.MIN_TIME, 2), -1))
 
         max_transfers = 0
         for worker in data['transfers']:
-            df = pd.DataFrame(data['transfers'][worker], columns=['time', 'event'])
+            df = pd.DataFrame(data['transfers'][worker],
+                              columns=['time', 'event'])
             df = df.sort_values(by=['time'])
             df['cumulative_transfers'] = df['event'].cumsum()
             # if two rows have the same time, keep the one with the largest event
             df = df.drop_duplicates(subset=['time'], keep='last')
-            
+
             # Convert to list of points and downsample
             points = df[['time', 'cumulative_transfers']].values.tolist()
             points = downsample_file_transfers(points)
             data['transfers'][worker] = points
-            
+
             # append the initial point at time_connected with 0
             for time_connected, time_disconnected in zip(runtime_state.workers[worker].time_connected, runtime_state.workers[worker].time_disconnected):
-                data['transfers'][worker].insert(0, [time_connected - runtime_state.MIN_TIME, 0])
-                data['transfers'][worker].append([time_disconnected - runtime_state.MIN_TIME, 0])
-            max_transfers = max(max_transfers, max(point[1] for point in points))
+                data['transfers'][worker].insert(
+                    0, [time_connected - runtime_state.MIN_TIME, 0])
+                data['transfers'][worker].append(
+                    [time_disconnected - runtime_state.MIN_TIME, 0])
+            max_transfers = max(max_transfers, max(
+                point[1] for point in points))
 
         # convert keys to string-formatted keys
-        data['transfers'] = {f"{k[0]}:{k[1]}": v for k, v in data['transfers'].items()}
+        data['transfers'] = {f"{k[0]}:{k[1]}": v for k,
+                             v in data['transfers'].items()}
 
         # ploting parameters
         data['xMin'] = 0

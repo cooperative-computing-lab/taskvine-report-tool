@@ -3,6 +3,7 @@ from _tools import *
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 
+
 def plot_worker_task_throughput(show=True):
     num_logs = len(LOGS)
 
@@ -10,7 +11,8 @@ def plot_worker_task_throughput(show=True):
     fig_width = PLOT_SETTINGS["subplot_width"] * num_logs
 
     fig = plt.figure(figsize=(fig_width, fig_height))
-    gs = GridSpec(1, num_logs, figure=fig, wspace=0.4, left=0.15, right=0.9, top=0.9, bottom=0.1)
+    gs = GridSpec(1, num_logs, figure=fig, wspace=0.4,
+                  left=0.15, right=0.9, top=0.9, bottom=0.1)
     axes = []
 
     for i, task_csv_file in enumerate(TASK_CSV_FILES):
@@ -44,17 +46,21 @@ def plot_worker_task_throughput(show=True):
         ax.set_title(LOG_TITLES[i], fontsize=PLOT_SETTINGS["title_fontsize"])
         ax.set_xlabel('Time (s)', fontsize=PLOT_SETTINGS["label_fontsize"])
         ax.set_xlim(0, max_time - min_time)
-        ax.set_ylabel('Cumulative Tasks Completed', fontsize=PLOT_SETTINGS["label_fontsize"])
-        ax.grid(visible=True, linestyle='--', linewidth=0.3, alpha=PLOT_SETTINGS["grid_alpha"])
+        ax.set_ylabel('Cumulative Tasks Completed',
+                      fontsize=PLOT_SETTINGS["label_fontsize"])
+        ax.grid(visible=True, linestyle='--', linewidth=0.3,
+                alpha=PLOT_SETTINGS["grid_alpha"])
         ax.tick_params(axis='both', labelsize=PLOT_SETTINGS["tick_fontsize"])
 
         # ax.legend(loc='upper left', fontsize=PLOT_SETTINGS["legend_fontsize"])
 
-    plt.savefig(os.path.join(SAVE_TO, 'worker_task_throughput.png'), bbox_inches='tight')
+    plt.savefig(os.path.join(SAVE_TO, 'worker_task_throughput.png'),
+                bbox_inches='tight')
 
     if show:
         plt.tight_layout()
         plt.show()
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

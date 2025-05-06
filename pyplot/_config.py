@@ -63,12 +63,19 @@ SAVE_TO = "../imgs"
 TIME_WORKFLOW_START = 'when_first_task_start_commit'
 TIME_WORKFLOW_END = 'when_last_task_done'
 
-DISK_USAGE_CSV_FILES = [os.path.join(ROOT_PATH, log, 'vine-logs', 'worker_disk_usage.csv') for log in LOGS]
-MANAGER_DISK_USAGE_CSV_FILES = [os.path.join(ROOT_PATH, log, 'vine-logs', 'manager_disk_usage.csv') for log in LOGS]
-FILE_INFO_CSV_FILES = [os.path.join(ROOT_PATH, log, 'vine-logs', 'file_info.csv') for log in LOGS]
-MANAGER_INFO_CSV_FILES = [os.path.join(ROOT_PATH, log, 'vine-logs', 'manager_info.csv') for log in LOGS]
-TASK_DONE_CSV_FILES = [os.path.join(ROOT_PATH, log, 'vine-logs', 'task_done.csv') for log in LOGS]
-TASK_CSV_FILES = [os.path.join(ROOT_PATH, log, 'vine-logs', 'task.csv') for log in LOGS]
-WORKER_SUBMARY_CSV_FILES = [os.path.join(ROOT_PATH, log, 'vine-logs', 'worker_summary.csv') for log in LOGS]
+DISK_USAGE_CSV_FILES = [os.path.join(
+    ROOT_PATH, log, 'vine-logs', 'worker_disk_usage.csv') for log in LOGS]
+MANAGER_DISK_USAGE_CSV_FILES = [os.path.join(
+    ROOT_PATH, log, 'vine-logs', 'manager_disk_usage.csv') for log in LOGS]
+FILE_INFO_CSV_FILES = [os.path.join(
+    ROOT_PATH, log, 'vine-logs', 'file_info.csv') for log in LOGS]
+MANAGER_INFO_CSV_FILES = [os.path.join(
+    ROOT_PATH, log, 'vine-logs', 'manager_info.csv') for log in LOGS]
+TASK_DONE_CSV_FILES = [os.path.join(
+    ROOT_PATH, log, 'vine-logs', 'task_done.csv') for log in LOGS]
+TASK_CSV_FILES = [os.path.join(
+    ROOT_PATH, log, 'vine-logs', 'task.csv') for log in LOGS]
+WORKER_SUBMARY_CSV_FILES = [os.path.join(
+    ROOT_PATH, log, 'vine-logs', 'worker_summary.csv') for log in LOGS]
 
 # change this if you want to set the title of the logs

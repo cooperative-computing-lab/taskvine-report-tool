@@ -9,7 +9,8 @@ def downsample_file_replicas(points):
         return points
 
     # Find global peak (maximum number of replicas)
-    global_peak_idx = max(range(len(points)), key=lambda i: points[i][3])  # points[i][3] is num_replicas
+    # points[i][3] is num_replicas
+    global_peak_idx = max(range(len(points)), key=lambda i: points[i][3])
     global_peak = points[global_peak_idx]
 
     # Keep the first point, last point, and global peak
@@ -22,7 +23,7 @@ def downsample_file_replicas(points):
 
     # Sort the indices we want to keep to find gaps between them
     sorted_keep_indices = sorted(keep_indices)
-    
+
     # Calculate points to keep in each gap
     points_per_gap = remaining_points // (len(sorted_keep_indices) - 1)
     extra_points = remaining_points % (len(sorted_keep_indices) - 1)
@@ -32,25 +33,27 @@ def downsample_file_replicas(points):
         start_idx = sorted_keep_indices[i]
         end_idx = sorted_keep_indices[i + 1]
         gap_size = end_idx - start_idx - 1
-        
+
         if gap_size <= 0:
             continue
-            
+
         # Calculate how many points to keep in this gap
         current_gap_points = points_per_gap
         if extra_points > 0:
             current_gap_points += 1
             extra_points -= 1
-            
+
         if current_gap_points > 0:
             # Randomly sample points from this gap
             available_indices = list(range(start_idx + 1, end_idx))
-            sampled_indices = random.sample(available_indices, min(current_gap_points, len(available_indices)))
+            sampled_indices = random.sample(available_indices, min(
+                current_gap_points, len(available_indices)))
             keep_indices.update(sampled_indices)
-    
+
     # Sort all indices and return the corresponding points
     result = [points[i] for i in sorted(keep_indices)]
     return result
+
 
 @file_replicas_bp.route('/file-replicas')
 @check_and_reload_data()
@@ -61,7 +64,7 @@ def get_file_replicas():
             return jsonify({'error': 'Invalid order'}), 400
 
         data = {}
-        
+
         # Get the file size of each file
         data['file_replicas'] = []
         for file in runtime_state.files.values():
@@ -79,13 +82,15 @@ def get_file_replicas():
                 if not transfer.time_stage_in:
                     continue
                 workers.add(transfer.destination)
-            data['file_replicas'].append((0, file_name, file_size, len(workers)))
+            data['file_replicas'].append(
+                (0, file_name, file_size, len(workers)))
 
         # sort the file replicas using pandas
-        df = pd.DataFrame(data['file_replicas'], columns=['file_idx', 'file_name', 'file_size', 'num_replicas'])
+        df = pd.DataFrame(data['file_replicas'], columns=[
+                          'file_idx', 'file_name', 'file_size', 'num_replicas'])
         if order == 'asc':
             df = df.sort_values(by=['num_replicas'])
-        elif order == 'desc':   
+        elif order == 'desc':
             df = df.sort_values(by=['num_replicas'], ascending=False)
         df['file_idx'] = range(1, len(df) + 1)
 
@@ -97,32 +102,33 @@ def get_file_replicas():
         points = df.values.tolist()
         points = downsample_file_replicas(points)
         data['file_replicas'] = points
-        
+
         # ploting parameters
         if len(points) == 0:
             data['xMin'] = 1
             data['xMax'] = 1
-            data['yMin'] = 0    
+            data['yMin'] = 0
             data['yMax'] = 0
         else:
             data['xMin'] = 1
             data['xMax'] = len(df)  # Use original length for x-axis
-            data['yMin'] = 0    
-            data['yMax'] = int(df['num_replicas'].max())  # Use original max for y-axis
+            data['yMin'] = 0
+            # Use original max for y-axis
+            data['yMax'] = int(df['num_replicas'].max())
         data['xTickValues'] = [
             round(data['xMin'], 2),
             round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.25, 2),
             round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.5, 2),
             round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.75, 2),
             round(data['xMax'], 2)
-            ]
+        ]
         data['yTickValues'] = [
             round(data['yMin'], 2),
             int(round(data['yMin'] + (data['yMax'] - data['yMin']) * 0.25, 2)),
             int(round(data['yMin'] + (data['yMax'] - data['yMin']) * 0.5, 2)),
             int(round(data['yMin'] + (data['yMax'] - data['yMin']) * 0.75, 2)),
             int(round(data['yMax'], 2))
-            ]
+        ]
         data['tickFontSize'] = runtime_state.tick_size
 
         return jsonify(data)

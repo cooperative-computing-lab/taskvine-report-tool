@@ -12,6 +12,8 @@ def all_subfolders_exists(parent: str, folder_names: list[str]) -> bool:
     return True
 
 # calculate the file size unit, the default is MB
+
+
 def get_unit_and_scale_by_max_file_size_mb(max_file_size_mb) -> tuple[str, float]:
     if max_file_size_mb < 1 / 1024:
         return 'Bytes',  1024 * 1024
@@ -25,6 +27,8 @@ def get_unit_and_scale_by_max_file_size_mb(max_file_size_mb) -> tuple[str, float
         return 'MB', 1
 
 # get the file stat
+
+
 def get_file_stat(file_path):
     try:
         stat = os.stat(file_path)
@@ -32,14 +36,16 @@ def get_file_stat(file_path):
             'mtime': stat.st_mtime,
             'size': stat.st_size
         }
-    except Exception as e:
+    except Exception:
         return None
-    
+
+
 def build_request_info_string(request):
     method = request.method
     path = request.path
     args = dict(request.args)
-    headers = {k: v for k, v in request.headers if k not in ['Cookie', 'Authorization']}
+    headers = {k: v for k, v in request.headers if k not in [
+        'Cookie', 'Authorization']}
     remote_addr = request.remote_addr
 
     request_info = {
@@ -54,6 +60,7 @@ def build_request_info_string(request):
         return f"API Request: {method} {path} - {request_info}"
     else:
         return f"HTTP Request: {method} {path}"
+
 
 def build_response_info_string(response, request, duration=None):
     path = request.path

@@ -1,6 +1,7 @@
 from _config import *
 from _tools import *
 
+
 def plot_accumulated_disk_usage(show=True, add_peak_line_and_text=True, plot_file_count=True):
     num_logs = len(LOGS)
     fig_height = PLOT_SETTINGS["subplot_height"]
@@ -8,7 +9,8 @@ def plot_accumulated_disk_usage(show=True, add_peak_line_and_text=True, plot_fil
 
     fig = plt.figure(figsize=(fig_width, fig_height))
 
-    gs = GridSpec(1, num_logs, figure=fig, wspace=0.4, left=0.1, right=0.85, top=0.8, bottom=0.1)
+    gs = GridSpec(1, num_logs, figure=fig, wspace=0.4,
+                  left=0.1, right=0.85, top=0.8, bottom=0.1)
 
     axes = []
 
@@ -28,13 +30,16 @@ def plot_accumulated_disk_usage(show=True, add_peak_line_and_text=True, plot_fil
         df = df.sort_values(by='adjusted_time')
         df['size(GB)'] = df['size(MB)'] / 1024
         df['accumulated_disk_usage_gb'] = df['size(GB)'].cumsum()
-        df['file_count'] = df['size(MB)'].apply(lambda x: 1 if x > 0 else (-1 if x < 0 else 0)).cumsum()
+        df['file_count'] = df['size(MB)'].apply(
+            lambda x: 1 if x > 0 else (-1 if x < 0 else 0)).cumsum()
 
         max_disk_usage_gb = df['accumulated_disk_usage_gb'].max()
-        max_disk_usage_time = df.loc[df['accumulated_disk_usage_gb'].idxmax(), 'adjusted_time']
+        max_disk_usage_time = df.loc[df['accumulated_disk_usage_gb'].idxmax(
+        ), 'adjusted_time']
 
         max_file_count = df['file_count'].max()
-        max_file_count_time = df.loc[df['file_count'].idxmax(), 'adjusted_time']
+        max_file_count_time = df.loc[df['file_count'].idxmax(
+        ), 'adjusted_time']
 
         ax1 = fig.add_subplot(gs[0, i])
         axes.append(ax1)
@@ -52,7 +57,8 @@ def plot_accumulated_disk_usage(show=True, add_peak_line_and_text=True, plot_fil
         ax1.set_ylim(0, global_max_disk_usage_gb * 1.1)
 
         if add_peak_line_and_text:
-            ax1.axhline(y=max_disk_usage_gb, color='red', linestyle='--', linewidth=1)
+            ax1.axhline(y=max_disk_usage_gb, color='red',
+                        linestyle='--', linewidth=1)
             text1 = ax1.annotate(
                 f'Peak: {max_disk_usage_gb:.2f} GB',
                 xy=(max_disk_usage_time, max_disk_usage_gb),
@@ -64,10 +70,11 @@ def plot_accumulated_disk_usage(show=True, add_peak_line_and_text=True, plot_fil
             all_texts = [text1]
         else:
             all_texts = []
-        
+
         ax1.tick_params(axis='x', labelsize=PLOT_SETTINGS["tick_fontsize"])
         ax1.set_title(LOG_TITLES[i], fontsize=PLOT_SETTINGS["title_fontsize"])
-        ax1.grid(visible=True, linestyle='--', linewidth=PLOT_SETTINGS["grid_linewidth"], alpha=PLOT_SETTINGS["grid_alpha"])
+        ax1.grid(visible=True, linestyle='--',
+                 linewidth=PLOT_SETTINGS["grid_linewidth"], alpha=PLOT_SETTINGS["grid_alpha"])
 
         handles = [line1]
         labels = [line1.get_label()]
@@ -79,19 +86,21 @@ def plot_accumulated_disk_usage(show=True, add_peak_line_and_text=True, plot_fil
             ax2.patch.set_visible(False)
 
             line2, = ax2.plot(df['adjusted_time'], df['file_count'], color=PLOT_SETTINGS["color_secondary"],
-                            linestyle='--', alpha=PLOT_SETTINGS["plot_alpha"], label='AFC')
+                              linestyle='--', alpha=PLOT_SETTINGS["plot_alpha"], label='AFC')
             ax2.set_ylabel('AFC', fontsize=PLOT_SETTINGS["label_fontsize"])
             ax2.tick_params(axis='y', labelsize=PLOT_SETTINGS["tick_fontsize"])
             ax2.set_ylim(0, global_max_file_count * 1.1)
 
             if add_peak_line_and_text:
-                ax2.axhline(y=max_file_count, color='red', linestyle='--', linewidth=1)
+                ax2.axhline(y=max_file_count, color='red',
+                            linestyle='--', linewidth=1)
                 text2 = ax2.annotate(
                     f'Peak: {max_file_count}',
                     xy=(max_file_count_time, max_file_count),
                     xytext=(20, -10),
                     textcoords='offset points',
-                    arrowprops=dict(facecolor='black', arrowstyle='->', lw=0.5),
+                    arrowprops=dict(facecolor='black',
+                                    arrowstyle='->', lw=0.5),
                     color='red', fontsize=PLOT_SETTINGS['annotate_fontsize'], ha='center', va='bottom',
                 )
                 all_texts.append(text2)
@@ -101,19 +110,25 @@ def plot_accumulated_disk_usage(show=True, add_peak_line_and_text=True, plot_fil
             ax2.grid(visible=False)
 
         if add_peak_line_and_text:
-            adjust_text(all_texts, autoalign='xy', only_move={'points': 'y', 'text': 'y'}, ax=ax1)
+            adjust_text(all_texts, autoalign='xy', only_move={
+                        'points': 'y', 'text': 'y'}, ax=ax1)
 
-    fig.legend(handles, labels, loc='upper center', fontsize=PLOT_SETTINGS["label_fontsize"], ncol=2, bbox_to_anchor=(0.5, 0.95))
+    fig.legend(handles, labels, loc='upper center',
+               fontsize=PLOT_SETTINGS["label_fontsize"], ncol=2, bbox_to_anchor=(0.5, 0.95))
     plt.savefig(os.path.join(SAVE_TO, 'ASC.png'), bbox_inches='tight')
 
     if show:
         plt.tight_layout()
         plt.show()
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--no-peak', action='store_true', help="Add peak line and text annotations.")
-    parser.add_argument('--no-file-count', action='store_true', help="Do not plot accumulated file count.")
+    parser.add_argument('--no-peak', action='store_true',
+                        help="Add peak line and text annotations.")
+    parser.add_argument('--no-file-count', action='store_true',
+                        help="Do not plot accumulated file count.")
     args = parser.parse_args()
 
-    plot_accumulated_disk_usage(show=True, add_peak_line_and_text=not args.no_peak, plot_file_count=not args.no_file_count)
+    plot_accumulated_disk_usage(
+        show=True, add_peak_line_and_text=not args.no_peak, plot_file_count=not args.no_file_count)

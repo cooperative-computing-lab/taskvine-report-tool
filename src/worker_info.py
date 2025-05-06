@@ -44,13 +44,15 @@ class WorkerInfo:
 
     def set_machine_name(self, machine_name: str):
         if self.machine_name and machine_name != self.machine_name:
-            raise ValueError(f"machine name mismatch for worker {self.ip}:{self.port}")
+            raise ValueError(
+                f"machine name mismatch for worker {self.ip}:{self.port}")
         self.machine_name = machine_name
 
     def set_transfer_port(self, transfer_port):
         transfer_port = int(transfer_port)
         if self.transfer_port and transfer_port != self.transfer_port:
-            raise ValueError(f"transfer port mismatch for worker {self.ip}:{self.port}")
+            raise ValueError(
+                f"transfer port mismatch for worker {self.ip}:{self.port}")
         self.transfer_port = transfer_port
 
     def run_task(self, task):
@@ -63,19 +65,21 @@ class WorkerInfo:
                 cores_found += 1
                 if cores_found == task.cores_requested:
                     return i
-        print(f"Warning: not enough cores available for task {task.task_id}, {cores_found} != {task.cores_requested}")
+        print(
+            f"Warning: not enough cores available for task {task.task_id}, {cores_found} != {task.cores_requested}")
         # more detailed information about the coremap
         print(self.coremap)
         return -1
-    
+
     def reap_task(self, task):
         assert self.coremap is not None
         for core_id in task.core_id:
             self.coremap[core_id] = 0
-    
+
     def set_cores(self, cores: int):
         if self.cores and cores != self.cores:
-            raise ValueError(f"cores mismatch for worker {self.ip}:{self.port}, {self.cores} != {cores}")
+            raise ValueError(
+                f"cores mismatch for worker {self.ip}:{self.port}, {self.cores} != {cores}")
         self.cores = cores
         if not self.coremap:
             self.coremap = bitarray(self.cores + 1)
@@ -90,15 +94,16 @@ class WorkerInfo:
 
     def set_memory_mb(self, memory_mb: int):
         if self.memory_mb and memory_mb != self.memory_mb:
-            raise ValueError(f"memory mismatch for worker {self.ip}:{self.port}")
+            raise ValueError(
+                f"memory mismatch for worker {self.ip}:{self.port}")
         self.memory_mb = memory_mb
 
     def set_disk_mb(self, disk_mb: int):
         if self.disk_mb and disk_mb != self.disk_mb:
-            #raise ValueError(f"disk mismatch for worker {self.ip}:{self.port}, {self.disk_mb} != {disk_mb}")
+            # raise ValueError(f"disk mismatch for worker {self.ip}:{self.port}, {self.disk_mb} != {disk_mb}")
             pass
         self.disk_mb = disk_mb
-    
+
     def print_info(self):
         print("id: ", self.id)
         print("ip: ", self.ip)
@@ -113,7 +118,7 @@ class WorkerInfo:
         print("time_connected: ", self.time_connected)
         print("time_disconnected: ", self.time_disconnected)
         print("\n")
-        
+
     @staticmethod
     def extract_ip_port_from_string(string):
         IP_PORT_PATTERN = re.compile(r"(\d+\.\d+\.\d+\.\d+):(\d+)")

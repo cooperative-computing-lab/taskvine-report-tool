@@ -1,6 +1,7 @@
 from .runtime_state import *
 
-task_concurrency_bp = Blueprint('task_concurrency', __name__, url_prefix='/api')
+task_concurrency_bp = Blueprint(
+    'task_concurrency', __name__, url_prefix='/api')
 
 
 def downsample_task_concurrency(points):
@@ -9,7 +10,8 @@ def downsample_task_concurrency(points):
         return points
 
     # Find global peak (maximum concurrency)
-    global_peak_idx = max(range(len(points)), key=lambda i: points[i][1])  # points[i][1] is concurrency
+    # points[i][1] is concurrency
+    global_peak_idx = max(range(len(points)), key=lambda i: points[i][1])
     global_peak = points[global_peak_idx]
 
     # Keep first, last and peak points
@@ -22,7 +24,7 @@ def downsample_task_concurrency(points):
 
     # Sort key indices to find gaps
     sorted_keep_indices = sorted(keep_indices)
-    
+
     # Calculate points per gap
     points_per_gap = remaining_points // (len(sorted_keep_indices) - 1)
     extra_points = remaining_points % (len(sorted_keep_indices) - 1)
@@ -32,32 +34,34 @@ def downsample_task_concurrency(points):
         start_idx = sorted_keep_indices[i]
         end_idx = sorted_keep_indices[i + 1]
         gap_size = end_idx - start_idx - 1
-        
+
         if gap_size <= 0:
             continue
-            
+
         # Calculate points for this gap
         current_gap_points = points_per_gap
         if extra_points > 0:
             current_gap_points += 1
             extra_points -= 1
-            
+
         if current_gap_points > 0:
             # Randomly sample from gap
             available_indices = list(range(start_idx + 1, end_idx))
-            sampled_indices = random.sample(available_indices, min(current_gap_points, len(available_indices)))
+            sampled_indices = random.sample(available_indices, min(
+                current_gap_points, len(available_indices)))
             keep_indices.update(sampled_indices)
-    
+
     # Return sorted points
     result = [points[i] for i in sorted(keep_indices)]
     return result
+
 
 @task_concurrency_bp.route('/task-concurrency')
 @check_and_reload_data()
 def get_task_concurrency():
     try:
         data = {}
-        
+
         # Get selected task types
         selected_types = request.args.get('types', '').split(',')
         if not selected_types or selected_types == ['']:
@@ -68,7 +72,7 @@ def get_task_concurrency():
                 'tasks_retrieving',
                 'tasks_done'
             ]
-        
+
         # Initialize task type lists
         all_task_types = {
             'tasks_waiting': [],
@@ -78,36 +82,45 @@ def get_task_concurrency():
             'tasks_done': []
         }
         data.update(all_task_types)
-        
+
         # Process selected task types
         for task in runtime_state.tasks.values():
             if task.when_failure_happens is not None:
                 continue
-                
+
             # Collect task state data
             if 'tasks_waiting' in selected_types and task.when_ready:
-                data['tasks_waiting'].append((task.when_ready - runtime_state.MIN_TIME, 1))
+                data['tasks_waiting'].append(
+                    (task.when_ready - runtime_state.MIN_TIME, 1))
                 if task.when_running:
-                    data['tasks_waiting'].append((task.when_running - runtime_state.MIN_TIME, -1))
-            
+                    data['tasks_waiting'].append(
+                        (task.when_running - runtime_state.MIN_TIME, -1))
+
             if 'tasks_committing' in selected_types and task.when_running:
-                data['tasks_committing'].append((task.when_running - runtime_state.MIN_TIME, 1))
+                data['tasks_committing'].append(
+                    (task.when_running - runtime_state.MIN_TIME, 1))
                 if task.time_worker_start:
-                    data['tasks_committing'].append((task.time_worker_start - runtime_state.MIN_TIME, -1))
-            
+                    data['tasks_committing'].append(
+                        (task.time_worker_start - runtime_state.MIN_TIME, -1))
+
             if 'tasks_executing' in selected_types and task.time_worker_start:
-                data['tasks_executing'].append((task.time_worker_start - runtime_state.MIN_TIME, 1))
+                data['tasks_executing'].append(
+                    (task.time_worker_start - runtime_state.MIN_TIME, 1))
                 if task.time_worker_end:
-                    data['tasks_executing'].append((task.time_worker_end - runtime_state.MIN_TIME, -1))
-            
+                    data['tasks_executing'].append(
+                        (task.time_worker_end - runtime_state.MIN_TIME, -1))
+
             if 'tasks_retrieving' in selected_types and task.time_worker_end:
-                data['tasks_retrieving'].append((task.time_worker_end - runtime_state.MIN_TIME, 1))
+                data['tasks_retrieving'].append(
+                    (task.time_worker_end - runtime_state.MIN_TIME, 1))
                 if task.when_retrieved:
-                    data['tasks_retrieving'].append((task.when_retrieved - runtime_state.MIN_TIME, -1))
-            
+                    data['tasks_retrieving'].append(
+                        (task.when_retrieved - runtime_state.MIN_TIME, -1))
+
             if 'tasks_done' in selected_types:
                 if task.when_done:
-                    data['tasks_done'].append((task.when_done - runtime_state.MIN_TIME, 1))
+                    data['tasks_done'].append(
+                        (task.when_done - runtime_state.MIN_TIME, 1))
 
         def process_task_type(tasks):
             if not tasks:
@@ -130,9 +143,11 @@ def get_task_concurrency():
             data[task_type] = process_task_type(data[task_type])
             # Update max values
             if data[task_type]:
-                max_time = max(max_time, max(point[0] for point in data[task_type]))
+                max_time = max(max_time, max(
+                    point[0] for point in data[task_type]))
                 if task_type in selected_types:
-                    max_concurrent = max(max_concurrent, max(point[1] for point in data[task_type]))
+                    max_concurrent = max(max_concurrent, max(
+                        point[1] for point in data[task_type]))
 
         # Set axis ranges
         data['xMin'] = 0

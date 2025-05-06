@@ -1,6 +1,7 @@
 from .runtime_state import *
 
-task_execution_details_bp = Blueprint('task_execution_details', __name__, url_prefix='/api')
+task_execution_details_bp = Blueprint(
+    'task_execution_details', __name__, url_prefix='/api')
 
 
 @task_execution_details_bp.route('/task-execution-details')
@@ -77,16 +78,16 @@ def get_task_execution_details():
         # filter successfulTasks to keep only top 100,000 by execution time if there are more than 100,000 tasks
         if len(data['successfulTasks']) > SAMPLING_TASK_BARS:
             # sort tasks by execution time in descending order and keep top 100,000
-            data['successfulTasks'] = sorted(data['successfulTasks'], 
-                                          key=lambda x: x['execution_time'],
-                                          reverse=True)[:SAMPLING_TASK_BARS]
+            data['successfulTasks'] = sorted(data['successfulTasks'],
+                                             key=lambda x: x['execution_time'],
+                                             reverse=True)[:SAMPLING_TASK_BARS]
         # filter unsuccessfulTasks to keep only top 100,000 by execution time if there are more than 100,000 tasks
         if len(data['unsuccessfulTasks']) > SAMPLING_TASK_BARS:
             # sort tasks by execution time in descending order and keep top 100,000
-            data['unsuccessfulTasks'] = sorted(data['unsuccessfulTasks'], 
-                                          key=lambda x: x['execution_time'],
-                                          reverse=True)[:SAMPLING_TASK_BARS]
-        
+            data['unsuccessfulTasks'] = sorted(data['unsuccessfulTasks'],
+                                               key=lambda x: x['execution_time'],
+                                               reverse=True)[:SAMPLING_TASK_BARS]
+
         data['workerInfo'] = []
         for worker in runtime_state.workers.values():
             if not worker.hash:
@@ -94,7 +95,8 @@ def get_task_execution_details():
             # it means the worker didn't exit normally or hasn't exited yet
             if len(worker.time_disconnected) != len(worker.time_connected):
                 # set the time_disconnected to the max time
-                worker.time_disconnected = [runtime_state.MAX_TIME] * (len(worker.time_connected) - len(worker.time_disconnected))
+                worker.time_disconnected = [
+                    runtime_state.MAX_TIME] * (len(worker.time_connected) - len(worker.time_disconnected))
             worker_info = {
                 'hash': worker.hash,
                 'id': worker.id,
@@ -117,21 +119,23 @@ def get_task_execution_details():
             round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.75, 2),
             round(data['xMax'], 2)
         ]
-        
+
         # Calculate yTickValues for worker IDs
         worker_ids = [worker['id'] for worker in data['workerInfo']]
-        
+
         if worker_ids:
             min_worker_id = 1  # Start with worker ID 1
             max_worker_id = max(worker_ids)
-            
-            print(f"Min worker ID: {min_worker_id}, Max worker ID: {max_worker_id}")
-            
+
+            print(
+                f"Min worker ID: {min_worker_id}, Max worker ID: {max_worker_id}")
+
             # Generate 5 evenly distributed tick values
             if min_worker_id == max_worker_id:
                 data['yTickValues'] = [min_worker_id]
             else:
-                step = (max_worker_id - min_worker_id) / 4  # To get 5 points total
+                step = (max_worker_id - min_worker_id) / \
+                    4  # To get 5 points total
                 data['yTickValues'] = [
                     min_worker_id,
                     round(min_worker_id + step, 0),
@@ -140,10 +144,11 @@ def get_task_execution_details():
                     max_worker_id
                 ]
                 # Convert to integers
-                data['yTickValues'] = [int(tick) for tick in data['yTickValues']]
+                data['yTickValues'] = [int(tick)
+                                       for tick in data['yTickValues']]
                 # Remove duplicates while preserving order
                 data['yTickValues'] = list(dict.fromkeys(data['yTickValues']))
-                
+
             print(f"Generated yTickValues: {data['yTickValues']}")
         else:
             data['yTickValues'] = [1]  # Default if no workers
@@ -152,6 +157,7 @@ def get_task_execution_details():
         return jsonify(data)
 
     except Exception as e:
-        error_message = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
+        error_message = ''.join(
+            traceback.format_exception(type(e), e, e.__traceback__))
         print(error_message)
         return jsonify({'error': str(e), 'details': error_message}), 500

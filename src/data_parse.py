@@ -1,18 +1,18 @@
+import platform
+import subprocess
 from src.worker_info import WorkerInfo
 from src.task_info import TaskInfo
 from src.file_info import FileInfo
 from src.manager_info import ManagerInfo
 
 import os
-import json
 from functools import lru_cache
 from datetime import datetime
 import time
-import math
 from tqdm import tqdm
 from collections import defaultdict
 import cloudpickle
-from datetime import datetime, timezone, timedelta
+from datetime import timezone, timedelta
 import pytz
 from decimal import Decimal, ROUND_FLOOR
 
@@ -22,8 +22,6 @@ def floor_decimal(number, decimal_places):
     quantizer = Decimal(f"1e-{decimal_places}")
     return float(num.quantize(quantizer, rounding=ROUND_FLOOR))
 
-import platform
-import subprocess
 
 def count_lines(file_name):
     if platform.system() in ["Linux", "Darwin"]:  # Linux or macOS
@@ -31,7 +29,7 @@ def count_lines(file_name):
             return int(subprocess.check_output(["wc", "-l", file_name]).split()[0])
         except subprocess.CalledProcessError:
             pass
-    
+
     with open(file_name, 'r', encoding='utf-8', errors='ignore') as f:
         return sum(1 for _ in f)
 
@@ -69,13 +67,16 @@ class DataParser:
 
         # workers
         self.workers = {}      # key: (ip, port), value: WorkerInfo
-        self.ip_transfer_port_to_worker = {}     # key: (ip, transfer_port), value: WorkerInfo
+        # key: (ip, transfer_port), value: WorkerInfo
+        self.ip_transfer_port_to_worker = {}
         self.max_id = 0             # starting from 1
 
         # files
         self.files = {}      # key: file_name, value: FileInfo
-        self.sending_back_transfers = {}      # key: (source_ip, source_port), value: TransferInfo
-        self.putting_transfers = {}           # key: (dest_ip, dest_port), value: TransferInfo
+        # key: (source_ip, source_port), value: TransferInfo
+        self.sending_back_transfers = {}
+        # key: (dest_ip, dest_port), value: TransferInfo
+        self.putting_transfers = {}
 
         # subgraphs
         self.subgraphs = {}   # key: subgraph_id, value: set()
@@ -126,29 +127,34 @@ class DataParser:
                 target_local = tz.localize(mgr_start_datestring)
                 delta = abs((local_dt - target_local).total_seconds())
                 if delta <= 2:
-                    offset = tz.utcoffset(utc_time.replace(tzinfo=None)).total_seconds() / 3600
+                    offset = tz.utcoffset(utc_time.replace(
+                        tzinfo=None)).total_seconds() / 3600
                     self.manager.time_zone_offset_hours = int(offset)
-                    self.manager.equivalent_tz = timezone(timedelta(hours=self.manager.time_zone_offset_hours))
+                    self.manager.equivalent_tz = timezone(
+                        timedelta(hours=self.manager.time_zone_offset_hours))
                     break
             except Exception:
                 continue
         else:
             raise ValueError("Could not match to a known time zone.")
-        
-        print(f"Set time zone to {self.manager.equivalent_tz} offset {self.manager.time_zone_offset_hours}")
+
+        print(
+            f"Set time zone to {self.manager.equivalent_tz} offset {self.manager.time_zone_offset_hours}")
 
     @lru_cache(maxsize=4096)
     def datestring_to_timestamp(self, datestring):
-        equivalent_datestring = datetime.strptime(datestring, "%Y/%m/%d %H:%M:%S.%f").replace(tzinfo=self.manager.equivalent_tz)
+        equivalent_datestring = datetime.strptime(
+            datestring, "%Y/%m/%d %H:%M:%S.%f").replace(tzinfo=self.manager.equivalent_tz)
         unix_timestamp = float(equivalent_datestring.timestamp())
         return unix_timestamp
-    
+
     def ensure_worker_entry(self, worker_ip: str, worker_port: int):
         worker_entry = (worker_ip, worker_port)
         if worker_entry not in self.workers:
-            self.workers[worker_entry] = WorkerInfo(worker_ip, worker_port, self)
+            self.workers[worker_entry] = WorkerInfo(
+                worker_ip, worker_port, self)
         return self.workers[worker_entry]
-    
+
     def ensure_file_info_entry(self, file_name: str, size_mb: float):
         if file_name not in self.files:
             self.files[file_name] = FileInfo(file_name, size_mb)
@@ -168,29 +174,32 @@ class DataParser:
         assert isinstance(worker, WorkerInfo)
         worker_entry = (worker.ip, worker.port)
         if worker_entry in self.workers:
-            raise ValueError(f"worker {worker.ip}:{worker.port} already exists")
+            raise ValueError(
+                f"worker {worker.ip}:{worker.port} already exists")
         self.max_id += 1
         worker.id = self.max_id
         self.workers[worker_entry] = worker
 
     def add_ip_transfer_port_to_worker(self, ip: str, transfer_port: int, worker: WorkerInfo):
         # if there is an existing worker, it must had disconnected
-        existing_worker = self.find_worker_by_ip_transfer_port(ip, transfer_port)
+        existing_worker = self.find_worker_by_ip_transfer_port(
+            ip, transfer_port)
         if existing_worker:
-            assert len(existing_worker.time_connected) == len(existing_worker.time_disconnected)
+            assert len(existing_worker.time_connected) == len(
+                existing_worker.time_disconnected)
         self.ip_transfer_port_to_worker[(ip, transfer_port)] = worker
 
     def find_worker_by_ip_transfer_port(self, ip: str, transfer_port: int):
         if (ip, transfer_port) in self.ip_transfer_port_to_worker:
             return self.ip_transfer_port_to_worker[(ip, transfer_port)]
-    
+
     def parse_debug_line(self, line):
         parts = line.strip().split(" ")
         try:
             datestring = parts[0] + " " + parts[1]
             timestamp = self.datestring_to_timestamp(datestring)
             timestamp = floor_decimal(timestamp, 2)
-        except:
+        except Exception:
             # this line does not start with a timestamp, which sometimes happens
             return
 
@@ -199,7 +208,7 @@ class DataParser:
         if "listening on port" in line:
             try:
                 self.manager.set_time_start(timestamp)
-            except:
+            except Exception:
                 print(line)
                 exit(1)
             return
@@ -207,7 +216,8 @@ class DataParser:
         if "worker" in parts and "connected" in parts:
             # this is the first time a worker is connected to the manager
             worker_idx = parts.index("worker")
-            ip, port = WorkerInfo.extract_ip_port_from_string(parts[worker_idx + 1])
+            ip, port = WorkerInfo.extract_ip_port_from_string(
+                parts[worker_idx + 1])
             worker = WorkerInfo(ip, port)
             worker.add_connection(timestamp)
             self.add_worker(worker)
@@ -216,7 +226,8 @@ class DataParser:
 
         if "info" in parts and "worker-id" in parts:
             info_idx = parts.index("info")
-            ip, port =  WorkerInfo.extract_ip_port_from_string(parts[info_idx - 1])
+            ip, port = WorkerInfo.extract_ip_port_from_string(
+                parts[info_idx - 1])
             worker = self.workers[(ip, port)]
             worker.set_hash(parts[info_idx + 2])
             worker.set_machine_name(parts[info_idx - 2])
@@ -224,7 +235,8 @@ class DataParser:
 
         if "removed" in parts and "worker" in parts:
             release_idx = parts.index("removed")
-            ip, port = WorkerInfo.extract_ip_port_from_string(parts[release_idx - 1])
+            ip, port = WorkerInfo.extract_ip_port_from_string(
+                parts[release_idx - 1])
             worker = self.workers[(ip, port)]
             worker.add_disconnection(timestamp)
             self.manager.update_when_last_worker_disconnect(timestamp)
@@ -236,7 +248,8 @@ class DataParser:
         if "transfer-port" in parts:
             transfer_port_idx = parts.index("transfer-port")
             transfer_port = int(parts[transfer_port_idx + 1])
-            ip, port = WorkerInfo.extract_ip_port_from_string(parts[transfer_port_idx - 1])
+            ip, port = WorkerInfo.extract_ip_port_from_string(
+                parts[transfer_port_idx - 1])
             worker = self.workers[(ip, port)]
             worker.set_transfer_port(transfer_port)
             self.add_ip_transfer_port_to_worker(ip, transfer_port, worker)
@@ -244,7 +257,8 @@ class DataParser:
 
         if "put" in parts:
             put_idx = parts.index("put")
-            ip, port = WorkerInfo.extract_ip_port_from_string(parts[put_idx - 1])
+            ip, port = WorkerInfo.extract_ip_port_from_string(
+                parts[put_idx - 1])
             worker = self.workers[(ip, port)]
             file_name = parts[put_idx + 1]
 
@@ -259,14 +273,16 @@ class DataParser:
                 raise ValueError(f"pending file type: {file_name}")
 
             file = self.ensure_file_info_entry(file_name, file_size_mb)
-            transfer = file.add_transfer('manager', (worker.ip, worker.port), 'manager_put', file_type, file_cache_level)
+            transfer = file.add_transfer(
+                'manager', (worker.ip, worker.port), 'manager_put', file_type, file_cache_level)
             transfer.start_stage_in(timestamp, "pending")
             assert (worker.ip, worker.port) not in self.putting_transfers
             self.putting_transfers[(worker.ip, worker.port)] = transfer
             return
 
         if "received" in parts:
-            dest_ip, dest_port = WorkerInfo.extract_ip_port_from_string(parts[parts.index("received") - 1])
+            dest_ip, dest_port = WorkerInfo.extract_ip_port_from_string(
+                parts[parts.index("received") - 1])
             assert (dest_ip, dest_port) in self.putting_transfers
             transfer = self.putting_transfers[(dest_ip, dest_port)]
             transfer.stage_in(timestamp, "worker_received")
@@ -284,26 +300,33 @@ class DataParser:
         if "exhausted resources on" in line:
             exhausted_idx = parts.index("exhausted")
             task_id = int(parts[exhausted_idx - 1])
-            worker_ip, worker_port = WorkerInfo.extract_ip_port_from_string(parts[exhausted_idx + 4])
+            worker_ip, worker_port = WorkerInfo.extract_ip_port_from_string(
+                parts[exhausted_idx + 4])
             task = self.tasks[(task_id, self.current_try_id[task_id])]
             return
 
         if parts[-1] == "resources":
             resources_idx = parts.index("resources")
-            worker_ip, worker_port = WorkerInfo.extract_ip_port_from_string(parts[resources_idx - 1])
-            self.receiving_resources_from_worker = self.workers[(worker_ip, worker_port)]
+            worker_ip, worker_port = WorkerInfo.extract_ip_port_from_string(
+                parts[resources_idx - 1])
+            self.receiving_resources_from_worker = self.workers[(
+                worker_ip, worker_port)]
             return
         if self.receiving_resources_from_worker and "cores" in parts:
-            self.receiving_resources_from_worker.set_cores(int(float(parts[parts.index("cores") + 1])))
+            self.receiving_resources_from_worker.set_cores(
+                int(float(parts[parts.index("cores") + 1])))
             return
         if self.receiving_resources_from_worker and "memory" in parts:
-            self.receiving_resources_from_worker.set_memory_mb(int(float(parts[parts.index("memory") + 1])))
+            self.receiving_resources_from_worker.set_memory_mb(
+                int(float(parts[parts.index("memory") + 1])))
             return
         if self.receiving_resources_from_worker and "disk" in parts:
-            self.receiving_resources_from_worker.set_disk_mb(int(float(parts[parts.index("disk") + 1])))
+            self.receiving_resources_from_worker.set_disk_mb(
+                int(float(parts[parts.index("disk") + 1])))
             return
         if self.receiving_resources_from_worker and "gpus" in parts:
-            self.receiving_resources_from_worker.set_gpus(int(float(parts[parts.index("gpus") + 1])))
+            self.receiving_resources_from_worker.set_gpus(
+                int(float(parts[parts.index("gpus") + 1])))
             return
         if self.receiving_resources_from_worker and "end" in parts:
             self.receiving_resources_from_worker = None
@@ -315,42 +338,51 @@ class DataParser:
             else:
                 transfer_event = 'puturl_now'
 
-            puturl_id = parts.index("puturl") if "puturl" in parts else parts.index("puturl_now")
+            puturl_id = parts.index(
+                "puturl") if "puturl" in parts else parts.index("puturl_now")
             file_name = parts[puturl_id + 2]
             file_cache_level = int(parts[puturl_id + 3])
             size_in_mb = int(parts[puturl_id + 4]) / 2**20
-            
+
             # the file name is the name on the worker's side
             file = self.ensure_file_info_entry(file_name, size_in_mb)
 
             # the destination is definitely an ip:port worker
-            dest_ip, dest_port = WorkerInfo.extract_ip_port_from_string(parts[puturl_id - 1])
+            dest_ip, dest_port = WorkerInfo.extract_ip_port_from_string(
+                parts[puturl_id - 1])
             dest_worker = self.workers[(dest_ip, dest_port)]
 
             # the source can be a url or an ip:port
-            source = parts[puturl_id + 1]   
+            source = parts[puturl_id + 1]
             if source.startswith('https://'):
-                transfer = file.add_transfer(source, (dest_worker.ip, dest_worker.port), transfer_event, 2, file_cache_level)
+                transfer = file.add_transfer(
+                    source, (dest_worker.ip, dest_worker.port), transfer_event, 2, file_cache_level)
             elif source.startswith('workerip://'):
-                source_ip, source_transfer_port = WorkerInfo.extract_ip_port_from_string(source)
-                source_worker = self.find_worker_by_ip_transfer_port(source_ip, source_transfer_port)
-                transfer = file.add_transfer((source_worker.ip, source_worker.port), (dest_worker.ip, dest_worker.port), transfer_event, 2, file_cache_level)
+                source_ip, source_transfer_port = WorkerInfo.extract_ip_port_from_string(
+                    source)
+                source_worker = self.find_worker_by_ip_transfer_port(
+                    source_ip, source_transfer_port)
+                transfer = file.add_transfer((source_worker.ip, source_worker.port), (
+                    dest_worker.ip, dest_worker.port), transfer_event, 2, file_cache_level)
             else:
-                raise ValueError(f"unrecognized source: {source}, line: {line}")
+                raise ValueError(
+                    f"unrecognized source: {source}, line: {line}")
 
             transfer.start_stage_in(timestamp, "pending")
             return
-        
+
         if "mini_task" in line:
             mini_task_idx = parts.index("mini_task")
             source = parts[mini_task_idx + 1]
             file_name = parts[mini_task_idx + 2]
             cache_level = int(parts[mini_task_idx + 3])
             file_size = int(parts[mini_task_idx + 4]) / 2**20
-            dest_worker_ip, dest_worker_port = WorkerInfo.extract_ip_port_from_string(parts[mini_task_idx - 1])
+            dest_worker_ip, dest_worker_port = WorkerInfo.extract_ip_port_from_string(
+                parts[mini_task_idx - 1])
 
             file = self.ensure_file_info_entry(file_name, file_size)
-            transfer = file.add_transfer(source, (dest_worker_ip, dest_worker_port), 'mini_task', 2, cache_level)
+            transfer = file.add_transfer(
+                source, (dest_worker_ip, dest_worker_port), 'mini_task', 2, cache_level)
             transfer.start_stage_in(timestamp, "pending")
             return
 
@@ -366,28 +398,36 @@ class DataParser:
                 task.is_library_task = True
                 self.add_task(task)
 
-            self.sending_task = self.tasks[(task_id, self.current_try_id[task_id])]
+            self.sending_task = self.tasks[(
+                task_id, self.current_try_id[task_id])]
 
             try:
-                worker_ip, worker_port = WorkerInfo.extract_ip_port_from_string(parts[task_idx - 1])
+                worker_ip, worker_port = WorkerInfo.extract_ip_port_from_string(
+                    parts[task_idx - 1])
                 if not self.sending_task.worker_ip:
-                    self.sending_task.set_worker_ip_port(worker_ip, worker_port)
-            except:
+                    self.sending_task.set_worker_ip_port(
+                        worker_ip, worker_port)
+            except Exception:
                 raise
             return
         if self.sending_task:
             if "end" in parts or "failed to send" in line:
                 self.sending_task = None
             elif "cores" in parts:
-                self.sending_task.set_cores_requested(int(float(parts[parts.index("cores") + 1])))
+                self.sending_task.set_cores_requested(
+                    int(float(parts[parts.index("cores") + 1])))
             elif "gpus" in parts:
-                self.sending_task.set_gpus_requested(int(float(parts[parts.index("gpus") + 1])))
+                self.sending_task.set_gpus_requested(
+                    int(float(parts[parts.index("gpus") + 1])))
             elif "memory" in parts:
-                self.sending_task.set_memory_requested_mb(int(float(parts[parts.index("memory") + 1])))
+                self.sending_task.set_memory_requested_mb(
+                    int(float(parts[parts.index("memory") + 1])))
             elif "disk" in parts:
-                self.sending_task.set_disk_requested_mb(int(float(parts[parts.index("disk") + 1])))
+                self.sending_task.set_disk_requested_mb(
+                    int(float(parts[parts.index("disk") + 1])))
             elif "category" in parts:
-                self.sending_task.set_category(parts[parts.index("category") + 1])
+                self.sending_task.set_category(
+                    parts[parts.index("category") + 1])
             elif "needs file" in line and "as infile" in line:
                 pass
             elif "infile" in parts:
@@ -405,9 +445,10 @@ class DataParser:
             elif "function_slots" in parts:
                 function_slots = int(parts[parts.index("function_slots") + 1])
                 self.sending_task.set_function_slots(function_slots)
-                sending_to_worker = self.workers[(self.sending_task.worker_ip, self.sending_task.worker_port)]
+                # sending_to_worker = self.workers[(
+                #    self.sending_task.worker_ip, self.sending_task.worker_port)]
                 # if sending_to_worker.cores < function_slots:
-                    # sending_to_worker.set_cores(function_slots)
+                # sending_to_worker.set_cores(function_slots)
             elif "cmd" in parts:
                 pass
             elif "python3" in parts:
@@ -442,7 +483,7 @@ class DataParser:
 
             task_entry = (task_id, self.current_try_id[task_id])
             task = self.tasks[task_entry]
-            if "READY (1) to RUNNING (2)" in line:                  # as expected 
+            if "READY (1) to RUNNING (2)" in line:                  # as expected
                 # it could be that the task related info was unable to be sent (also comes with a "failed to send" message)
                 # in this case, even the state is switched to running, there is no worker info
                 if self.manager.when_first_task_start_commit is None:
@@ -461,15 +502,19 @@ class DataParser:
                     if task_id not in self.current_try_id:
                         self.current_try_id[task_id] = 1
             elif "RUNNING (2) to RUNNING (2)" in line:
-                raise ValueError(f"task {task_id} state change: from RUNNING (2) to RUNNING (2)")
+                raise ValueError(
+                    f"task {task_id} state change: from RUNNING (2) to RUNNING (2)")
             elif "RETRIEVED (4) to RUNNING (2)" in line:
-                print(f"Warning: task {task_id} state change: from RETRIEVED (4) to RUNNING (2)")
+                print(
+                    f"Warning: task {task_id} state change: from RETRIEVED (4) to RUNNING (2)")
                 pass
             elif "RUNNING (2) to DONE (5)" in line:
-                print(f"Warning: task {task_id} state change: from RUNNING (2) to DONE (5)")
+                print(
+                    f"Warning: task {task_id} state change: from RUNNING (2) to DONE (5)")
                 pass
             elif "DONE (5) to WAITING_RETRIEVAL (3)" in line:
-                print(f"Warning: task {task_id} state change: from DONE (5) to WAITING_RETRIEVAL (3)")
+                print(
+                    f"Warning: task {task_id} state change: from DONE (5) to WAITING_RETRIEVAL (3)")
                 pass
             elif "RUNNING (2) to WAITING_RETRIEVAL (3)" in line:    # as expected
                 task.set_when_waiting_retrieval(timestamp)
@@ -532,35 +577,39 @@ class DataParser:
             elif "RUNNING (2) to RETRIEVED (4)" in line:
                 task.set_when_retrieved(timestamp)
                 if not task.is_library_task:
-                    print(f"Warning: non-library task {task_id} state change: from RUNNING (2) to RETRIEVED (4)")
+                    print(
+                        f"Warning: non-library task {task_id} state change: from RUNNING (2) to RETRIEVED (4)")
             else:
                 raise ValueError(f"unrecognized state change: {line}")
             return
 
         if "complete" in parts:
             complete_idx = parts.index("complete")
-            worker_ip, worker_port = WorkerInfo.extract_ip_port_from_string(parts[complete_idx - 1])
+            worker_ip, worker_port = WorkerInfo.extract_ip_port_from_string(
+                parts[complete_idx - 1])
             worker = self.workers[(worker_ip, worker_port)]
             task_status = int(parts[complete_idx + 1])
             exit_status = int(parts[complete_idx + 2])
             output_length = int(parts[complete_idx + 3])
             bytes_sent = int(parts[complete_idx + 4])
-            time_worker_start = floor_decimal(float(parts[complete_idx + 5]) / 1e6, 2)
-            time_worker_end = floor_decimal(float(parts[complete_idx + 6]) / 1e6, 2)
+            time_worker_start = floor_decimal(
+                float(parts[complete_idx + 5]) / 1e6, 2)
+            time_worker_end = floor_decimal(
+                float(parts[complete_idx + 6]) / 1e6, 2)
             sandbox_used = None
             try:
                 task_id = int(parts[complete_idx + 8])
                 sandbox_used = int(parts[complete_idx + 7])
-            except:
+            except Exception:
                 task_id = int(parts[complete_idx + 7])
 
             task_entry = (task_id, self.current_try_id[task_id])
             task = self.tasks[task_entry]
-            
+
             task.set_task_status(task_status)
             if task_status != 0:
                 task.set_when_failure_happens(timestamp)
-            
+
             task.set_exit_status(exit_status)
             task.set_output_length(output_length)
             task.set_bytes_sent(bytes_sent)
@@ -568,7 +617,7 @@ class DataParser:
             task.set_time_worker_start(time_worker_start)
             task.set_time_worker_end(time_worker_end)
             task.set_sandbox_used(sandbox_used)
-            
+
             return
 
         if "stdout" in parts and (parts.index("stdout") + 3 == len(parts)):
@@ -598,21 +647,24 @@ class DataParser:
             if len(file.producers) == 0:
                 # special case: this file was created by a previous manager
                 return
-            
-            ip, port = WorkerInfo.extract_ip_port_from_string(parts[cache_update_id - 1])
+
+            ip, port = WorkerInfo.extract_ip_port_from_string(
+                parts[cache_update_id - 1])
             worker = self.workers[(ip, port)]
             # let the file handle the cache update
-            file.cache_update((worker.ip, worker.port), timestamp, file_type, file_cache_level)
+            file.cache_update((worker.ip, worker.port),
+                              timestamp, file_type, file_cache_level)
 
             return
-            
+
         if "cache-invalid" in parts:
             cache_invalid_id = parts.index("cache-invalid")
             file_name = parts[cache_invalid_id + 1]
             if file_name not in self.files:
                 # special case: this file was created by a previous manager
                 return
-            ip, port = WorkerInfo.extract_ip_port_from_string(parts[cache_invalid_id - 1])
+            ip, port = WorkerInfo.extract_ip_port_from_string(
+                parts[cache_invalid_id - 1])
             worker = self.workers[(ip, port)]
             file = self.files[file_name]
             file.cache_invalid((ip, port), timestamp)
@@ -621,13 +673,14 @@ class DataParser:
         if "unlink" in parts:
             unlink_id = parts.index("unlink")
             file_name = parts[unlink_id + 1]
-            ip, port = WorkerInfo.extract_ip_port_from_string(parts[unlink_id - 1])
+            ip, port = WorkerInfo.extract_ip_port_from_string(
+                parts[unlink_id - 1])
             worker = self.workers[(ip, port)]
 
             file = self.files[file_name]
             file.unlink((ip, port), timestamp)
             return
-            
+
         if "Submitted recovery task" in line:
             task_id = int(parts[parts.index("task") + 1])
             task_try_id = self.current_try_id[task_id]
@@ -641,25 +694,29 @@ class DataParser:
             task_try_id = self.current_try_id[task_id]
             task = self.tasks[(task_id, task_try_id)]
             task.exhausted_resources = True
-        
+
         # get an output file from a worker, one worker can only send one file back at a time
         if "sending back" in line:
             self.sending_back = True
             back_idx = parts.index("back")
             file_name = parts[back_idx + 1]
-            source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[back_idx - 2])
+            source_ip, source_port = WorkerInfo.extract_ip_port_from_string(
+                parts[back_idx - 2])
             assert (source_ip, source_port) not in self.sending_back_transfers
             file = self.files[file_name]
-            transfer = file.add_transfer((source_ip, source_port), 'manager', 'manager_get', 1, 1)
+            transfer = file.add_transfer(
+                (source_ip, source_port), 'manager', 'manager_get', 1, 1)
             transfer.start_stage_in(timestamp, "pending")
             self.sending_back_transfers[(source_ip, source_port)] = transfer
             return
         if self.sending_back and "rx from" in line and "file" in parts:
             file_idx = parts.index("file")
             file_name = parts[file_idx + 1]
-            source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[parts.index("file") - 1])
+            source_ip, source_port = WorkerInfo.extract_ip_port_from_string(
+                parts[parts.index("file") - 1])
             if file_name not in self.files:
-                raise ValueError(f"file {file_name} not found in self.files, line: {line}")
+                raise ValueError(
+                    f"file {file_name} not found in self.files, line: {line}")
             assert (source_ip, source_port) in self.workers
             assert (source_ip, source_port) in self.sending_back_transfers
             return
@@ -667,13 +724,14 @@ class DataParser:
             pass
         if self.sending_back and "sent" in parts:
             send_idx = parts.index("sent")
-            source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[send_idx - 1])
+            source_ip, source_port = WorkerInfo.extract_ip_port_from_string(
+                parts[send_idx - 1])
             assert (source_ip, source_port) in self.sending_back_transfers
             transfer = self.sending_back_transfers[(source_ip, source_port)]
             transfer.stage_in(timestamp, "manager_received")
             del self.sending_back_transfers[(source_ip, source_port)]
             self.sending_back = False
-            
+
         if "manager end" in line:
             self.manager.set_time_end(timestamp)
             for task in self.tasks.values():
@@ -696,10 +754,11 @@ class DataParser:
 
         if "designated as the PBB (checkpoint) worker" in line:
             designated_idx = parts.index("designated")
-            ip, port = WorkerInfo.extract_ip_port_from_string(parts[designated_idx - 1])
+            ip, port = WorkerInfo.extract_ip_port_from_string(
+                parts[designated_idx - 1])
             self.workers[(ip, port)].enable_pbb()
             return
-        
+
         if "Removing instances of worker" in line:
             pass
 
@@ -708,7 +767,7 @@ class DataParser:
             time_us = float(parts[time_idx + 1])
             self.manager.aggregate_checkpoint_processing_time(time_us)
             return
-            
+
     def parse_debug(self):
         time_start = time.time()
 
@@ -724,7 +783,7 @@ class DataParser:
                     self.parse_debug_line(line)
                 except UnicodeDecodeError:
                     print(f"Error decoding line to utf-8: {raw_line}")
-            
+
             pbar.close()
 
         time_end = time.time()
@@ -735,7 +794,7 @@ class DataParser:
 
     def parse_logs(self):
         self.set_time_zone()
-        
+
         self.parse_debug()
 
     def generate_subgraphs(self):
@@ -775,7 +834,8 @@ class DataParser:
             if not file.producers:
                 continue
             # use set operations to quickly get the tasks involved
-            tasks_involved = (set(file.producers) | set(file.consumers)) & tasks_keys
+            tasks_involved = (set(file.producers) | set(
+                file.consumers)) & tasks_keys
             if len(tasks_involved) <= 1:
                 continue
             tasks_involved = list(tasks_involved)
@@ -788,12 +848,14 @@ class DataParser:
         for task_key in self.tasks.keys():
             root = find(task_key)
             subgraphs[root].add(task_key)
-        
+
         sorted_subgraphs = sorted(subgraphs.values(), key=len, reverse=True)
-        self.subgraphs = {i: subgraph for i, subgraph in enumerate(sorted_subgraphs, 1)}
+        self.subgraphs = {i: subgraph for i,
+                          subgraph in enumerate(sorted_subgraphs, 1)}
 
         time_end = time.time()
-        print(f"Parsing subgraphs took {round(time_end - time_start, 4)} seconds")
+        print(
+            f"Parsing subgraphs took {round(time_end - time_start, 4)} seconds")
 
         self.checkpoint_subgraphs()
 
@@ -802,22 +864,26 @@ class DataParser:
         with open(os.path.join(self.pkl_files_dir, 'workers.pkl'), 'wb') as f:
             cloudpickle.dump(self.workers, f)
         time_end = time.time()
-        print(f"Checkpointing workers.pkl took {round(time_end - time_start, 4)} seconds")
+        print(
+            f"Checkpointing workers.pkl took {round(time_end - time_start, 4)} seconds")
         time_start = time.time()
         with open(os.path.join(self.pkl_files_dir, 'files.pkl'), 'wb') as f:
             cloudpickle.dump(self.files, f)
         time_end = time.time()
-        print(f"Checkpointing files.pkl took {round(time_end - time_start, 4)} seconds")
+        print(
+            f"Checkpointing files.pkl took {round(time_end - time_start, 4)} seconds")
         time_start = time.time()
         with open(os.path.join(self.pkl_files_dir, 'tasks.pkl'), 'wb') as f:
             cloudpickle.dump(self.tasks, f)
         time_end = time.time()
-        print(f"Checkpointing tasks.pkl took {round(time_end - time_start, 4)} seconds")
+        print(
+            f"Checkpointing tasks.pkl took {round(time_end - time_start, 4)} seconds")
         time_start = time.time()
         with open(os.path.join(self.pkl_files_dir, 'manager.pkl'), 'wb') as f:
             cloudpickle.dump(self.manager, f)
         time_end = time.time()
-        print(f"Checkpointing manager.pkl took {round(time_end - time_start, 4)} seconds")
+        print(
+            f"Checkpointing manager.pkl took {round(time_end - time_start, 4)} seconds")
 
     def postprocess_debug(self):
         time_start = time.time()
@@ -825,9 +891,10 @@ class DataParser:
         # if the manager has not finished yet, we do something to set up the None values to make the plotting tool work
         # 1. if the manager's time_end is None, we set it to the current timestamp
         if self.manager.time_end is None:
-            print(f"Manager didn't exit normally, setting manager time_end to {self.manager.current_max_time}")
+            print(
+                f"Manager didn't exit normally, setting manager time_end to {self.manager.current_max_time}")
             self.manager.set_time_end(self.manager.current_max_time)
-        
+
         # post-processing for tasks
         for task in self.tasks.values():
             # 2. if a task's status is None, we set it to 4 << 3, which means the task failed but not yet reported
@@ -842,17 +909,20 @@ class DataParser:
                     task.time_worker_start = task.when_running
                     task.time_worker_end = task.when_waiting_retrieval
                 if task.time_worker_end < task.time_worker_start:
-                    raise ValueError(f"task {task.task_id} time_worker_end is smaller than time_worker_start: {task.time_worker_start} - {task.time_worker_end}")
+                    raise ValueError(
+                        f"task {task.task_id} time_worker_end is smaller than time_worker_start: {task.time_worker_start} - {task.time_worker_end}")
                 # note that the task might have not been retrieved yet
                 if task.when_retrieved and task.when_retrieved < task.time_worker_end:
-                    raise ValueError(f"task {task.task_id} when_retrieved is smaller than time_worker_end: {task.time_worker_end} - {task.when_retrieved}")
+                    raise ValueError(
+                        f"task {task.task_id} when_retrieved is smaller than time_worker_end: {task.time_worker_end} - {task.when_retrieved}")
         # post-processing for workers
         for worker in self.workers.values():
             # 4. for workers, check if the time_disconnected is larger than the time_connected
             for i, (time_connected, time_disconnected) in enumerate(zip(worker.time_connected, worker.time_disconnected)):
                 if time_disconnected < time_connected:
                     if time_disconnected - time_connected > 1:
-                        print(f"Warning: worker {worker.ip} has a disconnected time that is smaller than the connected time")
+                        print(
+                            f"Warning: worker {worker.ip} has a disconnected time that is smaller than the connected time")
                     else:
                         worker.time_disconnected[i] = time_connected
         # post-processing for files
@@ -864,7 +934,8 @@ class DataParser:
                     # set the time_stage_out as the manager's time_end
                     transfer.time_stage_out = self.manager.time_end
         time_end = time.time()
-        print(f"Postprocessing debug took {round(time_end - time_start, 4)} seconds")
+        print(
+            f"Postprocessing debug took {round(time_end - time_start, 4)} seconds")
 
     def restore_debug(self):
         time_start = time.time()
@@ -873,33 +944,40 @@ class DataParser:
             with open(os.path.join(self.pkl_files_dir, 'workers.pkl'), 'rb') as f:
                 self.workers = cloudpickle.load(f)
             time_end = time.time()
-            print(f"Restoring workers.pkl took {round(time_end - time_start, 4)} seconds")
+            print(
+                f"Restoring workers.pkl took {round(time_end - time_start, 4)} seconds")
             time_start = time.time()
             with open(os.path.join(self.pkl_files_dir, 'files.pkl'), 'rb') as f:
                 self.files = cloudpickle.load(f)
             time_end = time.time()
-            print(f"Restoring files.pkl took {round(time_end - time_start, 4)} seconds")
+            print(
+                f"Restoring files.pkl took {round(time_end - time_start, 4)} seconds")
             time_start = time.time()
             with open(os.path.join(self.pkl_files_dir, 'tasks.pkl'), 'rb') as f:
                 self.tasks = cloudpickle.load(f)
             time_end = time.time()
-            print(f"Restoring tasks.pkl took {round(time_end - time_start, 4)} seconds")
+            print(
+                f"Restoring tasks.pkl took {round(time_end - time_start, 4)} seconds")
             time_start = time.time()
             with open(os.path.join(self.pkl_files_dir, 'manager.pkl'), 'rb') as f:
                 self.manager = cloudpickle.load(f)
             time_end = time.time()
-            print(f"Restoring manager.pkl took {round(time_end - time_start, 4)} seconds")
-        except Exception as e:
-            raise ValueError(f"The debug file has not been successfully parsed yet")
+            print(
+                f"Restoring manager.pkl took {round(time_end - time_start, 4)} seconds")
+        except Exception:
+            raise ValueError(
+                "The debug file has not been successfully parsed yet")
         time_end = time.time()
-        print(f"Restored workers, files, tasks, manager from checkpoint in {round(time_end - time_start, 4)} seconds")
+        print(
+            f"Restored workers, files, tasks, manager from checkpoint in {round(time_end - time_start, 4)} seconds")
 
     def checkpoint_subgraphs(self):
         time_start = time.time()
         with open(os.path.join(self.pkl_files_dir, 'subgraphs.pkl'), 'wb') as f:
             cloudpickle.dump(self.subgraphs, f)
         time_end = time.time()
-        print(f"Checkpointing subgraphs.pkl took {round(time_end - time_start, 4)} seconds")
+        print(
+            f"Checkpointing subgraphs.pkl took {round(time_end - time_start, 4)} seconds")
 
     def restore_from_checkpoint(self):
         try:
@@ -907,30 +985,35 @@ class DataParser:
             with open(os.path.join(self.pkl_files_dir, 'workers.pkl'), 'rb') as f:
                 self.workers = cloudpickle.load(f)
             time_end = time.time()
-            print(f"Restoring workers.pkl took {round(time_end - time_start, 4)} seconds")
+            print(
+                f"Restoring workers.pkl took {round(time_end - time_start, 4)} seconds")
             time_start = time.time()
             with open(os.path.join(self.pkl_files_dir, 'files.pkl'), 'rb') as f:
                 self.files = cloudpickle.load(f)
             time_end = time.time()
-            print(f"Restoring files.pkl took {round(time_end - time_start, 4)} seconds")
+            print(
+                f"Restoring files.pkl took {round(time_end - time_start, 4)} seconds")
             time_start = time.time()
             with open(os.path.join(self.pkl_files_dir, 'tasks.pkl'), 'rb') as f:
                 self.tasks = cloudpickle.load(f)
             time_end = time.time()
-            print(f"Restoring tasks.pkl took {round(time_end - time_start, 4)} seconds")
+            print(
+                f"Restoring tasks.pkl took {round(time_end - time_start, 4)} seconds")
             time_start = time.time()
             with open(os.path.join(self.pkl_files_dir, 'manager.pkl'), 'rb') as f:
                 self.manager = cloudpickle.load(f)
             time_end = time.time()
-            print(f"Restoring manager.pkl took {round(time_end - time_start, 4)} seconds")
-        except Exception as e:
-            raise ValueError(f"The debug file has not been successfully parsed yet")
+            print(
+                f"Restoring manager.pkl took {round(time_end - time_start, 4)} seconds")
+        except Exception:
+            raise ValueError(
+                "The debug file has not been successfully parsed yet")
         try:
             time_start = time.time()
             with open(os.path.join(self.pkl_files_dir, 'subgraphs.pkl'), 'rb') as f:
                 self.subgraphs = cloudpickle.load(f)
             time_end = time.time()
-            print(f"Restoring subgraphs.pkl took {round(time_end - time_start, 4)} seconds")
-        except Exception as e:
-            raise ValueError(f"The subgraphs have not been generated yet")
-
+            print(
+                f"Restoring subgraphs.pkl took {round(time_end - time_start, 4)} seconds")
+        except Exception:
+            raise ValueError("The subgraphs have not been generated yet")
