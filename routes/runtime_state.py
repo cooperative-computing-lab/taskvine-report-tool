@@ -14,6 +14,7 @@ import functools
 import time
 import logging
 from src.logger import Logger
+from src.utils import *
 
 LOGS_DIR = 'logs'
 SAMPLING_POINTS = 10000  # at lease 3: the beginning, the end, and the global peak
@@ -29,27 +30,6 @@ def check_and_reload_data():
             return func(*args, **kwargs)
         return wrapper
     return decorator
-
-def all_subfolders_exists(parent: str, folder_names: list[str]) -> bool:
-    parent_path = Path(parent).resolve()
-    for folder_name in folder_names:
-        target_path = parent_path / folder_name
-        if not target_path.is_dir():
-            return False
-    return True
-
-# calculate the file size unit, the default is MB
-def get_unit_and_scale_by_max_file_size_mb(max_file_size_mb) -> tuple[str, float]:
-    if max_file_size_mb < 1 / 1024:
-        return 'Bytes',  1024 * 1024
-    elif max_file_size_mb < 1:
-        return 'KB', 1024
-    elif max_file_size_mb > 1024:
-        return 'GB', 1 / 1024
-    elif max_file_size_mb > 1024 * 1024:
-        return 'TB', 1 / (1024 * 1024)
-    else:
-        return 'MB', 1
 
 
 class RuntimeState:
@@ -106,20 +86,7 @@ class RuntimeState:
                 return True
 
         return False
-
-    def update_pkl_files_info(self):
-        if not self.runtime_template or not self.data_parser:
-            return
-
-        pkl_dir = self.data_parser.pkl_files_dir
-        pkl_files = ['workers.pkl', 'files.pkl', 'tasks.pkl', 'manager.pkl', 'subgraphs.pkl']
-        
-        for pkl_file in pkl_files:
-            file_path = os.path.join(pkl_dir, pkl_file)
-            info = self.get_file_stat(file_path)
-            if info:
-                self.pkl_files_info[file_path] = info
-
+    
     def reload_data(self):
         try:
             logger.info("Reloading data from checkpoint...")
@@ -133,7 +100,15 @@ class RuntimeState:
             self.MIN_TIME = self.manager.when_first_task_start_commit
             self.MAX_TIME = self.manager.time_end
 
-            self.update_pkl_files_info()
+            # update the pkl files info
+            pkl_dir = self.data_parser.pkl_files_dir
+            pkl_files = ['workers.pkl', 'files.pkl', 'tasks.pkl', 'manager.pkl', 'subgraphs.pkl']
+            for pkl_file in pkl_files:
+                file_path = os.path.join(pkl_dir, pkl_file)
+                info = self.get_file_stat(file_path)
+                if info:
+                    self.pkl_files_info[file_path] = info
+            
             logger.info("Data reload completed successfully")
         except Exception as e:
             logger.error(f"Error reloading data: {e}")
@@ -146,7 +121,7 @@ class RuntimeState:
             logger.info(f"Runtime template already set to: {runtime_template}")
             return
         self.runtime_template = os.path.join(os.getcwd(), LOGS_DIR, Path(runtime_template).name)
-        logger.info(f"Restoring data for: {runtime_template}")
+        logger.info(f"Restoring data for runtime template: {runtime_template}")
 
         self.data_parser = DataParser(self.runtime_template)
         self.svg_files_dir = self.data_parser.svg_files_dir
@@ -161,7 +136,9 @@ class RuntimeState:
         self.MIN_TIME = self.manager.when_first_task_start_commit
         self.MAX_TIME = self.manager.time_end
 
-        self.update_pkl_files_info()
+        self.reload_data()
+
+        logger.info(f"Runtime template changed to: {runtime_template}")
 
 logger = Logger()
 runtime_state = RuntimeState()
