@@ -23,7 +23,7 @@ SAMPLING_POINTS = 10000  # at lease 3: the beginning, the end, and the global pe
 SAMPLING_TASK_BARS = 100000   # how many task bars to show
 
 SERVICE_API_LISTS = [
-    'execution-details',
+    'task-execution-details',
     'task-execution-time',
     'task-concurrency',
     'storage-consumption',

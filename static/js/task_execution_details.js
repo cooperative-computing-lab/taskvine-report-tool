@@ -3,8 +3,8 @@ import { setupZoomAndScroll } from './tools.js';
 
 const buttonReset = document.getElementById('button-reset-task-execution-details');
 const buttonDownload = document.getElementById('button-download-task-execution-details');
-const svgContainer = document.getElementById('execution-details-container');
-const svgElement = d3.select('#execution-details');
+const svgContainer = document.getElementById('task-execution-details-container');
+const svgElement = d3.select('#task-execution-details');
 const tooltip = document.getElementById('vine-tooltip');
 
 const state = {
@@ -90,7 +90,7 @@ function getFailureType(status) {
 }
 
 function setLegend() {
-    const legendContainer = document.getElementById('execution-details-legend');
+    const legendContainer = document.getElementById('task-execution-details-legend');
     legendContainer.innerHTML = '';
 
     // Create failure items based on num_of_status data
@@ -606,19 +606,19 @@ function plotAxis(svg, svgWidth, svgHeight) {
 }
 
 function handleResetClick() {
-    document.querySelector('#execution-details').style.width = '100%';
-    document.querySelector('#execution-details').style.height = '100%';
+    document.querySelector('#task-execution-details').style.width = '100%';
+    document.querySelector('#task-execution-details').style.height = '100%';
     plotExecutionDetails();
 }
 function handleDownloadClick() {
-    downloadSVG('execution-details');
+    downloadSVG('task-execution-details');
 }
 
 async function initialize() {
     try {
         svgElement.selectAll('*').remove();
 
-        const url = `/api/execution-details`;
+        const url = `/api/task-execution-details`;
         const response = await fetch(url);
         const data = await response.json();
         
@@ -647,12 +647,12 @@ async function initialize() {
         buttonReset.removeEventListener('click', handleResetClick);
         buttonReset.addEventListener('click', handleResetClick);
 
-        document.querySelector('#execution-details').style.width = '100%';
-        document.querySelector('#execution-details').style.height = '100%';
+        document.querySelector('#task-execution-details').style.width = '100%';
+        document.querySelector('#task-execution-details').style.height = '100%';
         plotExecutionDetails();
-        setupZoomAndScroll('#execution-details', '#execution-details-container');
+        setupZoomAndScroll('#task-execution-details', '#task-execution-details-container');
     } catch (error) {
-        console.error('Error fetching execution details:', error);
+        console.error('Error fetching task execution details:', error);
     }
 }
 

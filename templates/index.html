@@ -73,19 +73,6 @@
             </select>
         </div>
 
-        <div class="sidebar-section-title">Report</div>
-
-        <button data-target="#manager-summary-title" class="report-scroll-btn">Manager Summary</button>
-        <button data-target="#tasks-completed-title" class="report-scroll-btn">Tasks Completed</button>
-        <button data-target="#tasks-failed-title" class="report-scroll-btn">Tasks Failed</button>
-        <button data-target="#tasks-execution-details-title" class="report-scroll-btn">Tasks Execution Details</button>
-        <button data-target="#worker-summary-title" class="report-scroll-btn">Worker Summary</button>
-        <button data-target="#worker-concurrency-title" class="report-scroll-btn">Worker Concurrency</button>
-        <button data-target="#worker-disk-usage-title" class="report-scroll-btn">Worker Disk Usage</button>
-        <button data-target="#graph-info-title" class="report-scroll-btn">DAG Summary</button>
-        <button data-target="#subgraph-info-title" class="report-scroll-btn">DAG Components</button>
-        <button data-target="#file-summary-title" class="report-scroll-btn">File Summary</button>
-
     </div>
  
     <div id="content">
@@ -97,14 +84,14 @@
                 <button id="button-reset-task-execution-details" class="report-button">Reset</button>
                 <button id="button-download-task-execution-details" class="report-button">Download SVG</button>
             </div>
-            <div id="execution-details-tip" class="error-tip">This manager exited unexpectedly, choose the last appeared timestamp as the manager end time.</div>
+            <div id="task-execution-details-tip" class="error-tip">This manager exited unexpectedly, choose the last appeared timestamp as the manager end time.</div>
         </div>
 
-        <div id="execution-details-legend" class="legend-container">
+        <div id="task-execution-details-legend" class="legend-container">
             <!-- Legend items will be added by JavaScript -->
         </div>
-        <div id="execution-details-container" class="container-alpha">
-            <svg id="execution-details" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div id="task-execution-details-container" class="container-alpha">
+            <svg id="task-execution-details" xmlns="http://www.w3.org/2000/svg"></svg>
         </div>
 
         

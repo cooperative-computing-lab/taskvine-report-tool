@@ -3,9 +3,9 @@ from .runtime_state import *
 task_execution_details_bp = Blueprint('task_execution_details', __name__, url_prefix='/api')
 
 
-@task_execution_details_bp.route('/execution-details')
+@task_execution_details_bp.route('/task-execution-details')
 @check_and_reload_data()
-def get_execution_details():
+def get_task_execution_details():
     try:
         data: Dict[str, Any] = {}
 

@@ -187,7 +187,7 @@ if __name__ == "__main__":
         {"name": "task-concurrency", "params": {
             "types": "tasks_done"
         }},
-        {"name": "execution-details", "params": None},
+        {"name": "task-execution-details", "params": None},
         {"name": "subgraphs", "params": {"subgraph_id": 1,
                                          "plot_unsuccessful_task": 'true',
                                          "plot_recovery_task": 'true'
