@@ -1,4 +1,10 @@
-from .runtime_state import *
+from .runtime_state import runtime_state, check_and_reload_data
+
+import graphviz
+import os
+import traceback
+from pathlib import Path
+from flask import Blueprint, jsonify, request
 
 
 subgraphs_bp = Blueprint('subgraphs', __name__, url_prefix='/api')
@@ -98,7 +104,7 @@ def get_subgraphs():
 
             def plot_task_node(dot, task):
                 task_id = task.task_id
-                task_try_id = task.task_try_id
+                # task_try_id = task.task_try_id
                 stats = task_stats[task_id]
 
                 # Use a single node ID based on task_id

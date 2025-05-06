@@ -1,4 +1,8 @@
-from .runtime_state import *
+from .runtime_state import runtime_state, SAMPLING_TASK_BARS, check_and_reload_data
+
+import traceback
+from collections import defaultdict
+from flask import Blueprint, jsonify
 
 task_execution_details_bp = Blueprint(
     'task_execution_details', __name__, url_prefix='/api')
@@ -8,7 +12,7 @@ task_execution_details_bp = Blueprint(
 @check_and_reload_data()
 def get_task_execution_details():
     try:
-        data: Dict[str, Any] = {}
+        data = {}
 
         data['xMin'] = 0
         data['xMax'] = runtime_state.MAX_TIME - runtime_state.MIN_TIME
