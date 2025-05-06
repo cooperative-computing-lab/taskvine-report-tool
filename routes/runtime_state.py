@@ -15,11 +15,23 @@ import time
 from src.logger import Logger
 from src.utils import *
 import threading
+from collections import defaultdict
 import queue
 
 LOGS_DIR = 'logs'
 SAMPLING_POINTS = 10000  # at lease 3: the beginning, the end, and the global peak
 SAMPLING_TASK_BARS = 100000   # how many task bars to show
+
+SERVICE_API_LISTS = [
+    'execution-details',
+    'task-execution-time',
+    'task-concurrency',
+    'storage-consumption',
+    'file-transfers',
+    'file-sizes',
+    'file-replicas',
+    'subgraphs',
+]
 
 
 def check_and_reload_data():
@@ -57,6 +69,14 @@ class RuntimeState:
 
         # set logger
         self.logger = Logger()
+
+        # last time process the template change
+        self.last_template_change_time = 0
+        self.is_processing_template_change = False
+        self.template_change_lock = threading.Lock()
+
+        self.api_requested = defaultdict(int)
+        self.api_responded = defaultdict(int)
 
     @property
     def log_prefix(self):
@@ -126,6 +146,15 @@ class RuntimeState:
         if self.runtime_template and Path(runtime_template).name == Path(self.runtime_template).name:
             self.log_info(f"Runtime template already set to: {runtime_template}")
             return True
+        
+        with self.template_change_lock:
+            if self.is_processing_template_change:
+                self.log_info(f"Busy with another template change, skipping...")
+                return False
+            
+            self.is_processing_template_change = True
+            self.last_template_change_time = time.time()
+
         self.runtime_template = os.path.join(os.getcwd(), LOGS_DIR, Path(runtime_template).name)
         self.log_info(f"Restoring data for runtime template: {runtime_template}")
 

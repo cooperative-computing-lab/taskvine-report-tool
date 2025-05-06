@@ -3,11 +3,19 @@ from routes.runtime_state import *
 
 app = Flask(__name__)
 
+
 def setup_request_logging(app, runtime_state):
     @app.before_request
     def log_request_info():
         runtime_state.logger.log_request(request)
         request._start_time = time.time()
+
+        # clear if we change to a new runtime template
+        if request.path == "/api/change-runtime-template":
+            runtime_state.api_requested.clear()
+        if request.path.startswith('/api/'):
+            basename = os.path.basename(request.path)
+            runtime_state.api_requested[basename] += 1
     
     @app.after_request
     def log_response_info(response):
@@ -16,8 +24,14 @@ def setup_request_logging(app, runtime_state):
             runtime_state.logger.log_response(response, request, duration)
         else:
             runtime_state.logger.log_response(response, request)
+
+        # clear if we change to a new runtime template
+        if request.path == "/api/change-runtime-template":
+            runtime_state.api_responded.clear()
+        if hasattr(request, '_start_time'):
+            runtime_state.api_responded[os.path.basename(request.path)] += 1
         return response
-        
+
     return app
 
 setup_request_logging(app, runtime_state)
