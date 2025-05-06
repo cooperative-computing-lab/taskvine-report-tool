@@ -94,8 +94,9 @@ def get_task_concurrency():
 
             # Collect task state data
             if 'tasks_waiting' in selected_types and task.when_ready:
+                # waiting tasks can happen before the start time
                 data['tasks_waiting'].append(
-                    (task.when_ready - runtime_state.MIN_TIME, 1))
+                    (max(task.when_ready - runtime_state.MIN_TIME, 0), 1))
                 if task.when_running:
                     data['tasks_waiting'].append(
                         (task.when_running - runtime_state.MIN_TIME, -1))
