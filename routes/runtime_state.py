@@ -54,17 +54,6 @@ class RuntimeState:
 
         self.pkl_files_info = {}
 
-    def get_file_stat(self, file_path):
-        try:
-            stat = os.stat(file_path)
-            return {
-                'mtime': stat.st_mtime,
-                'size': stat.st_size
-            }
-        except Exception as e:
-            logger.error(f"Error getting file info for {file_path}: {e}")
-            return None
-
     def check_pkl_files_changed(self):
         if not self.runtime_template or not self.data_parser:
             return False
@@ -74,7 +63,7 @@ class RuntimeState:
         
         for pkl_file in pkl_files:
             file_path = os.path.join(pkl_dir, pkl_file)
-            current_stat = self.get_file_stat(file_path)
+            current_stat = get_file_stat(file_path)
             
             if not current_stat:
                 continue
@@ -105,7 +94,7 @@ class RuntimeState:
             pkl_files = ['workers.pkl', 'files.pkl', 'tasks.pkl', 'manager.pkl', 'subgraphs.pkl']
             for pkl_file in pkl_files:
                 file_path = os.path.join(pkl_dir, pkl_file)
-                info = self.get_file_stat(file_path)
+                info = get_file_stat(file_path)
                 if info:
                     self.pkl_files_info[file_path] = info
             

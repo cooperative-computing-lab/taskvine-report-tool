@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 
 
 # check if all subfolders exist
@@ -22,3 +23,14 @@ def get_unit_and_scale_by_max_file_size_mb(max_file_size_mb) -> tuple[str, float
         return 'TB', 1 / (1024 * 1024)
     else:
         return 'MB', 1
+
+# get the file stat
+def get_file_stat(file_path):
+    try:
+        stat = os.stat(file_path)
+        return {
+            'mtime': stat.st_mtime,
+            'size': stat.st_size
+        }
+    except Exception as e:
+        return None
