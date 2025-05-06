@@ -57,12 +57,6 @@ class RuntimeState:
 
         # set logger
         self.logger = Logger()
-        
-        # queue for template change requests
-        self.template_queue = queue.Queue()
-        # start a worker thread to process template change requests
-        self.worker_thread = threading.Thread(target=self._process_queue, daemon=True)
-        self.worker_thread.start()
 
     @property
     def log_prefix(self):
@@ -76,31 +70,6 @@ class RuntimeState:
 
     def log_warning(self, message):
         self.logger.warning(f"{self.log_prefix} {message}")
-
-    def _process_queue(self):
-        while True:
-            try:
-                template = self.template_queue.get()
-                self.log_info(f"Processing queued template change: {template}")
-
-                try:
-                    self.change_runtime_template(template)
-                except Exception as e:
-                    self.log_error(f"Error processing template change: {e}")
-                    traceback.print_exc()
-                finally:
-                    self.template_queue.task_done()
-            except Exception as e:
-                self.log_error(f"Error in queue worker: {e}")
-                time.sleep(0.5)
-
-    def queue_template_change(self, runtime_template):
-        if not runtime_template:
-            return False
-
-        self.template_queue.put(runtime_template)
-        self.log_info(f"Queued template change: {runtime_template}")
-        return True
 
     def check_pkl_files_changed(self):
         if not self.runtime_template or not self.data_parser:
@@ -153,10 +122,10 @@ class RuntimeState:
 
     def change_runtime_template(self, runtime_template):
         if not runtime_template:
-            return
+            return False
         if self.runtime_template and Path(runtime_template).name == Path(self.runtime_template).name:
             self.log_info(f"Runtime template already set to: {runtime_template}")
-            return
+            return True
         self.runtime_template = os.path.join(os.getcwd(), LOGS_DIR, Path(runtime_template).name)
         self.log_info(f"Restoring data for runtime template: {runtime_template}")
 
@@ -176,6 +145,8 @@ class RuntimeState:
         self.reload_data()
 
         self.log_info(f"Runtime template changed to: {runtime_template}")
+
+        return True
 
 
 runtime_state = RuntimeState()

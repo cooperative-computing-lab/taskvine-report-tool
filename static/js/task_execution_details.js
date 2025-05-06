@@ -514,8 +514,6 @@ function plotAxis(svg, svgWidth, svgHeight) {
             workerCoresMap.push(`${d.id}-${i}`);
         }
     });
-    
-    console.log("Generated workerCoresMap:", workerCoresMap);
 
     // Sort workerCoresMap to have smaller worker IDs at the bottom and smaller core IDs at the bottom within each worker
     workerCoresMap.sort((a, b) => {
@@ -590,8 +588,6 @@ function plotAxis(svg, svgWidth, svgHeight) {
         }
     }
     
-    console.log("Selected y-axis ticks:", selectedTicks);
-    
     const yAxis = d3.axisLeft(yScale)
         .tickValues(selectedTicks)
         .tickSizeOuter(0)
@@ -636,9 +632,6 @@ async function initialize() {
         state.tickFontSize = data.tickFontSize;
         state.xTickValues = data.xTickValues;
         state.yTickValues = data.yTickValues;
-        
-        console.log("Received from API - yTickValues:", data.yTickValues);
-        console.log("Worker info:", data.workerInfo);
         
         state.xMin = data.xMin;
         state.xMax = data.xMax;
