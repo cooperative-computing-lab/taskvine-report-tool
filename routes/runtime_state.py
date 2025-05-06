@@ -12,9 +12,10 @@ import random
 import traceback
 import functools
 import time
-import logging
 from src.logger import Logger
 from src.utils import *
+import threading
+import queue
 
 LOGS_DIR = 'logs'
 SAMPLING_POINTS = 10000  # at lease 3: the beginning, the end, and the global peak
@@ -54,6 +55,53 @@ class RuntimeState:
 
         self.pkl_files_info = {}
 
+        # set logger
+        self.logger = Logger()
+        
+        # queue for template change requests
+        self.template_queue = queue.Queue()
+        # start a worker thread to process template change requests
+        self.worker_thread = threading.Thread(target=self._process_queue, daemon=True)
+        self.worker_thread.start()
+
+    @property
+    def log_prefix(self):
+        return f"[{self.runtime_template}]"
+
+    def log_info(self, message):
+        self.logger.info(f"{self.log_prefix} {message}")
+
+    def log_error(self, message):
+        self.logger.error(f"{self.log_prefix} {message}")
+
+    def log_warning(self, message):
+        self.logger.warning(f"{self.log_prefix} {message}")
+
+    def _process_queue(self):
+        while True:
+            try:
+                template = self.template_queue.get()
+                self.log_info(f"Processing queued template change: {template}")
+
+                try:
+                    self.change_runtime_template(template)
+                except Exception as e:
+                    self.log_error(f"Error processing template change: {e}")
+                    traceback.print_exc()
+                finally:
+                    self.template_queue.task_done()
+            except Exception as e:
+                self.log_error(f"Error in queue worker: {e}")
+                time.sleep(0.5)
+
+    def queue_template_change(self, runtime_template):
+        if not runtime_template:
+            return False
+
+        self.template_queue.put(runtime_template)
+        self.log_info(f"Queued template change: {runtime_template}")
+        return True
+
     def check_pkl_files_changed(self):
         if not self.runtime_template or not self.data_parser:
             return False
@@ -71,14 +119,14 @@ class RuntimeState:
             if (file_path not in self.pkl_files_info or 
                 current_stat['mtime'] != self.pkl_files_info[file_path]['mtime'] or 
                 current_stat['size'] != self.pkl_files_info[file_path]['size']):
-                logger.info(f"Detected changes in {pkl_file}")
+                self.log_info(f"Detected changes in {pkl_file}")
                 return True
 
         return False
     
     def reload_data(self):
         try:
-            logger.info("Reloading data from checkpoint...")
+            self.log_info(f"Reloading data from checkpoint...")
             self.data_parser.restore_from_checkpoint()
             self.manager = self.data_parser.manager
             self.workers = self.data_parser.workers
@@ -98,19 +146,19 @@ class RuntimeState:
                 if info:
                     self.pkl_files_info[file_path] = info
             
-            logger.info("Data reload completed successfully")
+            self.log_info(f"Data reload completed successfully")
         except Exception as e:
-            logger.error(f"Error reloading data: {e}")
+            self.log_error(f"Error reloading data: {e}")
             traceback.print_exc()
 
     def change_runtime_template(self, runtime_template):
         if not runtime_template:
             return
         if self.runtime_template and Path(runtime_template).name == Path(self.runtime_template).name:
-            logger.info(f"Runtime template already set to: {runtime_template}")
+            self.log_info(f"Runtime template already set to: {runtime_template}")
             return
         self.runtime_template = os.path.join(os.getcwd(), LOGS_DIR, Path(runtime_template).name)
-        logger.info(f"Restoring data for runtime template: {runtime_template}")
+        self.log_info(f"Restoring data for runtime template: {runtime_template}")
 
         self.data_parser = DataParser(self.runtime_template)
         self.svg_files_dir = self.data_parser.svg_files_dir
@@ -127,7 +175,7 @@ class RuntimeState:
 
         self.reload_data()
 
-        logger.info(f"Runtime template changed to: {runtime_template}")
+        self.log_info(f"Runtime template changed to: {runtime_template}")
 
-logger = Logger()
+
 runtime_state = RuntimeState()

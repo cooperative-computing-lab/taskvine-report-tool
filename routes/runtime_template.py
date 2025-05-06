@@ -23,13 +23,13 @@ def get_runtime_template_list():
 @runtime_template_bp.route('/change-runtime-template')
 def change_runtime_template():
     runtime_template = request.args.get('runtime_template')
-    runtime_state.change_runtime_template(runtime_template)
-    return jsonify({'success': True})
+    success = runtime_state.queue_template_change(runtime_template)
+    return jsonify({'success': success})
 
 @runtime_template_bp.route('/logs/<runtime_template>')
 def render_log_page(runtime_template):
     log_folders = [name for name in os.listdir(LOGS_DIR) if os.path.isdir(os.path.join(LOGS_DIR, name))]
     log_folders_sorted = sorted(log_folders)
     if runtime_template != runtime_state.runtime_template:
-        runtime_state.change_runtime_template(runtime_template)
+        runtime_state.queue_template_change(runtime_template)
     return render_template('index.html', log_folders=log_folders_sorted)
