@@ -1,22 +1,13 @@
-from flask import Flask, render_template, jsonify, Response, request, send_from_directory, Blueprint
 import os
-import argparse
-import pandas as pd
-from typing import Dict, Any
 from pathlib import Path
 from collections import defaultdict
-import graphviz
 from src.data_parse import DataParser
-import numpy as np
-import random
 import traceback
 import functools
 import time
 from src.logger import Logger
 from src.utils import *
 import threading
-from collections import defaultdict
-import queue
 
 LOGS_DIR = 'logs'
 SAMPLING_POINTS = 10000  # at lease 3: the beginning, the end, and the global peak
@@ -134,7 +125,7 @@ class RuntimeState:
     def reload_data(self):
         with self.reload_lock:
             try:
-                self.log_info(f"Reloading data from checkpoint...")
+                self.log_info("Reloading data from checkpoint...")
                 self.data_parser.restore_from_checkpoint()
                 self.manager = self.data_parser.manager
                 self.workers = self.data_parser.workers
@@ -155,7 +146,7 @@ class RuntimeState:
                     if info:
                         self.pkl_files_info[file_path] = info
 
-                self.log_info(f"Data reload completed successfully")
+                self.log_info("Data reload completed successfully")
             except Exception as e:
                 self.log_error(f"Error reloading data: {e}")
                 traceback.print_exc()
