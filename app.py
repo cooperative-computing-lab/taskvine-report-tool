@@ -3,6 +3,25 @@ from routes.runtime_state import *
 
 app = Flask(__name__)
 
+def setup_request_logging(app):
+    @app.before_request
+    def log_request_info():
+        logger.log_request(request)
+        request._start_time = time.time()
+    
+    @app.after_request
+    def log_response_info(response):
+        if hasattr(request, '_start_time'):
+            duration = time.time() - request._start_time
+            logger.log_response(response, request, duration)
+        else:
+            logger.log_response(response, request)
+        return response
+        
+    return app
+
+setup_request_logging(app)
+
 # tasks
 from routes.task_execution_details import task_execution_details_bp
 app.register_blueprint(task_execution_details_bp)
@@ -32,7 +51,6 @@ from routes.runtime_template import runtime_template_bp
 app.register_blueprint(runtime_template_bp)
 
 
-
 @app.route('/')
 def index():
     log_folders = [name for name in os.listdir(LOGS_DIR) if os.path.isdir(os.path.join(LOGS_DIR, name))]
@@ -45,4 +63,5 @@ if __name__ == "__main__":
     parser.add_argument('--port', default=9122, help='Port number')
     args = parser.parse_args()
     
+    logger.info(f"Starting application on port {args.port}")
     app.run(host='0.0.0.0', port=args.port, debug=True, use_reloader=False)

@@ -12,6 +12,8 @@ import random
 import traceback
 import functools
 import time
+import logging
+from src.logger import Logger
 
 LOGS_DIR = 'logs'
 SAMPLING_POINTS = 10000  # at lease 3: the beginning, the end, and the global peak
@@ -80,7 +82,7 @@ class RuntimeState:
                 'size': stat.st_size
             }
         except Exception as e:
-            print(f"Error getting file info for {file_path}: {e}")
+            logger.error(f"Error getting file info for {file_path}: {e}")
             return None
 
     def check_pkl_files_changed(self):
@@ -100,7 +102,7 @@ class RuntimeState:
             if (file_path not in self.pkl_files_info or 
                 current_stat['mtime'] != self.pkl_files_info[file_path]['mtime'] or 
                 current_stat['size'] != self.pkl_files_info[file_path]['size']):
-                print(f"Detected changes in {pkl_file}")
+                logger.info(f"Detected changes in {pkl_file}")
                 return True
 
         return False
@@ -120,7 +122,7 @@ class RuntimeState:
 
     def reload_data(self):
         try:
-            print("Reloading data from checkpoint...")
+            logger.info("Reloading data from checkpoint...")
             self.data_parser.restore_from_checkpoint()
             self.manager = self.data_parser.manager
             self.workers = self.data_parser.workers
@@ -132,19 +134,19 @@ class RuntimeState:
             self.MAX_TIME = self.manager.time_end
 
             self.update_pkl_files_info()
-            print("Data reload completed successfully")
+            logger.info("Data reload completed successfully")
         except Exception as e:
-            print(f"Error reloading data: {e}")
+            logger.error(f"Error reloading data: {e}")
             traceback.print_exc()
 
     def change_runtime_template(self, runtime_template):
         if not runtime_template:
             return
         if self.runtime_template and Path(runtime_template).name == Path(self.runtime_template).name:
-            print(f"Runtime template already set to: {runtime_template}")
+            logger.info(f"Runtime template already set to: {runtime_template}")
             return
         self.runtime_template = os.path.join(os.getcwd(), LOGS_DIR, Path(runtime_template).name)
-        print(f"Restoring data for: {runtime_template}")
+        logger.info(f"Restoring data for: {runtime_template}")
 
         self.data_parser = DataParser(self.runtime_template)
         self.svg_files_dir = self.data_parser.svg_files_dir
@@ -161,5 +163,5 @@ class RuntimeState:
 
         self.update_pkl_files_info()
 
-
+logger = Logger()
 runtime_state = RuntimeState()
