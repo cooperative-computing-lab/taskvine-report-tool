@@ -55,26 +55,6 @@ class Logger:
     def debug(self, message):
         self.logger.debug(message)
     
-    def log_request(self, request):
-        method = request.method
-        path = request.path
-        args = dict(request.args)
-        headers = {k: v for k, v in request.headers if k not in ['Cookie', 'Authorization']}
-        remote_addr = request.remote_addr
-        
-        request_info = {
-            'method': method,
-            'path': path,
-            'args': args,
-            'headers': headers,
-            'remote_addr': remote_addr
-        }
-        
-        if path.startswith('/api/'):
-            self.info(f"API Request: {method} {path} - {request_info}")
-        else:
-            self.info(f"HTTP Request: {method} {path}")
-    
     def log_response(self, response, request, duration=None):
         path = request.path
         status_code = response.status_code

@@ -8,7 +8,6 @@ async function initializeLogViewer() {
         
         logSelector.innerHTML = '';
         
-        // Add a default "please select" option
         const defaultOption = document.createElement('option');
         defaultOption.value = '';
         defaultOption.textContent = '--- select log ---';
@@ -24,11 +23,11 @@ async function initializeLogViewer() {
 
         logSelector.addEventListener('change', handleLogChange);
 
-        // Restore previously selected log folder from localStorage
-        const savedFolder = localStorage.getItem('selectedLogFolder');
+        // restore previously selected log folder
+        const savedFolder = sessionStorage.getItem('selectedLogFolder');
         if (savedFolder && logFolders.includes(savedFolder)) {
             logSelector.value = savedFolder;
-            // Only trigger change event if there was a saved selection
+            // only trigger change event if there was a saved selection
             logSelector.dispatchEvent(new Event('change'));
         }
     } catch (error) {
@@ -37,18 +36,23 @@ async function initializeLogViewer() {
 }
 
 async function handleLogChange() {
-    // Only proceed if a valid option is selected (not the default one)
+    // only proceed if a valid option is selected (not the default one)
     if (!logSelector.value) {
         return;
     }
     
+    // save current selection to sessionStorage
+    sessionStorage.setItem('selectedLogFolder', logSelector.value);
+    
+    // try to change the runtime template with retry mechanism
+    await changeRuntimeTemplateWithRetry();
+}
+
+async function changeRuntimeTemplateWithRetry() {
     try {
         document.querySelectorAll('.error-tip').forEach(tip => {
             tip.style.visibility = 'hidden';
         });
-
-        // Save current selection to localStorage
-        localStorage.setItem('selectedLogFolder', logSelector.value);
 
         const response = await fetch(`/api/change-runtime-template?runtime_template=${logSelector.value}`);
         const result = await response.json();
@@ -56,10 +60,15 @@ async function handleLogChange() {
         if (result.success) {
             document.dispatchEvent(new Event('dataLoaded'));
         } else {
-            console.error('Failed to change runtime template');
+            console.error('Failed to change runtime template, retrying in 8 seconds...');
+            // retry after 8 seconds
+            setTimeout(() => changeRuntimeTemplateWithRetry(), 8000);
         }
     } catch (error) {
         console.error('Error changing runtime template:', error);
+        console.log('Retrying in 8 seconds...');
+        // retry after 8 seconds
+        setTimeout(() => changeRuntimeTemplateWithRetry(), 8000);
     }
 }
 
