@@ -1,14 +1,14 @@
 import { downloadSVG } from './tools.js';
 import { setupZoomAndScroll } from './tools.js';
 
-// Global color definitions
+// colors for visualization
 const PRIMARY_COLOR = '#2077B4';
 const HIGHLIGHT_COLOR = 'orange';
 
 const dotRadius = 1.5;
 const highlightRadius = 3;
 
-// State variables for visualization
+// state for visualization
 const state = {
     taskExecutionTime: [],
     taskExecutionTimeCDF: [],
@@ -17,10 +17,10 @@ const state = {
     showCDF: false
 };
 
-// Create tooltip div if it doesn't exist
+// tooltip element
 const tooltip = d3.select('body').select('#vine-tooltip');
 
-// DOM elements - moved to variables without immediate initialization
+// dom elements
 let buttonReset;
 let buttonDownload;
 let buttonToggleCDF;
@@ -81,20 +81,19 @@ function setupEventListeners() {
 
 async function initialize() {
     try {
-        // Initialize DOM element references only when the function is called
-        // This ensures they exist in the DOM before being accessed
+        // init dom elements
         buttonReset = document.getElementById('button-reset-task-execution-time');
         buttonDownload = document.getElementById('button-download-task-execution-time');
         buttonToggleCDF = document.getElementById('button-toggle-cdf');
         svgContainer = document.getElementById('task-execution-time-container');
         svgElement = d3.select('#task-execution-time');
         
-        // Clear any previous content
+        // clear previous content
         svgElement.selectAll('*').remove();
         state.taskExecutionTime = [];
         state.taskExecutionTimeCDF = [];
 
-        // Setup event listeners now that we have the DOM elements
+        // setup event listeners
         setupEventListeners();
 
         const response = await fetch('/api/task-execution-time');
@@ -268,7 +267,6 @@ function handleResetClick() {
     plotExecutionTime();
 }
 
-// Just add event listener for dataLoaded event, don't set up DOM elements yet
-// Wait until initialize() is called when the event is triggered
+// wait for dataLoaded event before initializing
 window.document.addEventListener('dataLoaded', initialize);
 window.addEventListener('resize', _.debounce(() => plotExecutionTime(), 300)); 

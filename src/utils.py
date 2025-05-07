@@ -2,7 +2,7 @@ from pathlib import Path
 import os
 
 
-# check if all subfolders exist
+# check if all required subfolders exist
 def all_subfolders_exists(parent: str, folder_names: list[str]) -> bool:
     parent_path = Path(parent).resolve()
     for folder_name in folder_names:
@@ -11,9 +11,7 @@ def all_subfolders_exists(parent: str, folder_names: list[str]) -> bool:
             return False
     return True
 
-# calculate the file size unit, the default is MB
-
-
+# get file size unit and scale factor based on max size
 def get_unit_and_scale_by_max_file_size_mb(max_file_size_mb) -> tuple[str, float]:
     if max_file_size_mb < 1 / 1024:
         return 'Bytes',  1024 * 1024
@@ -26,9 +24,7 @@ def get_unit_and_scale_by_max_file_size_mb(max_file_size_mb) -> tuple[str, float
     else:
         return 'MB', 1
 
-# get the file stat
-
-
+# get file stats safely
 def get_file_stat(file_path):
     try:
         stat = os.stat(file_path)

@@ -10,31 +10,30 @@ task_execution_time_bp = Blueprint(
 
 
 def downsample_task_execution_time(points):
-    # downsample task execution time points while keeping the first point, last point, and peak execution time
+    # downsample while keeping first, last, and peak points
     if len(points) <= SAMPLING_POINTS:
         return points
 
-    # Find global peak (maximum execution time)
-    # points[i][1] is execution_time
+    # find global peak (maximum execution time)
     global_peak_idx = max(range(len(points)), key=lambda i: points[i][1])
     global_peak = points[global_peak_idx]
 
-    # Keep the first point, last point, and global peak
+    # keep key points
     keep_indices = {0, len(points) - 1, global_peak_idx}
 
-    # Calculate remaining points to sample
+    # calculate remaining points to sample
     remaining_points = SAMPLING_POINTS - len(keep_indices)
     if remaining_points <= 0:
         return [points[0], global_peak, points[-1]]
 
-    # Sort the indices we want to keep to find gaps between them
+    # sort indices to find gaps
     sorted_keep_indices = sorted(keep_indices)
 
-    # Calculate points to keep in each gap
+    # calculate points per gap
     points_per_gap = remaining_points // (len(sorted_keep_indices) - 1)
     extra_points = remaining_points % (len(sorted_keep_indices) - 1)
 
-    # For each gap between key points, randomly sample points
+    # for each gap, sample points randomly
     for i in range(len(sorted_keep_indices) - 1):
         start_idx = sorted_keep_indices[i]
         end_idx = sorted_keep_indices[i + 1]
@@ -43,20 +42,20 @@ def downsample_task_execution_time(points):
         if gap_size <= 0:
             continue
 
-        # Calculate how many points to keep in this gap
+        # calculate points for this gap
         current_gap_points = points_per_gap
         if extra_points > 0:
             current_gap_points += 1
             extra_points -= 1
 
         if current_gap_points > 0:
-            # Randomly sample points from this gap
+            # randomly sample from gap
             available_indices = list(range(start_idx + 1, end_idx))
             sampled_indices = random.sample(available_indices, min(
                 current_gap_points, len(available_indices)))
             keep_indices.update(sampled_indices)
 
-    # Sort all indices and return the corresponding points
+    # return sorted points
     result = [points[i] for i in sorted(keep_indices)]
     return result
 
@@ -67,47 +66,40 @@ def get_task_execution_time():
     try:
         data = {}
 
-        # Collect execution time data along with start time for sorting
+        # collect execution time data with start time for sorting
         task_data = []
         for task in runtime_state.tasks.values():
-            # skip if the task didn't run to completion
+            # skip incomplete tasks
             if task.task_status != 0:
                 continue
             task_execution_time = round(
                 task.time_worker_end - task.time_worker_start, 2)
-            # if a task completes very quickly, we set it to 0.01
+            # set minimum execution time to 0.01
             task_execution_time = max(task_execution_time, 0.01)
             task_data.append(
                 (task.task_id, task_execution_time, task.time_worker_start))
 
-        # Sort by the time when task started running
+        # sort by start time
         task_data.sort(key=lambda x: x[2])
         
-        # Remove the start time, keeping only task_id and execution_time for visualization
+        # prepare data for visualization
         task_execution_time_list = [(task_id, execution_time) for task_id, execution_time, _ in task_data]
 
-        # Comment out the original sorting by execution time
-        # task_execution_time_list.sort(key=lambda x: x[1])
-
-        # downsample the data points
-        # data['task_execution_time'] = downsample_task_execution_time(task_execution_time_list)
+        # use full dataset for now
         data['task_execution_time'] = task_execution_time_list
 
-        # Properly calculate the CDF
-        # Extract just the execution times
+        # calculate CDF
         execution_times = [x[1] for x in task_execution_time_list]
-        
-        # Sort the execution times in ascending order
         execution_times_sorted = sorted(execution_times)
         
-        # Calculate CDF points using numpy for better accuracy
+        # generate evenly spaced probability values
         cdf_values = np.linspace(0, 1, len(execution_times_sorted))
         cdf_points = [(execution_time, round(prob, 4)) for execution_time, prob in zip(execution_times_sorted, cdf_values)]
         
         data['task_execution_time_cdf'] = cdf_points
 
-        # tick values - use original data ranges to maintain proper axis scaling
-        num_tasks = len(task_execution_time_list)  # use original length
+        # create tick values for axes
+        num_tasks = len(task_execution_time_list)
         data['execution_time_x_tick_values'] = [
             1,
             round(num_tasks * 0.25, 2),
@@ -116,8 +108,7 @@ def get_task_execution_time():
             num_tasks
         ]
 
-        max_execution_time = max(
-            x[1] for x in task_execution_time_list)  # use original max
+        max_execution_time = max(x[1] for x in task_execution_time_list)
         data['execution_time_y_tick_values'] = [
             0,
             round(max_execution_time * 0.25, 2),

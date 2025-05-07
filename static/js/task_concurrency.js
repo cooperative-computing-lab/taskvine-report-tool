@@ -29,7 +29,7 @@ const state = {
     selectedTypes: new Set(['tasks_waiting', 'tasks_committing', 'tasks_executing', 'tasks_retrieving'])
 };
 
-// DOM elements - moved to variables without immediate initialization
+// dom elements
 let buttonReset;
 let buttonDownload;
 let svgContainer;
@@ -273,22 +273,21 @@ async function fetchData() {
 
 async function initialize() {
     try {
-        // Initialize DOM element references only when the function is called
-        // This ensures they exist in the DOM before being accessed
+        // init dom elements
         buttonReset = document.getElementById('button-reset-task-concurrency');
         buttonDownload = document.getElementById('button-download-task-concurrency');
         svgContainer = document.getElementById('task-concurrency-container');
         svgElement = d3.select('#task-concurrency');
         tooltip = document.getElementById('vine-tooltip');
 
-        // Setup event listeners
+        // setup event listeners
         buttonReset.addEventListener('click', handleResetClick);
         buttonDownload.addEventListener('click', () => downloadSVG('task-concurrency'));
         
-        // Setup checkboxes for task types
+        // setup legend checkboxes
         setupTaskTypeCheckboxes();
         
-        // Fetch data and setup visualization
+        // load data and render
         await fetchData();
         setupZoomAndScroll('#task-concurrency', '#task-concurrency-container');
     } catch (error) {
@@ -302,6 +301,6 @@ function handleResetClick() {
     plotTaskConcurrency();
 }
 
-// Just add event listener for dataLoaded event, don't set up DOM elements yet
+// wait for dataLoaded event before initializing
 window.document.addEventListener('dataLoaded', initialize);
 window.addEventListener('resize', _.debounce(() => plotTaskConcurrency(), 300)); 

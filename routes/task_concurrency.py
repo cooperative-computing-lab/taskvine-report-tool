@@ -9,31 +9,30 @@ task_concurrency_bp = Blueprint(
 
 
 def downsample_task_concurrency(points):
-    # If points are fewer than target, return all
+    # if points are fewer than target, return all
     if len(points) <= SAMPLING_POINTS:
         return points
 
-    # Find global peak (maximum concurrency)
-    # points[i][1] is concurrency
+    # find global peak (maximum concurrency)
     global_peak_idx = max(range(len(points)), key=lambda i: points[i][1])
     global_peak = points[global_peak_idx]
 
-    # Keep first, last and peak points
+    # keep first, last and peak points
     keep_indices = {0, len(points) - 1, global_peak_idx}
 
-    # Calculate remaining points to sample
+    # calculate remaining points to sample
     remaining_points = SAMPLING_POINTS - len(keep_indices)
     if remaining_points <= 0:
         return [points[0], global_peak, points[-1]]
 
-    # Sort key indices to find gaps
+    # sort key indices to find gaps
     sorted_keep_indices = sorted(keep_indices)
 
-    # Calculate points per gap
+    # calculate points per gap
     points_per_gap = remaining_points // (len(sorted_keep_indices) - 1)
     extra_points = remaining_points % (len(sorted_keep_indices) - 1)
 
-    # Sample points from each gap
+    # sample points from each gap
     for i in range(len(sorted_keep_indices) - 1):
         start_idx = sorted_keep_indices[i]
         end_idx = sorted_keep_indices[i + 1]
@@ -42,20 +41,20 @@ def downsample_task_concurrency(points):
         if gap_size <= 0:
             continue
 
-        # Calculate points for this gap
+        # calculate points for this gap
         current_gap_points = points_per_gap
         if extra_points > 0:
             current_gap_points += 1
             extra_points -= 1
 
         if current_gap_points > 0:
-            # Randomly sample from gap
+            # randomly sample from gap
             available_indices = list(range(start_idx + 1, end_idx))
             sampled_indices = random.sample(available_indices, min(
                 current_gap_points, len(available_indices)))
             keep_indices.update(sampled_indices)
 
-    # Return sorted points
+    # return sorted points
     result = [points[i] for i in sorted(keep_indices)]
     return result
 

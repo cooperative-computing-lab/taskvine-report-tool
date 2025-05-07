@@ -1,6 +1,7 @@
 import { downloadSVG } from './tools.js';
 import { setupZoomAndScroll } from './tools.js';
 
+// dom elements
 let buttonReset;
 let buttonDownload;
 let svgContainer;
@@ -21,10 +22,10 @@ const state = {
     num_unsuccessful_recovery_tasks: null
 };
 
-// highlight color
+// highlight color for hover effects
 const HIGHLIGHT_COLOR = 'orange';
 
-// failure types with their bit values
+// task failure types with bit values
 const FAILURE_TYPES = {
     'VINE_RESULT_INPUT_MISSING': { value: 1, color: '#FFB6C1', label: 'Input Missing' },
     'VINE_RESULT_OUTPUT_MISSING': { value: 2, color: '#FF69B4', label: 'Output Missing' },
@@ -47,7 +48,7 @@ const FAILURE_TYPES = {
     'WORKER_DISCONNECTED': { value: 15 << 3, color: '#FF0000', label: 'Worker Disconnected' }
 };
 
-// Update colors object
+// color mapping for different task states
 const colors = {
     'workers': 'lightgrey',
     'successful-committing-to-worker': '#4a4a4a',
@@ -58,7 +59,7 @@ const colors = {
     ...Object.fromEntries(Object.entries(FAILURE_TYPES).map(([key, value]) => [`unsuccessful-${key.toLowerCase()}`, value.color]))
 };
 
-// get the innerHTML of the task
+// get task tooltip content
 function getTaskInnerHTML(task) {
     let htmlContent = `
         task id: ${task.task_id || 'N/A'}<br>
@@ -78,7 +79,7 @@ function getTaskInnerHTML(task) {
     return htmlContent;
 }
 
-// find the failure type that matches the status value
+// find failure type from status code
 function getFailureType(status) {
     return Object.entries(FAILURE_TYPES).find(([_, type]) => type.value === status)?.[0];
 }
@@ -87,7 +88,7 @@ function setLegend() {
     const legendContainer = document.getElementById('task-execution-details-legend');
     legendContainer.innerHTML = '';
 
-    // Create failure items based on num_of_status data
+    // create failure items based on status counts
     const failureItems = Object.entries(FAILURE_TYPES)
         .filter(([_, type]) => state.num_of_status && state.num_of_status[type.value] > 0)
         .map(([key, value]) => ({
@@ -496,12 +497,12 @@ function calculateMargin() {
 }
 
 function plotAxis(svg, svgWidth, svgHeight) {
-    // set x scale
+    // x scale setup
     const xScale = d3.scaleLinear()
         .domain([state.xMin, state.xMax])
         .range([0, svgWidth]);
 
-    // set y scale
+    // y scale setup
     const workerCoresMap = [];
     state.workerInfo.forEach(d => {
         for (let i = 1; i <= +d.cores; i++) {
@@ -509,7 +510,7 @@ function plotAxis(svg, svgWidth, svgHeight) {
         }
     });
 
-    // Sort workerCoresMap to have smaller worker IDs at the bottom and smaller core IDs at the bottom within each worker
+    // sort for consistent display order (smaller IDs at bottom)
     workerCoresMap.sort((a, b) => {
         const [workerIdA, coreIdA] = a.split('-').map(Number);
         const [workerIdB, coreIdB] = b.split('-').map(Number);
@@ -557,7 +558,7 @@ function plotAxis(svg, svgWidth, svgHeight) {
             }
         });
     }
-    
+
     // If no ticks were selected (because backend values didn't match), use a fallback approach
     if (selectedTicks.length === 0) {
         // Calculate step size based on number of unique worker IDs
@@ -611,7 +612,7 @@ function handleDownloadClick() {
 
 async function initialize() {
     try {
-        // Initialize DOM element references only when the function is called
+        // init dom elements when called
         buttonReset = document.getElementById('button-reset-task-execution-details');
         buttonDownload = document.getElementById('button-download-task-execution-details');
         svgContainer = document.getElementById('task-execution-details-container');
@@ -628,7 +629,7 @@ async function initialize() {
             return;
         }
 
-        // Make sure we're using the correct property names from the API
+        // handle both naming conventions in API
         state.successfulTasks = data.successful_tasks || data.successfulTasks;
         state.unsuccessfulTasks = data.unsuccessful_tasks || data.unsuccessfulTasks;
         state.workerInfo = data.worker_info || data.workerInfo;
