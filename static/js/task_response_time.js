@@ -8,10 +8,10 @@ const HIGHLIGHT_COLOR = 'orange';
 const dotRadius = 1.5;
 const highlightRadius = 3;
 
-// State variables for visualization
+// State variables for the visualization
 const state = {
-    taskExecutionTime: [],
-    taskExecutionTimeCDF: [],
+    taskResponseTime: [],
+    taskResponseTimeCDF: [],
     tickValues: {},
     tickFontSize: null,
     showCDF: false
@@ -28,7 +28,7 @@ let svgContainer;
 let svgElement;
 
 function calculateMargin() {
-    if (!state.taskExecutionTime.length) {
+    if (!state.taskResponseTime.length) {
         return { top: 40, right: 30, bottom: 40, left: 30 };
     }
 
@@ -50,10 +50,10 @@ function calculateMargin() {
         tempSvg.selectAll('text').style('font-size', state.tickFontSize);
     } else {
         const tempYScale = d3.scaleLinear()
-            .domain([0, d3.max(state.taskExecutionTime, d => d[1])]);
+            .domain([0, d3.max(state.taskResponseTime, d => d[1])]);
 
         const tempYAxis = d3.axisLeft(tempYScale)
-            .tickValues(state.tickValues.executionTimeY)
+            .tickValues(state.tickValues.responseTimeY)
             .tickFormat(d => `${d.toFixed(2)}s`);
 
         tempSvg.call(tempYAxis);
@@ -70,12 +70,12 @@ function calculateMargin() {
 }
 
 function setupEventListeners() {
-    buttonDownload.addEventListener('click', () => downloadSVG('task-execution-time'));
+    buttonDownload.addEventListener('click', () => downloadSVG('task-response-time'));
     buttonReset.addEventListener('click', () => handleResetClick());
     buttonToggleCDF.addEventListener('click', () => {
         state.showCDF = !state.showCDF;
         buttonToggleCDF.textContent = state.showCDF ? 'Display Time' : 'Display CDF';
-        plotExecutionTime();
+        plotResponseTime();
     });
 }
 
@@ -83,46 +83,46 @@ async function initialize() {
     try {
         // Initialize DOM element references only when the function is called
         // This ensures they exist in the DOM before being accessed
-        buttonReset = document.getElementById('button-reset-task-execution-time');
-        buttonDownload = document.getElementById('button-download-task-execution-time');
-        buttonToggleCDF = document.getElementById('button-toggle-cdf');
-        svgContainer = document.getElementById('task-execution-time-container');
-        svgElement = d3.select('#task-execution-time');
+        buttonReset = document.getElementById('button-reset-task-response-time');
+        buttonDownload = document.getElementById('button-download-task-response-time');
+        buttonToggleCDF = document.getElementById('button-toggle-response-cdf');
+        svgContainer = document.getElementById('task-response-time-container');
+        svgElement = d3.select('#task-response-time');
         
         // Clear any previous content
         svgElement.selectAll('*').remove();
-        state.taskExecutionTime = [];
-        state.taskExecutionTimeCDF = [];
+        state.taskResponseTime = [];
+        state.taskResponseTimeCDF = [];
 
         // Setup event listeners now that we have the DOM elements
         setupEventListeners();
 
-        const response = await fetch('/api/task-execution-time');
+        const response = await fetch('/api/task-response-time');
         const data = await response.json();
 
         if (data) {
-            state.taskExecutionTime = data.task_execution_time;
-            state.taskExecutionTimeCDF = data.task_execution_time_cdf;
+            state.taskResponseTime = data.task_response_time;
+            state.taskResponseTimeCDF = data.task_response_time_cdf;
             state.tickValues = {
-                executionTimeX: data.execution_time_x_tick_values,
-                executionTimeY: data.execution_time_y_tick_values,
+                responseTimeX: data.response_time_x_tick_values,
+                responseTimeY: data.response_time_y_tick_values,
                 probabilityX: data.probability_x_tick_values,
                 probabilityY: data.probability_y_tick_values
             };
             state.tickFontSize = data.tickFontSize;
 
-            document.querySelector('#task-execution-time').style.width = '100%';
-            document.querySelector('#task-execution-time').style.height = '100%';
-            plotExecutionTime();
-            setupZoomAndScroll('#task-execution-time', '#task-execution-time-container');
+            document.querySelector('#task-response-time').style.width = '100%';
+            document.querySelector('#task-response-time').style.height = '100%';
+            plotResponseTime();
+            setupZoomAndScroll('#task-response-time', '#task-response-time-container');
         }
     } catch (error) {
         console.error('Error:', error);
     }
 }
 
-function plotExecutionTime() {
-    if (!state.taskExecutionTime.length) return;
+function plotResponseTime() {
+    if (!state.taskResponseTime.length) return;
 
     svgElement.selectAll('*').remove();
 
@@ -138,7 +138,7 @@ function plotExecutionTime() {
 
     if (state.showCDF) {
         const xScale = d3.scaleLinear()
-            .domain([0, d3.max(state.taskExecutionTimeCDF, d => d[0])])
+            .domain([0, d3.max(state.taskResponseTimeCDF, d => d[0])])
             .range([0, width]);
 
         const yScale = d3.scaleLinear()
@@ -147,7 +147,7 @@ function plotExecutionTime() {
 
         // Draw CDF line
         svg.append('path')
-            .datum(state.taskExecutionTimeCDF)
+            .datum(state.taskResponseTimeCDF)
             .attr('fill', 'none')
             .attr('stroke', PRIMARY_COLOR)
             .attr('stroke-width', 2)
@@ -158,7 +158,7 @@ function plotExecutionTime() {
 
         // Add interactive points on the CDF line
         svg.selectAll('circle')
-            .data(state.taskExecutionTimeCDF)
+            .data(state.taskResponseTimeCDF)
             .enter()
             .append('circle')
             .attr('cx', d => xScale(d[0]))
@@ -172,7 +172,7 @@ function plotExecutionTime() {
 
                 tooltip
                     .style('visibility', 'visible')
-                    .html(`Time: ${d[0].toFixed(2)}s<br>Probability: ${(d[1] * 100).toFixed(2)}%`);
+                    .html(`Response Time: ${d[0].toFixed(2)}s<br>Probability: ${(d[1] * 100).toFixed(2)}%`);
             })
             .on('mousemove', function(event) {
                 tooltip
@@ -204,18 +204,18 @@ function plotExecutionTime() {
             .style('font-size', `${state.tickFontSize}px`);
 
     } else {
-        // Plot execution time
+        // Plot response time
         const xScale = d3.scaleLinear()
-            .domain([0, state.taskExecutionTime.length])
+            .domain([0, state.taskResponseTime.length])
             .range([0, width]);
 
         const yScale = d3.scaleLinear()
-            .domain([0, d3.max(state.taskExecutionTime, d => d[1])])
+            .domain([0, d3.max(state.taskResponseTime, d => d[1])])
             .range([height, 0]);
 
         // Draw scatter plot with hover effects
         svg.selectAll('circle')
-            .data(state.taskExecutionTime)
+            .data(state.taskResponseTime)
             .enter()
             .append('circle')
             .attr('cx', (d, i) => xScale(i))
@@ -229,7 +229,7 @@ function plotExecutionTime() {
 
                 tooltip
                     .style('visibility', 'visible')
-                    .html(`Task ID: ${d[0]}<br>Execution Time: ${d[1].toFixed(2)}s`);
+                    .html(`Task ID: ${d[0]}<br>Response Time: ${d[1].toFixed(2)}s`);
             })
             .on('mousemove', function(event) {
                 tooltip
@@ -248,14 +248,14 @@ function plotExecutionTime() {
         svg.append('g')
             .attr('transform', `translate(0, ${height})`)
             .call(d3.axisBottom(xScale)
-                .tickValues(state.tickValues.executionTimeX)
+                .tickValues(state.tickValues.responseTimeX)
                 .tickFormat(d => Math.floor(d))
                 .tickSizeOuter(0))
             .style('font-size', `${state.tickFontSize}px`);
 
         svg.append('g')
             .call(d3.axisLeft(yScale)
-                .tickValues(state.tickValues.executionTimeY)
+                .tickValues(state.tickValues.responseTimeY)
                 .tickFormat(d => `${d.toFixed(2)}s`)
                 .tickSizeOuter(0))
             .style('font-size', `${state.tickFontSize}px`);
@@ -263,12 +263,12 @@ function plotExecutionTime() {
 }
 
 function handleResetClick() {
-    document.querySelector('#task-execution-time').style.width = '100%';
-    document.querySelector('#task-execution-time').style.height = '100%';
-    plotExecutionTime();
+    document.querySelector('#task-response-time').style.width = '100%';
+    document.querySelector('#task-response-time').style.height = '100%';
+    plotResponseTime();
 }
 
 // Just add event listener for dataLoaded event, don't set up DOM elements yet
 // Wait until initialize() is called when the event is triggered
 window.document.addEventListener('dataLoaded', initialize);
-window.addEventListener('resize', _.debounce(() => plotExecutionTime(), 300)); 
+window.addEventListener('resize', _.debounce(() => plotResponseTime(), 300)); 

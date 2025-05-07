@@ -1,11 +1,11 @@
 import { downloadSVG } from './tools.js';
 import { setupZoomAndScroll } from './tools.js';
 
-const buttonReset = document.getElementById('button-reset-task-execution-details');
-const buttonDownload = document.getElementById('button-download-task-execution-details');
-const svgContainer = document.getElementById('task-execution-details-container');
-const svgElement = d3.select('#task-execution-details');
-const tooltip = document.getElementById('vine-tooltip');
+let buttonReset;
+let buttonDownload;
+let svgContainer;
+let svgElement;
+let tooltip;
 
 const state = {
     successfulTasks: null,
@@ -14,12 +14,17 @@ const state = {
     xTickValues: null,
     yTickValues: null,
     tickFontSize: null,
+    xMin: null,
+    xMax: null,
+    num_of_status: null,
+    num_successful_recovery_tasks: null,
+    num_unsuccessful_recovery_tasks: null
 };
 
-// Global highlight color
+// highlight color
 const HIGHLIGHT_COLOR = 'orange';
 
-// Define failure types with their bit values
+// failure types with their bit values
 const FAILURE_TYPES = {
     'VINE_RESULT_INPUT_MISSING': { value: 1, color: '#FFB6C1', label: 'Input Missing' },
     'VINE_RESULT_OUTPUT_MISSING': { value: 2, color: '#FF69B4', label: 'Output Missing' },
@@ -73,19 +78,8 @@ function getTaskInnerHTML(task) {
     return htmlContent;
 }
 
-function parseTimeArray(timeStr) {
-    // Convert "[1739409589.49]" to array of numbers
-
-    try {
-        return JSON.parse(timeStr.replace(/'/g, '"')).map(Number);
-    } catch (e) {
-        console.error('Error parsing time:', timeStr);
-        return [];
-    }
-}
-
+// find the failure type that matches the status value
 function getFailureType(status) {
-    // Find the failure type that matches the status value
     return Object.entries(FAILURE_TYPES).find(([_, type]) => type.value === status)?.[0];
 }
 
@@ -610,12 +604,20 @@ function handleResetClick() {
     document.querySelector('#task-execution-details').style.height = '100%';
     plotExecutionDetails();
 }
+
 function handleDownloadClick() {
     downloadSVG('task-execution-details');
 }
 
 async function initialize() {
     try {
+        // Initialize DOM element references only when the function is called
+        buttonReset = document.getElementById('button-reset-task-execution-details');
+        buttonDownload = document.getElementById('button-download-task-execution-details');
+        svgContainer = document.getElementById('task-execution-details-container');
+        svgElement = d3.select('#task-execution-details');
+        tooltip = document.getElementById('vine-tooltip');
+        
         svgElement.selectAll('*').remove();
 
         const url = `/api/task-execution-details`;
@@ -626,12 +628,13 @@ async function initialize() {
             return;
         }
 
-        state.successfulTasks = data.successfulTasks;
-        state.unsuccessfulTasks = data.unsuccessfulTasks;
-        state.workerInfo = data.workerInfo;
+        // Make sure we're using the correct property names from the API
+        state.successfulTasks = data.successful_tasks || data.successfulTasks;
+        state.unsuccessfulTasks = data.unsuccessful_tasks || data.unsuccessfulTasks;
+        state.workerInfo = data.worker_info || data.workerInfo;
         state.tickFontSize = data.tickFontSize;
-        state.xTickValues = data.xTickValues;
-        state.yTickValues = data.yTickValues;
+        state.xTickValues = data.x_tick_values || data.xTickValues;
+        state.yTickValues = data.y_tick_values || data.yTickValues;
         
         state.xMin = data.xMin;
         state.xMax = data.xMax;
@@ -651,6 +654,10 @@ async function initialize() {
         document.querySelector('#task-execution-details').style.height = '100%';
         plotExecutionDetails();
         setupZoomAndScroll('#task-execution-details', '#task-execution-details-container');
+        
+        if (data.unexpected_exit && document.getElementById('task-execution-details-tip')) {
+            document.getElementById('task-execution-details-tip').style.visibility = 'visible';
+        }
     } catch (error) {
         console.error('Error fetching task execution details:', error);
     }

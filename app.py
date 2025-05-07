@@ -7,6 +7,7 @@ from routes.file_replicas import file_replicas_bp
 from routes.task_concurrency import task_concurrency_bp
 from routes.task_execution_time import task_execution_time_bp
 from routes.task_execution_details import task_execution_details_bp
+from routes.task_response_time import task_response_time_bp
 from routes.runtime_state import *
 
 import argparse
@@ -46,6 +47,7 @@ setup_request_logging(app, runtime_state)
 app.register_blueprint(task_execution_details_bp)
 app.register_blueprint(task_execution_time_bp)
 app.register_blueprint(task_concurrency_bp)
+app.register_blueprint(task_response_time_bp)
 
 # files
 app.register_blueprint(file_replicas_bp)

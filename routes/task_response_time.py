@@ -5,17 +5,17 @@ import random
 from flask import Blueprint, jsonify
 import numpy as np
 
-task_execution_time_bp = Blueprint(
-    'task_execution_time', __name__, url_prefix='/api')
+task_response_time_bp = Blueprint(
+    'task_response_time', __name__, url_prefix='/api')
 
 
-def downsample_task_execution_time(points):
-    # downsample task execution time points while keeping the first point, last point, and peak execution time
+def downsample_task_response_time(points):
+    # downsample task response time points while keeping the first point, last point, and peak response time
     if len(points) <= SAMPLING_POINTS:
         return points
 
-    # Find global peak (maximum execution time)
-    # points[i][1] is execution_time
+    # Find global peak (maximum response time)
+    # points[i][1] is response_time
     global_peak_idx = max(range(len(points)), key=lambda i: points[i][1])
     global_peak = points[global_peak_idx]
 
@@ -61,54 +61,49 @@ def downsample_task_execution_time(points):
     return result
 
 
-@task_execution_time_bp.route('/task-execution-time')
+@task_response_time_bp.route('/task-response-time')
 @check_and_reload_data()
-def get_task_execution_time():
+def get_task_response_time():
     try:
         data = {}
 
-        # Collect execution time data along with start time for sorting
         task_data = []
         for task in runtime_state.tasks.values():
-            # skip if the task didn't run to completion
-            if task.task_status != 0:
+            # skip tasks that haven't started running yet
+            if not task.when_running:
                 continue
-            task_execution_time = round(
-                task.time_worker_end - task.time_worker_start, 2)
-            # if a task completes very quickly, we set it to 0.01
-            task_execution_time = max(task_execution_time, 0.01)
-            task_data.append(
-                (task.task_id, task_execution_time, task.time_worker_start))
+            
+            response_time = round(task.when_running - task.when_ready, 2)
+            # if a task responds very little time, we set it to 0.01
+            response_time = max(response_time, 0.01)
+            task_data.append((task.task_id, response_time, task.when_ready))
 
-        # Sort by the time when task started running
         task_data.sort(key=lambda x: x[2])
         
-        # Remove the start time, keeping only task_id and execution_time for visualization
-        task_execution_time_list = [(task_id, execution_time) for task_id, execution_time, _ in task_data]
+        task_response_time_list = [(task_id, response_time) for task_id, response_time, _ in task_data]
 
-        # Comment out the original sorting by execution time
-        # task_execution_time_list.sort(key=lambda x: x[1])
+        # task_response_time_list.sort(key=lambda x: x[1])
 
         # downsample the data points
-        # data['task_execution_time'] = downsample_task_execution_time(task_execution_time_list)
-        data['task_execution_time'] = task_execution_time_list
+        # data['task_response_time'] = downsample_task_response_time(task_response_time_list)
+        data['task_response_time'] = task_response_time_list
 
         # Properly calculate the CDF
-        # Extract just the execution times
-        execution_times = [x[1] for x in task_execution_time_list]
+        # Extract just the response times
+        response_times = [x[1] for x in task_response_time_list]
         
-        # Sort the execution times in ascending order
-        execution_times_sorted = sorted(execution_times)
+        # Sort the response times in ascending order
+        response_times_sorted = sorted(response_times)
         
         # Calculate CDF points using numpy for better accuracy
-        cdf_values = np.linspace(0, 1, len(execution_times_sorted))
-        cdf_points = [(execution_time, round(prob, 4)) for execution_time, prob in zip(execution_times_sorted, cdf_values)]
+        cdf_values = np.linspace(0, 1, len(response_times_sorted))
+        cdf_points = [(response_time, round(prob, 4)) for response_time, prob in zip(response_times_sorted, cdf_values)]
         
-        data['task_execution_time_cdf'] = cdf_points
+        data['task_response_time_cdf'] = cdf_points
 
         # tick values - use original data ranges to maintain proper axis scaling
-        num_tasks = len(task_execution_time_list)  # use original length
-        data['execution_time_x_tick_values'] = [
+        num_tasks = len(task_response_time_list)  # use original length
+        data['response_time_x_tick_values'] = [
             1,
             round(num_tasks * 0.25, 2),
             round(num_tasks * 0.5, 2),
@@ -116,23 +111,23 @@ def get_task_execution_time():
             num_tasks
         ]
 
-        max_execution_time = max(
-            x[1] for x in task_execution_time_list)  # use original max
-        data['execution_time_y_tick_values'] = [
+        max_response_time = max(
+            x[1] for x in task_response_time_list)  # use original max
+        data['response_time_y_tick_values'] = [
             0,
-            round(max_execution_time * 0.25, 2),
-            round(max_execution_time * 0.5, 2),
-            round(max_execution_time * 0.75, 2),
-            max_execution_time
+            round(max_response_time * 0.25, 2),
+            round(max_response_time * 0.5, 2),
+            round(max_response_time * 0.75, 2),
+            max_response_time
         ]
 
         data['probability_y_tick_values'] = [0, 0.25, 0.5, 0.75, 1]
         data['probability_x_tick_values'] = [
             0,
-            round(max_execution_time * 0.25, 2),
-            round(max_execution_time * 0.5, 2),
-            round(max_execution_time * 0.75, 2),
-            max_execution_time
+            round(max_response_time * 0.25, 2),
+            round(max_response_time * 0.5, 2),
+            round(max_response_time * 0.75, 2),
+            max_response_time
         ]
 
         data['tickFontSize'] = runtime_state.tick_size
@@ -140,5 +135,5 @@ def get_task_execution_time():
         return jsonify(data)
 
     except Exception as e:
-        print(f"Error in get_task_execution_time: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        print(f"Error in get_task_response_time: {str(e)}")
+        return jsonify({'error': str(e)}), 500 

@@ -46,6 +46,7 @@
     <script src="{{ url_for('static', filename='js/log_viewer.js') }}" type="module"></script>
     <script src="{{ url_for('static', filename='js/task_execution_details.js') }}" type="module"></script>
     <script src="{{ url_for('static', filename='js/task_execution_time.js') }}" type="module"></script>
+    <script src="{{ url_for('static', filename='js/task_response_time.js') }}" type="module"></script>
     <script src="{{ url_for('static', filename='js/storage_consumption.js') }}" type="module"></script>
     <script src="{{ url_for('static', filename='js/sidebar.js') }}" type="module"></script>
     <script src="{{ url_for('static', filename='js/task_concurrency.js') }}" type="module"></script>
@@ -95,6 +96,22 @@
         </div>
 
         
+        <!-- Task Response Time section -->
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title">Task Response Time</h2>
+                <div class="section-buttons">
+                    <button id="button-reset-task-response-time" class="report-button">Reset</button>
+                    <button id="button-download-task-response-time" class="report-button">Download SVG</button>
+                    <button id="button-toggle-response-cdf" class="report-button">Display CDF</button>
+                </div>
+            </div>
+
+            <div id="task-response-time-container" class="container-alpha">
+                <svg id="task-response-time" xmlns="http://www.w3.org/2000/svg"></svg>
+            </div>
+        </div>
+
         <!-- Task Execution Time section -->
         <div class="section-header">
             <h2 class="section-title">Task Execution Time</h2>

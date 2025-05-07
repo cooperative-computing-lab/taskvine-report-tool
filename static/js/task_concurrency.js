@@ -1,12 +1,6 @@
 import { downloadSVG } from './tools.js';
 import { setupZoomAndScroll } from './tools.js';
 
-const buttonReset = document.getElementById('button-reset-task-concurrency');
-const buttonDownload = document.getElementById('button-download-task-concurrency');
-const svgContainer = document.getElementById('task-concurrency-container');
-const svgElement = d3.select('#task-concurrency');
-const tooltip = document.getElementById('vine-tooltip');
-
 const LINE_WIDTH = 0.9;
 const HIGHLIGHT_WIDTH = 2;
 const HIGHLIGHT_COLOR = 'orange';
@@ -34,6 +28,13 @@ const state = {
     tickFontSize: null,
     selectedTypes: new Set(['tasks_waiting', 'tasks_committing', 'tasks_executing', 'tasks_retrieving'])
 };
+
+// DOM elements - moved to variables without immediate initialization
+let buttonReset;
+let buttonDownload;
+let svgContainer;
+let svgElement;
+let tooltip;
 
 function setupTaskTypeCheckboxes() {
     const container = document.getElementById('task-concurrency-legend');
@@ -272,11 +273,26 @@ async function fetchData() {
 
 async function initialize() {
     try {
-        // Clear SVG
-        svgElement.selectAll('*').remove();
+        // Initialize DOM element references only when the function is called
+        // This ensures they exist in the DOM before being accessed
+        buttonReset = document.getElementById('button-reset-task-concurrency');
+        buttonDownload = document.getElementById('button-download-task-concurrency');
+        svgContainer = document.getElementById('task-concurrency-container');
+        svgElement = d3.select('#task-concurrency');
+        tooltip = document.getElementById('vine-tooltip');
+
+        // Setup event listeners
+        buttonReset.addEventListener('click', handleResetClick);
+        buttonDownload.addEventListener('click', () => downloadSVG('task-concurrency'));
+        
+        // Setup checkboxes for task types
+        setupTaskTypeCheckboxes();
+        
+        // Fetch data and setup visualization
         await fetchData();
+        setupZoomAndScroll('#task-concurrency', '#task-concurrency-container');
     } catch (error) {
-        console.error('Error:', error);
+        console.error('Error initializing task concurrency:', error);
     }
 }
 
@@ -286,8 +302,6 @@ function handleResetClick() {
     plotTaskConcurrency();
 }
 
-setupTaskTypeCheckboxes();
-buttonDownload.addEventListener('click', () => downloadSVG('task-concurrency'));
-buttonReset.addEventListener('click', () => handleResetClick());
+// Just add event listener for dataLoaded event, don't set up DOM elements yet
 window.document.addEventListener('dataLoaded', initialize);
 window.addEventListener('resize', _.debounce(() => plotTaskConcurrency(), 300)); 
