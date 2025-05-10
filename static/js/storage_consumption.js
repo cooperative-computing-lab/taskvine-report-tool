@@ -3,11 +3,10 @@ import { setupZoomAndScroll } from './tools.js';
 
 const buttonReset = document.getElementById('button-reset-storage-consumption');
 const buttonDownload = document.getElementById('button-download-storage-consumption');
-const buttonToggleMode = document.getElementById('button-toggle-storage-mode');
-const buttonTogglePBB = document.getElementById('button-toggle-pbb-workers');
 const svgContainer = document.getElementById('storage-consumption-container');
 const svgElement = d3.select('#storage-consumption');
 const tooltip = document.getElementById('vine-tooltip');
+const loadingSpinner = document.getElementById('storage-consumption-loading');
 
 const HIGHLIGHT_COLOR = 'orange';
 
@@ -26,59 +25,49 @@ const state = {
     showPBBWorkers: false
 }
 
-async function initialize() {
+async function initialize(detail) {
     try {
-        d3.select('#storage-consumption').selectAll('*').remove();
-        state.worker_storage_consumption = null;
+        // init dom elements
+        buttonReset = document.getElementById('button-reset-storage-consumption');
+        buttonDownload = document.getElementById('button-download-storage-consumption');
+        svgContainer = document.getElementById('storage-consumption-container');
+        svgElement = d3.select('#storage-consumption');
+        loadingSpinner = document.getElementById('storage-consumption-loading');
+        
+        // show loading spinner
+        loadingSpinner.style.display = 'block';
+        
+        // clear previous content
+        svgElement.selectAll('*').remove();
 
-        // 将PBB worker显示状态作为参数传递给后端
-        const response = await fetch(
-            `/api/storage-consumption?show_percentage=${state.showPercentage}&show_pbb_workers=${state.showPBBWorkers}`
-        );
+        // setup event listeners
+        setupEventListeners();
+
+        const response = await fetch('/api/storage-consumption');
         const data = await response.json();
 
-        if (data && data.worker_storage_consumption) {
-            state.worker_storage_consumption = data.worker_storage_consumption;
-            state.file_size_unit = data.file_size_unit;
-            state.xMin = data.xMin;
-            state.xMax = data.xMax;
-            state.yMin = data.yMin;
-            state.yMax = data.yMax;
-            state.xTickValues = data.xTickValues;
-            state.yTickValues = data.yTickValues;
+        if (data) {
+            state.storageData = data.storage_data;
+            state.tickValues = {
+                storageX: data.storage_x_tick_values,
+                storageY: data.storage_y_tick_values
+            };
             state.tickFontSize = data.tickFontSize;
-            state.worker_resources = data.worker_resources || {};
-            state.showPBBWorkers = data.show_pbb_workers;
 
-            if (buttonTogglePBB) {
-                buttonTogglePBB.textContent = state.showPBBWorkers ? 'Hide PBB Workers' : 'Show PBB Workers';
-            }
-
+            document.querySelector('#storage-consumption').style.width = '100%';
+            document.querySelector('#storage-consumption').style.height = '100%';
             plotStorageConsumption();
             setupZoomAndScroll('#storage-consumption', '#storage-consumption-container');
-
-            buttonDownload.addEventListener('click', () => downloadSVG('storage-consumption'));
-            buttonReset.addEventListener('click', handleResetClick);
-            buttonToggleMode.addEventListener('click', handleToggleModeClick);
-            if (buttonTogglePBB) {
-                buttonTogglePBB.addEventListener('click', handleTogglePBBClick);
-            }
         }
     } catch (error) {
-        console.error('Error fetching storage consumption data:', error);
+        console.error('Error:', error);
+    } finally {
+        // hide loading spinner
+        loadingSpinner.style.display = 'none';
+        if (detail && detail.hideSpinner) {
+            detail.hideSpinner('storage-consumption');
+        }
     }
-}
-
-function handleToggleModeClick() {
-    state.showPercentage = !state.showPercentage;
-    buttonToggleMode.textContent = state.showPercentage ? 'Show Absolute' : 'Show Percentage';
-    initialize();
-}
-
-function handleTogglePBBClick() {
-    state.showPBBWorkers = !state.showPBBWorkers;
-    buttonTogglePBB.textContent = state.showPBBWorkers ? 'Hide PBB Workers' : 'Show PBB Workers';
-    initialize();  // 重新从后端获取数据
 }
 
 function calculateMargin() {
@@ -126,7 +115,7 @@ function plotStorageConsumption() {
         .append('g')
         .attr('transform', `translate(${margin.left}, ${margin.top})`);
 
-    // Ensure valid domains
+    // ensure valid domains
     const xMin = Math.max(0, state.xMin || 0);
     const xMax = Math.max(xMin + 1, state.xMax || 1);
     const yMin = Math.max(0, state.yMin || 0);
@@ -140,7 +129,7 @@ function plotStorageConsumption() {
         .domain([yMin, yMax])
         .range([height, 0]);
 
-    // Create line generator with step curve
+    // create line generator with step curve
     const line = d3.line()
         .x(d => {
             const x = xScale(d[0]);
@@ -150,22 +139,22 @@ function plotStorageConsumption() {
             const y = yScale(d[1]);
             return isNaN(y) ? height : y;
         })
-        .defined(d => !isNaN(d[0]) && !isNaN(d[1]) && d[1] >= 0)  // Skip invalid points
+        .defined(d => !isNaN(d[0]) && !isNaN(d[1]) && d[1] >= 0)  // skip invalid points
         .curve(d3.curveStepAfter);
 
-    // Draw lines for each worker 
+    // draw lines for each worker
     Object.entries(state.worker_storage_consumption).forEach(([workerId, points], index) => {
-        // Filter out invalid points
+        // filter out invalid points
         const validPoints = points.filter(p => 
             !isNaN(p[0]) && !isNaN(p[1]) && 
             p[0] >= xMin && p[0] <= xMax && 
             p[1] >= yMin && p[1] <= yMax
         );
 
-        if (validPoints.length === 0) return;  // Skip if no valid points
+        if (validPoints.length === 0) return;  // skip if no valid points
 
         const color = d3.schemeCategory10[index % 10];
-        const safeWorkerId = workerId.replace(/[.:]/g, '\\$&'); // Escape special characters
+        const safeWorkerId = workerId.replace(/[.:]/g, '\\$&'); // escape special characters
         const workerResource = state.worker_resources[workerId] || {};
         const isPBBWorker = workerResource.is_pbb || false;
         
@@ -219,7 +208,7 @@ function plotStorageConsumption() {
             });
     });
 
-    // Add axes with validated tick values
+    // add axes with validated tick values
     const xTickValues = state.xTickValues.filter(v => !isNaN(v) && v >= xMin && v <= xMax);
     const yTickValues = state.yTickValues.filter(v => !isNaN(v) && v >= yMin && v <= yMax);
 
@@ -245,7 +234,7 @@ function handleResetClick() {
     plotStorageConsumption();
 }
 
-// Add helper function for formatting sizes
+// helper function for formatting sizes
 function formatSize(size, unit) {
     if (size >= 1024 && unit === 'MB') {
         return `${(size/1024).toFixed(2)} GB`;
@@ -253,6 +242,6 @@ function formatSize(size, unit) {
     return `${size.toFixed(2)} ${unit}`;
 }
 
-// 初始化
-window.document.addEventListener('dataLoaded', initialize);
+// initialize when data is loaded
+window.document.addEventListener('dataLoaded', (event) => initialize(event.detail));
 window.addEventListener('resize', _.debounce(() => plotStorageConsumption(), 300));

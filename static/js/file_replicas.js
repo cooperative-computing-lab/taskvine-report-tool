@@ -1,4 +1,4 @@
-import { downloadSVG, setupZoomAndScroll } from './tools.js';
+import { downloadSVG, setupZoomAndScroll, resetContainer } from './tools.js';
 
 const buttonReset = document.getElementById('button-reset-file-replicas');
 const buttonDownload = document.getElementById('button-download-file-replicas');
@@ -35,7 +35,6 @@ function calculateMargin() {
 
     const margin = { top: 40, right: 30, bottom: 40, left: 30 };
 
-    // Calculate left margin based on y-axis labels
     const tempSvg = svgElement
         .append('g')
         .attr('class', 'temp');
@@ -60,6 +59,8 @@ function calculateMargin() {
 }
 
 function plotFileReplicas() {
+    const spinner = document.getElementById('file-replicas-loading');
+    if (spinner) spinner.style.display = 'none';
     if (!state.data) return;
 
     svgElement.selectAll('*').remove();
@@ -74,7 +75,6 @@ function plotFileReplicas() {
         .append('g')
         .attr('transform', `translate(${margin.left},${margin.top})`);
 
-    // Set up scales
     const xScale = d3.scaleLinear()
         .domain([state.xMin, state.xMax])
         .range([0, width]);
@@ -83,7 +83,6 @@ function plotFileReplicas() {
         .domain([state.yMin, state.yMax])
         .range([height, 0]);
 
-    // Add X axis
     svg.append('g')
         .attr('transform', `translate(0,${height})`)
         .call(d3.axisBottom(xScale)
@@ -92,7 +91,6 @@ function plotFileReplicas() {
         .selectAll('text')
         .style('font-size', state.tickFontSize);
 
-    // Add Y axis
     svg.append('g')
         .call(d3.axisLeft(yScale)
             .tickValues(state.yTickValues)
@@ -125,7 +123,6 @@ function plotFileReplicas() {
                 .attr('fill', HIGHLIGHT_COLOR)
                 .attr('r', highlightRadius);
             
-            // Show tooltip
             const tooltip = d3.select('#vine-tooltip');
             tooltip.style('visibility', 'visible')
                 .html(`
@@ -152,7 +149,6 @@ function setupControls() {
     container.style.marginBottom = '10px';
     container.style.alignItems = 'center';
     
-    // Sort selector
     const sortDiv = document.createElement('div');
     sortDiv.className = 'control-group';
     sortDiv.style.display = 'flex';
@@ -196,12 +192,10 @@ function handleDownloadClick() {
 }
 
 function handleResetClick() {
-    document.querySelector('#file-replicas').style.width = '100%';
-    document.querySelector('#file-replicas').style.height = '100%';
-    plotFileReplicas();
+    resetContainer('file-replicas-container', 'file-replicas-loading');
 }
 
-async function initialize() {
+async function initialize(detail) {
     try {
         const response = await fetch(`/api/file-replicas?order=${state.selectedOrder}`);
         if (!response.ok) throw new Error('Network response was not ok');
@@ -225,8 +219,12 @@ async function initialize() {
         buttonReset.addEventListener('click', handleResetClick);
     } catch (error) {
         console.error('Error initializing file replicas:', error);
+    } finally {
+        if (detail && detail.hideSpinner) {
+            detail.hideSpinner('file-replicas');
+        }
     }
 }
 
-window.document.addEventListener('dataLoaded', initialize);
+window.document.addEventListener('dataLoaded', (event) => initialize(event.detail));
 window.addEventListener('resize', _.debounce(() => plotFileReplicas(), 300));

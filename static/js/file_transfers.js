@@ -8,6 +8,7 @@ const svgContainer = document.getElementById('file-transfers-container');
 const svgElement = d3.select('#file-transfers');
 const tooltip = document.getElementById('vine-tooltip');
 const transferTypeDisplay = document.getElementById('transfer-type-display');
+const loadingSpinner = document.getElementById('file-transfers-loading');
 
 const LINE_WIDTH = 0.8;
 const HIGHLIGHT_WIDTH = 2;
@@ -253,15 +254,51 @@ function handleDownloadClick() {
     downloadSVG('file-transfers');
 }
 
-async function initialize() {
+async function initialize(detail) {
     try {
+        // init dom elements
+        buttonReset = document.getElementById('button-reset-file-transfers');
+        buttonDownload = document.getElementById('button-download-file-transfers');
+        buttonToggleType = document.getElementById('button-toggle-transfer-type');
+        svgContainer = document.getElementById('file-transfers-container');
+        svgElement = d3.select('#file-transfers');
+        loadingSpinner = document.getElementById('file-transfers-loading');
+        
+        // Show loading spinner
+        loadingSpinner.style.display = 'block';
+        
+        // clear previous content
         svgElement.selectAll('*').remove();
-        await fetchData();
+
+        // setup event listeners
+        setupEventListeners();
+
+        const response = await fetch('/api/file-transfers');
+        const data = await response.json();
+
+        if (data) {
+            state.fileTransfers = data.file_transfers;
+            state.tickValues = {
+                transfersX: data.transfers_x_tick_values,
+                transfersY: data.transfers_y_tick_values
+            };
+            state.tickFontSize = data.tickFontSize;
+
+            document.querySelector('#file-transfers').style.width = '100%';
+            document.querySelector('#file-transfers').style.height = '100%';
+            plotFileTransfers();
+            setupZoomAndScroll('#file-transfers', '#file-transfers-container');
+        }
     } catch (error) {
         console.error('Error:', error);
+    } finally {
+        loadingSpinner.style.display = 'none';
+        if (detail && detail.hideSpinner) {
+            detail.hideSpinner('file-transfers');
+        }
     }
 }
 
 setupEventListeners();
-window.document.addEventListener('dataLoaded', initialize);
+window.document.addEventListener('dataLoaded', (event) => initialize(event.detail));
 window.addEventListener('resize', _.debounce(() => plotWorkerTransfers(), 300));

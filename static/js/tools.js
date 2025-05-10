@@ -1,15 +1,25 @@
-
-async function getDataPath(path) {
-    try {
-        const response = await fetch(path);
-        const data = await response.json();
-        if (data.inputPath) {
-            return data.inputPath;
+export function createModuleRefs(moduleId) {
+    const get = (id) => {
+        console.log(`getting ${id}`)
+        const el = document.getElementById(id);
+        if (!el) {
+            console.warn(`Missing element: #${id}`);
         }
-    } catch (error) {
-        console.error('Error updating data path:', error);
-    }
+        return el;
+    };
+
+    return {
+        svgContainer: get(`${moduleId}-container`),
+        loadingSpinner: get(`${moduleId}-loading`),
+        svgElement: d3.select(`#${moduleId}`),
+        tooltip: get('vine-tooltip'),
+        buttonsContainer: get(`${moduleId}-buttons`),
+        legendContainer: get(`${moduleId}-legend`),
+        resetButton: get(`${moduleId}-reset-button`),
+        downloadButton: get(`${moduleId}-download-button`),
+    };
 }
+
 
 export function formatUnixTimestamp(unixTimestamp, format = 'YYYY-MM-DD HH:mm:ss.SSS') {
     var date = new Date(unixTimestamp * 1000);
@@ -156,7 +166,7 @@ export function downloadSVG(svgElementId, filename = null) {
                     element.setAttribute(key.trim(), value.trim());
                 }
             });
-            // 清空style属性
+
             element.removeAttribute('style');
         }
         Array.from(element.children).forEach(applyInlineStyles);
@@ -180,30 +190,37 @@ export function downloadSVG(svgElementId, filename = null) {
 }
 
 
-export function getTaskInnerHTML(taskData) {
+export function getTaskInnerHTML(task) {
     const precision = 3;
-    let htmlContent = `Task ID: ${taskData.task_id}<br>
-        Try Count: ${taskData.try_id}<br>
-        Worker ID: ${taskData.worker_id}<br>
-        Graph ID: ${taskData.graph_id}<br>
-        Input Files: ${taskData.input_files}<br>
-        Size of Input Files: ${taskData['size_input_files_mb']}MB<br>
-        Output Files: ${taskData.output_files}<br>
-        Size of Output Files: ${taskData['size_output_files_mb']}MB<br>
-        Critical Input File: ${taskData.critical_input_file}<br>
-        Wait Time for Critical Input File: ${taskData.critical_input_file_wait_time}<br>
-        Category: ${taskData.category.replace(/^<|>$/g, '')}<br>
-        When Ready: ${(taskData.when_ready - window.time_manager_start).toFixed(precision)}s<br>
-        When Running: ${(taskData.when_running - window.time_manager_start).toFixed(precision)}s (When Ready + ${(taskData.when_running - taskData.when_ready).toFixed(precision)}s)<br>
-        When Start on Worker: ${(taskData.time_worker_start - window.time_manager_start).toFixed(precision)}s (When Running + ${(taskData.time_worker_start - taskData.when_running).toFixed(precision)}s)<br>
-        When End on Worker: ${(taskData.time_worker_end - window.time_manager_start).toFixed(precision)}s (When Start on Worker + ${(taskData.time_worker_end - taskData.time_worker_start).toFixed(precision)}s)<br>
-        When Waiting Retrieval: ${(taskData.when_waiting_retrieval - window.time_manager_start).toFixed(precision)}s (When End on Worker + ${(taskData.when_waiting_retrieval - taskData.time_worker_end).toFixed(precision)}s)<br>
-        When Retrieved: ${(taskData.when_retrieved - window.time_manager_start).toFixed(precision)}s (When Waiting Retrieval + ${(taskData.when_retrieved - taskData.when_waiting_retrieval).toFixed(precision)}s)<br>
-        When Done: ${(taskData.when_done - window.time_manager_start).toFixed(precision)}s (When Retrieved + ${(taskData.when_done - taskData.when_retrieved).toFixed(precision)}s)<br>
+    let htmlContent = `
+        Task ID: ${task.task_id}<br>
+        Try ID: ${task.try_id}<br>
+        Worker: ${task.worker_ip}:${task.worker_port}<br>
+        Core ID:  ${task.core_id}<br>
+        Inputs: ${task.input_files || 'N/A'}<br>
+        Outputs: ${task.output_files || 'N/A'}<br>
+        When Ready: ${task.when_ready ? task.when_ready.toFixed(precision) : 'N/A'}<br>
+        When Running: ${task.when_running ? task.when_running.toFixed(precision) : 'N/A'}<br>
+        When Start on Worker: ${task.time_worker_start ? task.time_worker_start.toFixed(precision) : 'N/A'}<br>
+        When End on Worker: ${task.time_worker_end ? task.time_worker_end.toFixed(precision) : 'N/A'}<br>
+        When Waiting Retrieval: ${task.when_waiting_retrieval ? task.when_waiting_retrieval.toFixed(precision) : 'N/A'}<br>
+        When Retrieved: ${task.when_retrieved ? task.when_retrieved.toFixed(precision) : 'N/A'}<br>
+        When Done: ${task.when_done ? task.when_done.toFixed(precision) : 'N/A'}<br>
     `;
-    if ('when_submitted_by_daskvine' in taskData && taskData.when_submitted_by_daskvine > 0) {
-        htmlContent += `When DaskVine Submitted: ${taskData.when_submitted_by_daskvine - window.time_manager_start}s<br>
-                        When DaskVine Received: ${taskData.when_received_by_daskvine - window.time_manager_start}s<br>`;
-    }
+
     return htmlContent;
+}
+
+export function resetContainer(divId) {
+    const containerId = divId + '-container';
+    const spinnerId = divId + '-loading';
+    const container = document.getElementById(containerId);
+    if (container) {
+        const svg = container.querySelector('svg');
+        if (svg) {
+            while (svg.firstChild) svg.removeChild(svg.firstChild);
+        }
+    }
+    const spinner = document.getElementById(spinnerId);
+    if (spinner) spinner.style.display = 'block';
 }

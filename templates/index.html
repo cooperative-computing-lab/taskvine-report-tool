@@ -42,9 +42,18 @@
     <script src="{{ url_for('static', filename='js/manager.js') }}" type="module"></script>
     <script src="{{ url_for('static', filename='js/manager_disk_usage.js') }}" type="module"></script>
     <script src="{{ url_for('static', filename='js/graph.js') }}" type="module"></script>
-    -->
+    <script src="{{ url_for('static', filename='js/module_definitions.js') }}" type="module"></script>
     <script src="{{ url_for('static', filename='js/log_viewer.js') }}" type="module"></script>
+    -->
+
+    <!-- modules -->
     <script src="{{ url_for('static', filename='js/task_execution_details.js') }}" type="module"></script>
+    <script src="{{ url_for('static', filename='js/modules/task_execution_details.js') }}" type="module"></script>
+    <script src="{{ url_for('static', filename='js/modules/base.js') }}" type="module"></script>
+    <script src="{{ url_for('static', filename='js/modules/configs.js') }}" type="module"></script>
+    <script src="{{ url_for('static', filename='js/modules/log_manager.js') }}" type="module"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}" type="module"></script>
+    <!--
     <script src="{{ url_for('static', filename='js/task_execution_time.js') }}" type="module"></script>
     <script src="{{ url_for('static', filename='js/task_response_time.js') }}" type="module"></script>
     <script src="{{ url_for('static', filename='js/storage_consumption.js') }}" type="module"></script>
@@ -54,6 +63,7 @@
     <script src="{{ url_for('static', filename='js/file_sizes.js') }}" type="module"></script>
     <script src="{{ url_for('static', filename='js/file_replicas.js') }}" type="module"></script>
     <script type="module" src="{{ url_for('static', filename='js/subgraphs.js') }}"></script>
+    -->
 </head>
 <body>
     <div id="vine-tooltip" class="tooltip"></div>  
@@ -77,169 +87,7 @@
     </div>
  
     <div id="content">
-
-        <!-- Tasks Execution Details section -->
-        <div class="section-header">
-            <h2 class="section-title">Task Execution Details</h2>
-            <div class="section-buttons">
-                <button id="button-reset-task-execution-details" class="report-button">Reset</button>
-                <button id="button-download-task-execution-details" class="report-button">Download SVG</button>
-            </div>
-            <div id="task-execution-details-tip" class="error-tip">This manager exited unexpectedly, choose the last appeared timestamp as the manager end time.</div>
-        </div>
-
-        <div id="task-execution-details-legend" class="legend-container">
-            <!-- Legend items will be added by JavaScript -->
-        </div>
-        <div id="task-execution-details-container" class="container-alpha">
-            <svg id="task-execution-details" xmlns="http://www.w3.org/2000/svg"></svg>
-        </div>
-
-        
-        <!-- Task Response Time section -->
-        <div class="section">
-            <div class="section-header">
-                <h2 class="section-title">Task Response Time</h2>
-                <div class="section-buttons">
-                    <button id="button-reset-task-response-time" class="report-button">Reset</button>
-                    <button id="button-download-task-response-time" class="report-button">Download SVG</button>
-                    <button id="button-toggle-response-cdf" class="report-button">Display CDF</button>
-                </div>
-            </div>
-
-            <div id="task-response-time-container" class="container-alpha">
-                <svg id="task-response-time" xmlns="http://www.w3.org/2000/svg"></svg>
-            </div>
-        </div>
-
-        <!-- Task Execution Time section -->
-        <div class="section-header">
-            <h2 class="section-title">Task Execution Time</h2>
-            <div class="section-buttons">
-                <button id="button-reset-task-execution-time" class="report-button">Reset</button>
-                <button id="button-download-task-execution-time" class="report-button">Download SVG</button>
-                <button id="button-toggle-cdf" class="report-button">Display CDF</button>
-            </div>
-        </div>
-        
-        <div id="task-execution-time-container" class="container-alpha">
-            <svg id="task-execution-time" xmlns="http://www.w3.org/2000/svg"></svg>
-        </div>
-        
-        <!-- Task Concurrency Section -->
-        <div class="section">
-            <div class="section-header">
-                <h2 class="section-title">Task Concurrency</h2>
-                <div class="section-buttons">
-                    <button id="button-reset-task-concurrency" class="report-button">Reset</button>
-                    <button id="button-download-task-concurrency" class="report-button">Download</button>
-                </div>
-            </div>
-            <div id="task-concurrency-legend" class="legend-container">
-                <!-- Legend items will be added by JavaScript -->
-            </div>
-            <div id="task-concurrency-container" class="container-alpha">
-                <svg id="task-concurrency" xmlns="http://www.w3.org/2000/svg"></svg>
-            </div>
-        </div>
-        
-        <!-- Storage Consumption section -->
-        <div class="section">
-            <div class="section-header">
-                <h2 class="section-title">Storage Consumption</h2>
-                <div class="section-buttons">
-                    <button id="button-reset-storage-consumption" class="report-button">Reset</button>
-                    <button id="button-download-storage-consumption" class="report-button">Download SVG</button>
-                    <button id="button-toggle-storage-mode" class="report-button">Show Percentage</button>
-                    <button id="button-toggle-pbb-workers" class="report-button">Hide PBB Workers</button>
-                </div>
-            </div>
-
-            <div id="storage-consumption-container" class="container-alpha">
-                <svg id="storage-consumption" xmlns="http://www.w3.org/2000/svg"></svg>
-            </div>
-
-            <div id="disk-usage-legend" class="legend-container">
-                <!-- Legend items will be added by JavaScript -->
-            </div>
-        </div>
-        
-        <!-- File Transfers section -->
-        <div class="section">
-            <div class="section-header">
-                <h2 class="section-title">File Transfers (<span id="transfer-type-display">Incoming</span>)</h2>
-                <div class="section-buttons">
-                    <button id="button-reset-file-transfers" class="report-button">Reset</button>
-                    <button id="button-download-file-transfers" class="report-button">Download</button>
-                    <button id="button-toggle-transfer-type" class="report-button">Show Outgoing</button>
-                </div>
-            </div>
-            <div class="section-content">
-                <div id="file-transfers-container" class="container-alpha">
-                    <svg id="file-transfers" xmlns="http://www.w3.org/2000/svg"></svg>
-                </div>
-            </div>
-        </div>
-
-        <!-- File Sizes Section -->
-        <div class="section">
-            <div class="section-header">
-                <h2 class="section-title">File Sizes</h2>
-                <div class="section-buttons">
-                    <button id="button-reset-file-sizes" class="report-button">Reset</button>
-                    <button id="button-download-file-sizes" class="report-button">Download</button>
-                </div>
-            </div>
-            <div id="file-sizes-legend" class="legend-container">
-                <!-- Legend items will be added by JavaScript -->
-            </div>
-            <div id="file-sizes-container" class="container-alpha">
-                <svg id="file-sizes" xmlns="http://www.w3.org/2000/svg"></svg>
-            </div>
-        </div>
-
-        <!-- File Replicas -->
-        <div class="section">
-            <div class="section-header">
-                <h2>File Replicas</h2>
-                <div class="section-buttons">
-                    <button id="button-reset-file-replicas" class="report-button">Reset</button>
-                    <button id="button-download-file-replicas" class="report-button">Download</button>
-                </div>
-            </div>
-            <div id="file-replicas-legend" class="legend-container">
-                <!-- Legend items will be added by JavaScript -->
-            </div>
-            <div id="file-replicas-container" class="container-alpha">
-                <svg id="file-replicas" xmlns="http://www.w3.org/2000/svg"></svg>
-            </div>
-        </div>
-
-        <!-- Subgraphs -->
-        <div class="section">
-            <div class="section-header">
-                <h2>Subgraphs</h2>
-                <div class="section-buttons">
-                    <button id="button-reset-subgraph" class="report-button">Reset</button>
-                    <button id="button-download-subgraph" class="report-button">Download</button>
-                </div>
-            </div>
-            <div class="subgraph-controls">
-                <div class="checkbox-group">
-                    <input type="checkbox" id="plot-failed-task" checked>
-                    <label for="plot-failed-task">Show Failed Tasks</label>
-                    <input type="checkbox" id="plot-recovery-task" checked>
-                    <label for="plot-recovery-task">Show Recovery Tasks</label>
-                </div>
-                <select id="subgraph-selector">
-                    <!-- Options will be populated by JavaScript -->
-                </select>
-            </div>
-            <div id="subgraph-container" class="container-alpha">
-                <div id="subgraph-loading" class="loading-spinner"></div>
-                <!-- SVG will be added by JavaScript D3 -->
-            </div>
-        </div>
+        <!-- handled in module_definitions.js -->
 
         <div class="footnote">
             <p>

@@ -1,9 +1,10 @@
-import { downloadSVG, setupZoomAndScroll } from './tools.js';
+import { downloadSVG, setupZoomAndScroll, resetContainer } from './tools.js';
 
 const buttonReset = document.getElementById('button-reset-file-sizes');
 const buttonDownload = document.getElementById('button-download-file-sizes');
 const svgElement = d3.select('#file-sizes');
 const svgContainer = document.getElementById('file-sizes-container');
+const loadingSpinner = document.getElementById('file-sizes-loading');
 
 const dotRadius = 1.5;
 const highlightRadius = 3;
@@ -234,7 +235,7 @@ function handleResetClick() {
     plotFileSizes();
 }
 
-async function initialize() {
+async function initialize(detail) {
     try {
         const response = await fetch(`/api/file-sizes?order=${state.selectedOrder}&type=${state.selectedType}`);
         if (!response.ok) throw new Error('Network response was not ok');
@@ -259,8 +260,12 @@ async function initialize() {
         buttonReset.addEventListener('click', handleResetClick);
     } catch (error) {
         console.error('Error initializing file sizes:', error);
+    } finally {
+        if (detail && detail.hideSpinner) {
+            detail.hideSpinner('file-sizes');
+        }
     }
 }
 
-window.document.addEventListener('dataLoaded', initialize);
+window.document.addEventListener('dataLoaded', (event) => initialize(event.detail));
 window.addEventListener('resize', _.debounce(() => plotFileSizes(), 300));

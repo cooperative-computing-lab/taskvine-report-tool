@@ -26,6 +26,7 @@ let buttonDownload;
 let buttonToggleCDF;
 let svgContainer;
 let svgElement;
+let loadingSpinner;
 
 function calculateMargin() {
     if (!state.taskExecutionTime.length) {
@@ -79,7 +80,7 @@ function setupEventListeners() {
     });
 }
 
-async function initialize() {
+async function initialize(detail) {
     try {
         // init dom elements
         buttonReset = document.getElementById('button-reset-task-execution-time');
@@ -117,6 +118,10 @@ async function initialize() {
         }
     } catch (error) {
         console.error('Error:', error);
+    } finally {
+        if (detail && detail.hideSpinner) {
+            detail.hideSpinner('task-execution-time');
+        }
     }
 }
 
@@ -268,5 +273,5 @@ function handleResetClick() {
 }
 
 // wait for dataLoaded event before initializing
-window.document.addEventListener('dataLoaded', initialize);
+window.document.addEventListener('dataLoaded', (event) => initialize(event.detail));
 window.addEventListener('resize', _.debounce(() => plotExecutionTime(), 300)); 
