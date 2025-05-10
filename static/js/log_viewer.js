@@ -1,5 +1,14 @@
+import { initModules } from './module_definitions.js';
+
+
 const logSelector = document.getElementById('log-selector');
 
+function hideLoadingSpinner(vizId) {
+    const spinner = document.getElementById(`${vizId}-loading`);
+    if (spinner) {
+        spinner.style.display = 'none';
+    }
+}
 
 async function initializeLogViewer() {
     try {
@@ -48,7 +57,7 @@ async function handleLogChange() {
     await changeRuntimeTemplateWithRetry();
 }
 
-async function changeRuntimeTemplateWithRetry() {
+async function changeRuntimeTemplateWithRetry(retryCount = 0) {
     try {
         document.querySelectorAll('.error-tip').forEach(tip => {
             tip.style.visibility = 'hidden';
@@ -58,18 +67,33 @@ async function changeRuntimeTemplateWithRetry() {
         const result = await response.json();
         
         if (result.success) {
-            document.dispatchEvent(new Event('dataLoaded'));
+            // create a custom event that includes visualization IDs
+            const dataLoadedEvent = new CustomEvent('dataLoaded', {
+                detail: {
+                    hideSpinner: (vizId) => hideLoadingSpinner(vizId)
+                }
+            });
+            document.dispatchEvent(dataLoadedEvent);
         } else {
             console.error('Failed to change runtime template, retrying in 8 seconds...');
-            // retry after 8 seconds
-            setTimeout(() => changeRuntimeTemplateWithRetry(), 8000);
+            if (retryCount < 3) {
+                setTimeout(() => changeRuntimeTemplateWithRetry(retryCount + 1), 8000);
+            } else {
+                // if all retries failed, hide all spinners
+                visualizations.forEach(viz => hideLoadingSpinner(viz));
+            }
         }
     } catch (error) {
         console.error('Error changing runtime template:', error);
         console.log('Retrying in 8 seconds...');
-        // retry after 8 seconds
-        setTimeout(() => changeRuntimeTemplateWithRetry(), 8000);
+        if (retryCount < 3) {
+            setTimeout(() => changeRuntimeTemplateWithRetry(retryCount + 1), 8000);
+        } else {
+            // if all retries failed, hide all spinners
+            visualizations.forEach(viz => hideLoadingSpinner(viz));
+        }
     }
 }
 
+initModules();
 document.addEventListener('DOMContentLoaded', initializeLogViewer);

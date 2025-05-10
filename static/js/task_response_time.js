@@ -1,5 +1,4 @@
-import { downloadSVG } from './tools.js';
-import { setupZoomAndScroll } from './tools.js';
+import { downloadSVG, setupZoomAndScroll } from './tools.js';
 
 // colors for visualization
 const PRIMARY_COLOR = '#2077B4';
@@ -26,6 +25,7 @@ let buttonDownload;
 let buttonToggleCDF;
 let svgContainer;
 let svgElement;
+let loadingSpinner;
 
 function calculateMargin() {
     if (!state.taskResponseTime.length) {
@@ -117,6 +117,11 @@ async function initialize() {
         }
     } catch (error) {
         console.error('Error:', error);
+    } finally {
+        // Hide loading spinner using the event detail function
+        if (event?.detail?.hideSpinner) {
+            event.detail.hideSpinner('task-response-time');
+        }
     }
 }
 

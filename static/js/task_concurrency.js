@@ -35,6 +35,7 @@ let buttonDownload;
 let svgContainer;
 let svgElement;
 let tooltip;
+let loadingSpinner;
 
 function setupTaskTypeCheckboxes() {
     const container = document.getElementById('task-concurrency-legend');
@@ -231,6 +232,9 @@ function plotTaskConcurrency() {
 
 async function fetchData() {
     try {
+        // Show loading spinner
+        loadingSpinner.style.display = 'block';
+
         // Clear existing data in state
         Object.keys(taskTypes).forEach(type => {
             state[type] = null;
@@ -268,10 +272,13 @@ async function fetchData() {
         }
     } catch (error) {
         console.error('Error:', error);
+    } finally {
+        // Hide loading spinner
+        loadingSpinner.style.display = 'none';
     }
 }
 
-async function initialize() {
+async function initialize(detail) {
     try {
         // init dom elements
         buttonReset = document.getElementById('button-reset-task-concurrency');
@@ -279,6 +286,7 @@ async function initialize() {
         svgContainer = document.getElementById('task-concurrency-container');
         svgElement = d3.select('#task-concurrency');
         tooltip = document.getElementById('vine-tooltip');
+        loadingSpinner = document.getElementById('task-concurrency-loading');
 
         // setup event listeners
         buttonReset.addEventListener('click', handleResetClick);
@@ -292,6 +300,10 @@ async function initialize() {
         setupZoomAndScroll('#task-concurrency', '#task-concurrency-container');
     } catch (error) {
         console.error('Error initializing task concurrency:', error);
+    } finally {
+        if (detail && detail.hideSpinner) {
+            detail.hideSpinner('task-concurrency');
+        }
     }
 }
 
@@ -302,5 +314,5 @@ function handleResetClick() {
 }
 
 // wait for dataLoaded event before initializing
-window.document.addEventListener('dataLoaded', initialize);
+window.document.addEventListener('dataLoaded', (event) => initialize(event.detail));
 window.addEventListener('resize', _.debounce(() => plotTaskConcurrency(), 300)); 

@@ -1,12 +1,24 @@
-import { downloadSVG } from './tools.js';
-import { setupZoomAndScroll } from './tools.js';
+import { downloadSVG, setupZoomAndScroll, resetContainer, createModuleRefs, getTaskInnerHTML } from './tools.js';
 
 // dom elements
-let buttonReset;
-let buttonDownload;
-let svgContainer;
-let svgElement;
-let tooltip;
+let refs = {};
+
+export function initTaskExecutionDetails() {
+    refs = createModuleRefs('task-execution-details');
+}
+
+export function registerButtonsTaskExecutionDetails() {
+    refs.resetButton?.removeEventListener('click', handleResetClick);
+    refs.resetButton?.addEventListener('click', handleResetClick);
+
+    refs.downloadButton?.removeEventListener('click', handleDownloadClick);
+    refs.downloadButton?.addEventListener('click', handleDownloadClick);
+}
+
+export function onResizeTaskExecutionDetails() {
+    console.log('onResizeTaskExecutionDetails');
+}
+
 
 const state = {
     successfulTasks: null,
@@ -59,34 +71,13 @@ const colors = {
     ...Object.fromEntries(Object.entries(FAILURE_TYPES).map(([key, value]) => [`unsuccessful-${key.toLowerCase()}`, value.color]))
 };
 
-// get task tooltip content
-function getTaskInnerHTML(task) {
-    let htmlContent = `
-        task id: ${task.task_id || 'N/A'}<br>
-        worker:  ${task.worker_ip || 'N/A'}:${task.worker_port || 'N/A'}<br>
-        core id: ${task.core_id || 'N/A'}<br>
-        when ready: ${task.when_ready ? task.when_ready.toFixed(2) : 'N/A'}<br>
-        when running: ${task.when_running ? task.when_running.toFixed(2) : 'N/A'}<br>
-        num input files: ${task.num_input_files || 'N/A'}<br>
-        num output files: ${task.num_output_files || 'N/A'}<br>
-        time worker start: ${task.time_worker_start ? task.time_worker_start.toFixed(2) : 'N/A'}<br>
-        time worker end: ${task.time_worker_end ? task.time_worker_end.toFixed(2) : 'N/A'}<br>   
-        when waiting retrieval: ${task.when_waiting_retrieval ? task.when_waiting_retrieval.toFixed(2) : 'N/A'}<br>
-        when retrieved: ${task.when_retrieved ? task.when_retrieved.toFixed(2) : 'N/A'}<br>
-        when done: ${task.when_done ? task.when_done.toFixed(2) : 'N/A'}<br>
-    `;
-
-    return htmlContent;
-}
-
 // find failure type from status code
 function getFailureType(status) {
     return Object.entries(FAILURE_TYPES).find(([_, type]) => type.value === status)?.[0];
 }
 
 function setLegend() {
-    const legendContainer = document.getElementById('task-execution-details-legend');
-    legendContainer.innerHTML = '';
+    refs.legendContainer.innerHTML = '';
 
     // create failure items based on status counts
     const failureItems = Object.entries(FAILURE_TYPES)
@@ -150,7 +141,7 @@ function setLegend() {
     // Create a flex container for better layout control
     const flexContainer = document.createElement('div');
     flexContainer.className = 'legend-flex-container';
-    legendContainer.appendChild(flexContainer);
+    refs.legendContainer.appendChild(flexContainer);
 
     // Add groups to the flex container
     groupsToDisplay.forEach(group => {
@@ -217,21 +208,21 @@ function isTaskTypeChecked(taskType) {
     return checkbox && checkbox.checked;
 }
 
-function plotExecutionDetails() {
+async function plotExecutionDetails() {
     if (!state.successfulTasks) {
         return;
     }
 
     let margin = calculateMargin();
-    const svgWidth = svgContainer.clientWidth - margin.left - margin.right;
-    const svgHeight = svgContainer.clientHeight - margin.top - margin.bottom;
+    const svgWidth = refs.svgContainer.clientWidth - margin.left - margin.right;
+    const svgHeight = refs.svgContainer.clientHeight - margin.top - margin.bottom;
 
     // remove the current svg
-    svgElement.selectAll('*').remove();
+    refs.svgElement.selectAll('*').remove();
 
     // initialize svg
-    const svg = svgElement
-        .attr('viewBox', `0 0 ${svgContainer.clientWidth} ${svgContainer.clientHeight}`)
+    const svg = refs.svgElement
+        .attr('viewBox', `0 0 ${refs.svgContainer.clientWidth} ${refs.svgContainer.clientHeight}`)
         .attr('preserveAspectRatio', 'xMidYMid meet')
         .append('g')
         .attr('transform', `translate(${margin.left}, ${margin.top})`);
@@ -260,20 +251,20 @@ function plotExecutionDetails() {
                     .attr('opacity', 0.3)
                     .on('mouseover', function(event) {
                         d3.select(this).attr('fill', HIGHLIGHT_COLOR);
-                        tooltip.innerHTML = `
+                        refs.tooltip.innerHTML = `
                             cores: ${worker.cores}<br>
                             worker id: ${worker.id}<br>
                             worker ip port: ${worker.worker_ip_port}<br>
                             when connected: ${(connectTime).toFixed(2)}s<br>
                             when disconnected: ${(disconnectTime).toFixed(2)}s<br>
                             life time: ${(disconnectTime - connectTime).toFixed(2)}s<br>`;
-                        tooltip.style.visibility = 'visible';
-                        tooltip.style.top = (event.pageY + 10) + 'px';
-                        tooltip.style.left = (event.pageX + 10) + 'px';
+                        refs.tooltip.style.visibility = 'visible';
+                        refs.tooltip.style.top = (event.pageY + 10) + 'px';
+                        refs.tooltip.style.left = (event.pageX + 10) + 'px';
                     })
                     .on('mouseout', function() {
                         d3.select(this).attr('fill', colors['workers']);
-                        tooltip.style.visibility = 'hidden';
+                        refs.tooltip.style.visibility = 'hidden';
                     });
             }
         });
@@ -292,14 +283,14 @@ function plotExecutionDetails() {
                     .attr('fill', colors['successful-committing-to-worker'])
                     .on('mouseover', function(event) {
                         d3.select(this).attr('fill', HIGHLIGHT_COLOR);
-                        tooltip.innerHTML = getTaskInnerHTML(task);
-                        tooltip.style.visibility = 'visible';
-                        tooltip.style.top = (event.pageY + 10) + 'px';
-                        tooltip.style.left = (event.pageX + 10) + 'px';
+                        refs.tooltip.innerHTML = getTaskInnerHTML(task);
+                        refs.tooltip.style.visibility = 'visible';
+                        refs.tooltip.style.top = (event.pageY + 10) + 'px';
+                        refs.tooltip.style.left = (event.pageX + 10) + 'px';
                     })
                     .on('mouseout', function() {
                         d3.select(this).attr('fill', colors['successful-committing-to-worker']);
-                        tooltip.style.visibility = 'hidden';
+                        refs.tooltip.style.visibility = 'hidden';
                     });
             }
         }
@@ -315,14 +306,14 @@ function plotExecutionDetails() {
                     .attr('fill', colors['successful-executing-on-worker'])
                     .on('mouseover', function(event) {
                         d3.select(this).attr('fill', HIGHLIGHT_COLOR);
-                        tooltip.innerHTML = getTaskInnerHTML(task);
-                        tooltip.style.visibility = 'visible';
-                        tooltip.style.top = (event.pageY + 10) + 'px';
-                        tooltip.style.left = (event.pageX + 10) + 'px';
+                        refs.tooltip.innerHTML = getTaskInnerHTML(task);
+                        refs.tooltip.style.visibility = 'visible';
+                        refs.tooltip.style.top = (event.pageY + 10) + 'px';
+                        refs.tooltip.style.left = (event.pageX + 10) + 'px';
                     })
                     .on('mouseout', function() {
                         d3.select(this).attr('fill', colors['successful-executing-on-worker']);
-                        tooltip.style.visibility = 'hidden';
+                        refs.tooltip.style.visibility = 'hidden';
                     });
             }
         }
@@ -338,14 +329,14 @@ function plotExecutionDetails() {
                     .attr('fill', colors['successful-retrieving-to-manager'])
                     .on('mouseover', function(event) {
                         d3.select(this).attr('fill', HIGHLIGHT_COLOR);
-                        tooltip.innerHTML = getTaskInnerHTML(task);
-                        tooltip.style.visibility = 'visible';
-                        tooltip.style.top = (event.pageY + 10) + 'px';
-                        tooltip.style.left = (event.pageX + 10) + 'px';
+                        refs.tooltip.innerHTML = getTaskInnerHTML(task);
+                        refs.tooltip.style.visibility = 'visible';
+                        refs.tooltip.style.top = (event.pageY + 10) + 'px';
+                        refs.tooltip.style.left = (event.pageX + 10) + 'px';
                     })
                     .on('mouseout', function() {
                         d3.select(this).attr('fill', colors['successful-retrieving-to-manager']);
-                        tooltip.style.visibility = 'hidden';
+                        refs.tooltip.style.visibility = 'hidden';
                     });
             }
         }
@@ -368,7 +359,7 @@ function plotExecutionDetails() {
                             .attr('fill', FAILURE_TYPES[failureType].color)
                             .on('mouseover', function(event) {
                                 d3.select(this).attr('fill', HIGHLIGHT_COLOR);
-                                tooltip.innerHTML = `
+                                refs.tooltip.innerHTML = `
                                     Task ID: ${task.task_id}<br>
                                     Worker: ${task.worker_ip}:${task.worker_port}<br>
                                     Core: ${task.core_id}<br>
@@ -376,13 +367,13 @@ function plotExecutionDetails() {
                                     Start time: ${(startTime).toFixed(2)}s<br>
                                     When Completes: ${(task.when_failure_happens).toFixed(2)}s<br>
                                     Duration: ${(task.when_failure_happens - startTime).toFixed(2)}s`;
-                                tooltip.style.visibility = 'visible';
-                                tooltip.style.top = (event.pageY + 10) + 'px';
-                                tooltip.style.left = (event.pageX + 10) + 'px';
+                                refs.tooltip.style.visibility = 'visible';
+                                refs.tooltip.style.top = (event.pageY + 10) + 'px';
+                                refs.tooltip.style.left = (event.pageX + 10) + 'px';
                             })
                             .on('mouseout', function() {
                                 d3.select(this).attr('fill', FAILURE_TYPES[failureType].color);
-                                tooltip.style.visibility = 'hidden';
+                                refs.tooltip.style.visibility = 'hidden';
                             });
                     }
                 }
@@ -403,9 +394,8 @@ function plotExecutionDetails() {
                             .attr('height', safeHeight())
                             .attr('fill', colors['recovery-successful'])
                             .on('mouseover', function(event) {
-                                const tooltip = document.getElementById('vine-tooltip');
                                 d3.select(this).attr('fill', HIGHLIGHT_COLOR);
-                                tooltip.innerHTML = `
+                                refs.tooltip.innerHTML = `
                                     Task ID: ${task.task_id}<br>
                                     Worker: ${task.worker_ip}:${task.worker_port}<br>
                                     Core: ${task.core_id}<br>
@@ -413,14 +403,13 @@ function plotExecutionDetails() {
                                     Start time: ${(task.time_worker_start).toFixed(2)}s<br>
                                     End time: ${(task.time_worker_end).toFixed(2)}s<br>
                                     Duration: ${(task.time_worker_end - task.time_worker_start).toFixed(2)}s`;
-                                tooltip.style.visibility = 'visible';
-                                tooltip.style.top = (event.pageY -15) + 'px';
-                                tooltip.style.left = (event.pageX + 10) + 'px';
+                                refs.tooltip.style.visibility = 'visible';
+                                refs.tooltip.style.top = (event.pageY -15) + 'px';
+                                refs.tooltip.style.left = (event.pageX + 10) + 'px';
                             })
                             .on('mouseout', function() {
-                                const tooltip = document.getElementById('vine-tooltip');
                                 d3.select(this).attr('fill', colors['recovery-successful']);
-                                tooltip.style.visibility = 'hidden';
+                                refs.tooltip.style.visibility = 'hidden';
                             });
                     }
                 }
@@ -444,9 +433,8 @@ function plotExecutionDetails() {
                             .attr('height', safeHeight())
                             .attr('fill', colors['recovery-unsuccessful'])
                             .on('mouseover', function(event) {
-                                const tooltip = document.getElementById('vine-tooltip');
                                 d3.select(this).attr('fill', HIGHLIGHT_COLOR);
-                                tooltip.innerHTML = `
+                                refs.tooltip.innerHTML = `
                                     Task ID: ${task.task_id}<br>
                                     Worker: ${task.worker_ip}:${task.worker_port}<br>
                                     Core: ${task.core_id}<br>
@@ -455,14 +443,13 @@ function plotExecutionDetails() {
                                     Start time: ${(startTime).toFixed(2)}s<br>
                                     When Completes: ${(endTime).toFixed(2)}s<br>
                                     Duration: ${(endTime - startTime).toFixed(2)}s`;
-                                tooltip.style.visibility = 'visible';
-                                tooltip.style.top = (event.pageY + 10) + 'px';
-                                tooltip.style.left = (event.pageX + 10) + 'px';
+                                refs.tooltip.style.visibility = 'visible';
+                                refs.tooltip.style.top = (event.pageY + 10) + 'px';
+                                refs.tooltip.style.left = (event.pageX + 10) + 'px';
                             })
                             .on('mouseout', function() {
-                                const tooltip = document.getElementById('vine-tooltip');
                                 d3.select(this).attr('fill', colors['recovery-unsuccessful']);
-                                tooltip.style.visibility = 'hidden';
+                                refs.tooltip.style.visibility = 'hidden';
                             });
                     }
                 }
@@ -473,8 +460,7 @@ function plotExecutionDetails() {
 
 function calculateMargin() {
     const margin = { top: 40, right: 30, bottom: 60, left: 30 };  // Increased bottom margin
-
-    const tempSvg = svgElement
+    const tempSvg = refs.svgElement
         .append('g')
         .attr('class', 'temp');
 
@@ -487,8 +473,19 @@ function calculateMargin() {
     tempSvg.call(tempYAxis);
     tempSvg.selectAll('text').style('font-size', state.tickFontSize);
     
-    const maxYLabelWidth = d3.max(tempSvg.selectAll('.tick text').nodes(), 
-        d => d.getBBox().width);
+    // Safely calculate max width of y-axis labels
+    let maxYLabelWidth = 0;
+    tempSvg.selectAll('.tick text').each(function() {
+        try {
+            if (this instanceof SVGTextElement) {
+                const width = this.getBBox().width;
+                maxYLabelWidth = Math.max(maxYLabelWidth, width);
+            }
+        } catch (err) {
+            console.warn('Failed to get BBox for text element:', err);
+        }
+    });
+    
     tempSvg.remove();
 
     margin.left = Math.ceil(maxYLabelWidth + 20);
@@ -601,8 +598,7 @@ function plotAxis(svg, svgWidth, svgHeight) {
 }
 
 function handleResetClick() {
-    document.querySelector('#task-execution-details').style.width = '100%';
-    document.querySelector('#task-execution-details').style.height = '100%';
+    resetContainer('task-execution-details-container', 'task-execution-details-loading');
     plotExecutionDetails();
 }
 
@@ -610,16 +606,10 @@ function handleDownloadClick() {
     downloadSVG('task-execution-details');
 }
 
-async function initialize() {
+async function fetchData() {
     try {
         // init dom elements when called
-        buttonReset = document.getElementById('button-reset-task-execution-details');
-        buttonDownload = document.getElementById('button-download-task-execution-details');
-        svgContainer = document.getElementById('task-execution-details-container');
-        svgElement = d3.select('#task-execution-details');
-        tooltip = document.getElementById('vine-tooltip');
-        
-        svgElement.selectAll('*').remove();
+        refs.svgElement.selectAll('*').remove();
 
         const url = `/api/task-execution-details`;
         const response = await fetch(url);
@@ -645,25 +635,27 @@ async function initialize() {
 
         setLegend();
         
-        buttonDownload.removeEventListener('click', handleDownloadClick); 
-        buttonDownload.addEventListener('click', handleDownloadClick);
-
-        buttonReset.removeEventListener('click', handleResetClick);
-        buttonReset.addEventListener('click', handleResetClick);
-
         document.querySelector('#task-execution-details').style.width = '100%';
         document.querySelector('#task-execution-details').style.height = '100%';
+        refs.svgElement.style('width', '100%');
+        refs.svgElement.style('height', '100%');
+
         plotExecutionDetails();
-        setupZoomAndScroll('#task-execution-details', '#task-execution-details-container');
+
+        // Ensure DOM elements exist before setting up zoom and scroll
+        const svgElement = document.querySelector('#task-execution-details');
+        const svgContainer = document.querySelector('#task-execution-details-container');
         
-        if (data.unexpected_exit && document.getElementById('task-execution-details-tip')) {
-            document.getElementById('task-execution-details-tip').style.visibility = 'visible';
+        if (svgElement && svgContainer) {
+            setupZoomAndScroll('#task-execution-details', '#task-execution-details-container');
+        } else {
+            console.warn('SVG elements not found, skipping zoom and scroll setup');
         }
+        
     } catch (error) {
         console.error('Error fetching task execution details:', error);
     }
 }
 
-window.document.addEventListener('dataLoaded', initialize);
-window.addEventListener('resize', _.debounce(() => plotExecutionDetails(), 300));
+window.document.addEventListener('dataLoaded', fetchData);
 
