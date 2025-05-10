@@ -1,52 +1,64 @@
-import { moduleClasses, moduleConfigs, moduleObjects } from './modules/configs.js';
+import { moduleClasses, moduleConfigs } from './modules/configs.js';
 import { LogManager } from './modules/log_manager.js';
 
-const debouncedResizeMap = new Map();
 
-export function initModules() {
+function updateSidebarButtons() {
+    const sectionHeaders = Array.from(document.querySelectorAll('.section-header'));
+    const sidebar = document.querySelector('#sidebar');
+    
+    const existingButtons = sidebar.querySelectorAll('.report-scroll-btn');
+    existingButtons.forEach(btn => btn.remove());
+    
+    sectionHeaders.sort((a, b) => {
+        return a.getBoundingClientRect().top - b.getBoundingClientRect().top;
+    });
+    
+    sectionHeaders.forEach(header => {
+        const title = header.querySelector('.section-title');
+        if (title) {
+            const button = document.createElement('button');
+            button.textContent = title.textContent;
+            button.classList.add('report-scroll-btn');
+            button.addEventListener('click', () => {
+                header.scrollIntoView({ behavior: 'smooth' });
+            });
+            sidebar.appendChild(button);
+        }
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
     const root = document.getElementById('content');
     if (!root) {
         console.error('Content root not found');
         return;
     }
 
-    moduleConfigs.forEach(({ id, title, api_url }) => {
-        /* create dom elements for the module */
-        moduleObjects[id] = new moduleClasses[id](id, title, api_url);
-
-        /* create new html section for the module */
-        const section = moduleObjects[id].renderSkeleton();
-        root.appendChild(section);
-
-        /* initialize the module */
-        moduleObjects[id].init();
-
-        /* handle resize */
-        if (!debouncedResizeMap.has(id)) {
-            debouncedResizeMap.set(id, _.debounce(() => moduleObjects[id].onResize?.(), 300));
-        }
-        window.addEventListener('resize', debouncedResizeMap.get(id));
-
-        console.log(`Module "${id}" initialized successfully`);
-    });
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-    initModules();
-
+    /* initialize log manager */
     const logManager = new LogManager();
     logManager.init();
-    logManager.onChange((folder) => {
-        /* let all modules fetch data and plot */
-        Object.values(moduleObjects).forEach((module) => {
-            /* first fetch data and then plot */
+
+    /* initialize modules */
+    const moduleObjects = {};
+    moduleConfigs.forEach(({ id, title, api_url }) => {
+        /* create dom elements for the module */
+        const module = new moduleClasses[id](id, title, api_url);
+        moduleObjects[id] = module;
+        root.appendChild(module.renderSkeleton());
+        module.init();
+    
+        /* monitor log changes */
+        logManager.onChange((folder) => {
             module.fetchData(folder).then(() => {
                 module.initLegend();
-                module.plot();
                 module.initResetButton();
                 module.initDownloadButton();
+                module.initResizeHandler();
+                module.plot();
             });
         });
     });
 
+    /* update sidebar buttons */
+    updateSidebarButtons();
 });

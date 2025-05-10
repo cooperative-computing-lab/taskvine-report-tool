@@ -557,7 +557,13 @@ export class BaseModule {
         URL.revokeObjectURL(url);
     }
 
-    onResize() {}
+    initResizeHandler() {
+        if (this._boundResize) {
+            window.removeEventListener('resize', this._boundResize);
+        }
+        this._boundResize = _.debounce(() => this.plot(), 300);
+        window.addEventListener('resize', this._boundResize);
+    }
 
     initResetButton() {
         this.svgNode.setAttribute('width', '100%');

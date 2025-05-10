@@ -32,7 +32,7 @@ export class TaskExecutionDetailsModule extends BaseModule {
         this.setLeftTickValues(data['y_tick_values']);
     }
 
-    getLegendColor(taskType) {
+    _getLegendColor(taskType) {
         return this.legendMap[taskType]?.color;
     }    
 
@@ -106,24 +106,24 @@ export class TaskExecutionDetailsModule extends BaseModule {
         });
     }    
 
-    isTaskTypeChecked(taskType) {
+    _isTaskTypeChecked(taskType) {
         const checkbox = document.getElementById(`${taskType}-checkbox`);
         return checkbox && checkbox.checked;
     }
 
-    plotTask(svg, task, primaryName, recoveryName, timeStart, timeEnd) {
+    _plotTask(svg, task, primaryName, recoveryName, timeStart, timeEnd) {
         if (!timeStart || !timeEnd) return;
         timeStart = +timeStart;
         timeEnd = +timeEnd;
     
         const isRecovery = task.is_recovery_task;
-        const recoveryChecked = isRecovery && this.isTaskTypeChecked(recoveryName);
-        const primaryChecked = this.isTaskTypeChecked(primaryName);
+        const recoveryChecked = isRecovery && this._isTaskTypeChecked(recoveryName);
+        const primaryChecked = this._isTaskTypeChecked(primaryName);
     
         if (!recoveryChecked && !primaryChecked) return;
     
         const taskType = recoveryChecked ? recoveryName : primaryName;
-        const fill = this.getLegendColor(taskType);
+        const fill = this._getLegendColor(taskType);
     
         const x = this.bottomScale(timeStart);
         const y = this.leftScale(`${task.worker_id}-${task.core_id}`);
@@ -134,14 +134,14 @@ export class TaskExecutionDetailsModule extends BaseModule {
         this.plotRect(svg, x, y, width, height, fill, 1, innerHTML);
     }
 
-    plotWorker(svg, worker) {
+    _plotWorker(svg, worker) {
         for (let i = 0; i < worker["time_connected"].length; i++) {
             const height = Math.max(0, this.getBandWidth(this.leftScale) * worker.cores +
                 (this.leftScale.step() - this.getBandWidth(this.leftScale)) * (worker.cores - 1));
             const x = this.bottomScale(worker["time_connected"][i]);
             const y = this.leftScale(worker.id + '-' + worker.cores);
             const width = Math.max(0, this.bottomScale(worker["time_disconnected"][i]) - this.bottomScale(worker["time_connected"][i]));
-            const fill = this.getLegendColor('workers');
+            const fill = this._getLegendColor('workers');
             const opacity = 0.3;
             const innerHTML = getWorkerInnerHTML(worker);
             this.plotRect(svg, x, y, width, height, fill, opacity, innerHTML);
@@ -155,27 +155,23 @@ export class TaskExecutionDetailsModule extends BaseModule {
         const svg = this.plotAxes();
 
         /* plot workers */
-        if (this.isTaskTypeChecked('workers') && this.data['worker_info']) {
+        if (this._isTaskTypeChecked('workers') && this.data['worker_info']) {
             this.data['worker_info'].forEach(worker => {
-                this.plotWorker(svg, worker);
+                this._plotWorker(svg, worker);
             });
         }
 
         /* plot successful tasks */
         this.data['successful_tasks'].forEach(task => {
-            this.plotTask(svg, task, 'successful-committing-to-worker', 'recovery-successful', task.when_running, task.time_worker_start);
-            this.plotTask(svg, task, 'successful-executing-on-worker', 'recovery-successful', task.time_worker_start, task.time_worker_end);
-            this.plotTask(svg, task, 'successful-retrieving-to-manager', 'recovery-successful', task.time_worker_end, task.when_retrieved);
+            this._plotTask(svg, task, 'successful-committing-to-worker', 'recovery-successful', task.when_running, task.time_worker_start);
+            this._plotTask(svg, task, 'successful-executing-on-worker', 'recovery-successful', task.time_worker_start, task.time_worker_end);
+            this._plotTask(svg, task, 'successful-retrieving-to-manager', 'recovery-successful', task.time_worker_end, task.when_retrieved);
         });
 
         /* plot unsuccessful tasks */
         this.data['unsuccessful_tasks'].forEach(task => {
-            this.plotTask(svg, task, task.unsuccessful_checkbox_name, 'recovery-unsuccessful', task.when_running, task.when_failure_happens);
+            this._plotTask(svg, task, task.unsuccessful_checkbox_name, 'recovery-unsuccessful', task.when_running, task.when_failure_happens);
         });
 
-    }
-
-    onResize() {
-        // console.log('onResize', this.id);
     }
 }

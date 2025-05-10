@@ -7,8 +7,6 @@ export const moduleClasses = {
     // ...
 };
 
-export const moduleObjects = {};
-
 export const moduleConfigs = [
     { id: 'task-execution-details', title: 'Task Execution Details', api_url: '/api/task-execution-details' },
     // ...
