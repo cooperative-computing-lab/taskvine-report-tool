@@ -8,8 +8,8 @@ import traceback
 from flask import Blueprint, jsonify, request
 
 
-storage_consumption_bp = Blueprint(
-    'storage_consumption', __name__, url_prefix='/api')
+worker_storage_consumption_bp = Blueprint(
+    'worker_storage_consumption', __name__, url_prefix='/api')
 
 def downsample_storage_data(points):
     # downsample storage consumption data points while keeping the global peak and randomly sampling other points
@@ -34,20 +34,18 @@ def downsample_storage_data(points):
     return result
 
 
-@storage_consumption_bp.route('/storage-consumption')
+@worker_storage_consumption_bp.route('/worker-storage-consumption')
 @check_and_reload_data()
-def get_storage_consumption():
+def get_worker_storage_consumption():
     try:
         show_percentage = request.args.get(
             'show_percentage', 'false').lower() == 'true'
-        show_pbb_workers = request.args.get(
-            'show_pbb_workers', 'true').lower() == 'true'
         data = {}
 
         files = runtime_state.files
 
         # construct the succeeded file transfers
-        data['worker_storage_consumption'] = {}
+        data['storage_data'] = {}
         data['worker_resources'] = {}
 
         all_worker_storage = {}
@@ -63,17 +61,10 @@ def get_storage_consumption():
 
                 destination = transfer.destination
 
-                # skip if this is a PBB worker
-                if destination in runtime_state.workers:
-                    if runtime_state.workers[destination].is_pbb:
-                        if not show_pbb_workers:
-                            continue
-
                 # add the transfer to the worker
                 if destination not in all_worker_storage:
                     all_worker_storage[destination] = []
 
-                # time_in = float(transfer.time_stage_in - runtime_state.MIN_TIME)
                 time_in = float(transfer.time_start_stage_in -
                                 runtime_state.MIN_TIME)
                 time_out = float(transfer.time_stage_out -
@@ -85,16 +76,16 @@ def get_storage_consumption():
                     (time_out, -max(0, file.size_mb)))
 
         for destination in list(all_worker_storage.keys()):
-            data['worker_storage_consumption'][destination] = all_worker_storage[destination]
+            data['storage_data'][destination] = all_worker_storage[destination]
 
         max_storage_consumption = 0
-        for destination in list(data['worker_storage_consumption'].keys()):
-            if not data['worker_storage_consumption'][destination]:
-                del data['worker_storage_consumption'][destination]
+        for destination in list(data['storage_data'].keys()):
+            if not data['storage_data'][destination]:
+                del data['storage_data'][destination]
                 continue
 
             # convert to a pandas dataframe
-            df = pd.DataFrame(data['worker_storage_consumption']
+            df = pd.DataFrame(data['storage_data']
                               [destination], columns=['time', 'size'])
             # sort the dataframe by time
             df = df.sort_values(by=['time'])
@@ -115,7 +106,7 @@ def get_storage_consumption():
 
             # Skip if no valid data
             if df.empty or df['storage_consumption'].isna().all():
-                del data['worker_storage_consumption'][destination]
+                del data['storage_data'][destination]
                 continue
 
             # update the max storage consumption
@@ -127,7 +118,7 @@ def get_storage_consumption():
             # Convert to list of points and downsample
             points = df[['time', 'storage_consumption']].values.tolist()
             points = downsample_storage_data(points)
-            data['worker_storage_consumption'][destination] = points
+            data['storage_data'][destination] = points
 
             # add the initial and final points with 0 consumption
             worker = runtime_state.workers[destination]
@@ -137,19 +128,19 @@ def get_storage_consumption():
                     time_end = float(time_disconnected -
                                      runtime_state.MIN_TIME)
                     if not np.isnan(time_start):
-                        data['worker_storage_consumption'][destination].insert(
+                        data['storage_data'][destination].insert(
                             0, [time_start, 0.0])
                     if not np.isnan(time_end):
-                        data['worker_storage_consumption'][destination].append([
+                        data['storage_data'][destination].append([
                                                                                time_end, 0.0])
 
         # Skip if no valid data for any worker
-        if not data['worker_storage_consumption']:
+        if not data['storage_data']:
             return jsonify({'error': 'No valid storage consumption data available'}), 404
 
         # convert the key to a string
-        data['worker_storage_consumption'] = {
-            f"{k[0]}:{k[1]}": v for k, v in data['worker_storage_consumption'].items()}
+        data['storage_data'] = {
+            f"{k[0]}:{k[1]}": v for k, v in data['storage_data'].items()}
 
         if show_percentage:
             data['file_size_unit'] = '%'
@@ -159,50 +150,44 @@ def get_storage_consumption():
                 max_storage_consumption)
             # also update the source data
             if scale != 1:
-                for destination in data['worker_storage_consumption']:
-                    points = data['worker_storage_consumption'][destination]
-                    data['worker_storage_consumption'][destination] = [
+                for destination in data['storage_data']:
+                    points = data['storage_data'][destination]
+                    data['storage_data'][destination] = [
                         [p[0], p[1] * scale] for p in points]
                 max_storage_consumption *= scale
 
         # Add worker resource information
         for worker_entry, worker in runtime_state.workers.items():
             worker_id = f"{worker_entry[0]}:{worker_entry[1]}"
-            if worker_id in data['worker_storage_consumption']:
+            if worker_id in data['storage_data']:
                 data['worker_resources'][worker_id] = {
                     'cores': worker.cores,
                     'memory_mb': worker.memory_mb,
                     'disk_mb': worker.disk_mb,
-                    'gpus': worker.gpus,
-                    'is_pbb': getattr(worker, 'is_pbb', False)
+                    'gpus': worker.gpus
                 }
 
-        data['show_pbb_workers'] = show_pbb_workers
-
         # plotting parameters
-        data['xMin'] = 0
-        data['xMax'] = float(runtime_state.MAX_TIME - runtime_state.MIN_TIME)
-        data['yMin'] = 0
-        # Ensure positive yMax and at least 1.0
-        data['yMax'] = max(1.0, max_storage_consumption)
+        data['x_domain'] = [0, float(runtime_state.MAX_TIME - runtime_state.MIN_TIME)]
+        data['y_domain'] = [0, max(1.0, max_storage_consumption)]
 
         # Ensure all tick values are valid numbers
-        x_range = data['xMax'] - data['xMin']
-        data['xTickValues'] = [
-            float(data['xMin']),
-            float(data['xMin'] + x_range * 0.25),
-            float(data['xMin'] + x_range * 0.5),
-            float(data['xMin'] + x_range * 0.75),
-            float(data['xMax'])
+        x_range = data['x_domain'][1] - data['x_domain'][0]
+        data['x_tick_values'] = [
+            float(data['x_domain'][0]),
+            float(data['x_domain'][0] + x_range * 0.25),
+            float(data['x_domain'][0] + x_range * 0.5),
+            float(data['x_domain'][0] + x_range * 0.75),
+            float(data['x_domain'][1])
         ]
 
-        y_range = data['yMax'] - data['yMin']
-        data['yTickValues'] = [
-            float(data['yMin']),
-            float(data['yMin'] + y_range * 0.25),
-            float(data['yMin'] + y_range * 0.5),
-            float(data['yMin'] + y_range * 0.75),
-            float(data['yMax'])
+        y_range = data['y_domain'][1] - data['y_domain'][0]
+        data['y_tick_values'] = [
+            float(data['y_domain'][0]),
+            float(data['y_domain'][0] + y_range * 0.25),
+            float(data['y_domain'][0] + y_range * 0.5),
+            float(data['y_domain'][0] + y_range * 0.75),
+            float(data['y_domain'][1])
         ]
 
         data['tickFontSize'] = int(runtime_state.tick_size)

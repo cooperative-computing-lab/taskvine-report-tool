@@ -1,6 +1,6 @@
 from routes.runtime_template import runtime_template_bp
 from routes.subgraphs import subgraphs_bp
-from routes.storage_consumption import storage_consumption_bp
+from routes.worker_storage_consumption import worker_storage_consumption_bp
 from routes.file_transfers import file_transfers_bp
 from routes.file_sizes import file_sizes_bp
 from routes.file_replicas import file_replicas_bp
@@ -55,7 +55,7 @@ app.register_blueprint(file_sizes_bp)
 app.register_blueprint(file_transfers_bp)
 
 # storage
-app.register_blueprint(storage_consumption_bp)
+app.register_blueprint(worker_storage_consumption_bp)
 
 # subgraphs
 app.register_blueprint(subgraphs_bp)

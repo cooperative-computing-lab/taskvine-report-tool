@@ -10,7 +10,7 @@ export const modules = [
     { id: 'task-response-time', title: 'Task Response Time' },
     { id: 'task-execution-time', title: 'Task Execution Time' },
     { id: 'task-concurrency', title: 'Task Concurrency' },
-    { id: 'storage-consumption', title: 'Storage Consumption' },
+    { id: 'worker-storage-consumption', title: 'Worker Storage Consumption' },
     { id: 'file-transfers', title: 'File Transfers' },
     { id: 'file-sizes', title: 'File Sizes' },
     { id: 'file-replicas', title: 'File Replicas' },
@@ -39,10 +39,10 @@ export const moduleRegistry = {
         registerButtons: registerButtonsTaskConcurrency,
         registerLegend: registerLegendTaskConcurrency
     },
-    'storage-consumption': {
-        init: initStorageConsumption,
-        registerButtons: registerButtonsStorageConsumption,
-        registerLegend: registerLegendStorageConsumption
+    'worker-storage-consumption': {
+        init: initWorkerStorageConsumption,
+        registerButtons: registerButtonsWorkerStorageConsumption,
+        registerLegend: registerLegendWorkerStorageConsumption
     },
     'file-transfers': {
         init: initFileTransfers,

@@ -17,7 +17,7 @@ SERVICE_API_LISTS = [
     'task-execution-details',
     'task-execution-time',
     'task-concurrency',
-    'storage-consumption',
+    'worker-storage-consumption',
     'file-transfers',
     'file-sizes',
     'file-replicas',

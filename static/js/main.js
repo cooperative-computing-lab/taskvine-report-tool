@@ -55,6 +55,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 module.initDownloadButton();
                 module.initResizeHandler();
                 module.plot();
+                module.initZoomTrackingAfterRender();
+                module.setupZoomAndScroll();
             });
         });
     });

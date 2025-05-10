@@ -12,7 +12,6 @@ body h2 {
     font-size: 5rem;
 }
 
-
 /* the 'header' of datatables */
 .dt-layout-row {
     padding-top: 10px;
@@ -20,15 +19,43 @@ body h2 {
 
 /* Containers */
 .container-alpha {
-    width: 90%;
+    width: 100%;
     height: 60vh;
     min-width: 500px;
     min-height: 200px;
     overflow: auto;
-    display: inline-block;
-    justify-content: center;
-    align-items: center;
     border: 1px solid #ccc;
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
+    position: relative;
+}
+
+/* Safari/Chrome overlay-style scrollbar */
+.container-alpha::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+}
+.container-alpha::-webkit-scrollbar-track {
+    background: transparent;
+}
+.container-alpha::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 10px;
+}
+/* Firefox */
+.container-alpha {
+    scrollbar-width: thin;
+}
+
+svg {
+    display: block;
+    margin: 0;
+    padding: 0;
+    border: none;
+    max-width: none;
+    max-height: none;
+    box-sizing: content-box;
 }
 
 
@@ -52,67 +79,6 @@ body h2 {
     font-size: 4rem; 
     color: #C32929; 
     visibility: hidden;
-}
-
-/* Text Description */
-.text-description {
-    font-size: 4rem;
-    width: 90%;
-    height: auto;
-}
-
-.formatted-json {
-    line-height: 6rem;
-}
-
-/* Execution Details svg */
-#task-execution-details {
-    width: 100%;
-    height: 100%;
-}
-
-/* Label */
-.report-label-container {
-    position: relative;
-    display: inline-block;
-    justify-content: center;
-    padding-right: 2rem;
-    align-items: center;
-    height: 100%;
-    font-size: 3rem;
-    font-family: 'Open Sans', sans-serif;
-}
-
-/* Input Box */
-.report-input-box {
-    width: 35rem;
-    padding: 8px 6px;
-    font-size: 3rem;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    transition: all 0.3s ease;
-}
-
-/* Selector */
-.report-selector {
-    padding: 8px 16px;
-    margin-right: 10px;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    transition: all 0.3s ease;
-    font-size: 3rem;
-    font-family: Arial, sans-serif;
-    background-color: #ffffff;
-    font-weight: normal;
-}
-
-.report-input-box:focus,
-.report-selector:focus{
-    border-color: #66afe9;
-    box-shadow: 0 0 5px rgba(102, 175, 233, 0.6);
-    padding: 8px 16px;
-    margin-right: 10px;
-    font-size: 3rem;
 }
 
 /* Button */
@@ -142,125 +108,51 @@ body h2 {
     background: linear-gradient(to right, #cccccc, #d4d4d4);
 }
 
-/* Tool Box*/
-.report-toolbox {
-    display: flex;
+.section {
+
     flex-direction: column;
-    gap: 10px;
-    margin-bottom: 15px;
-}
-
-/* Preface Area */
-.preface {
     width: 90%;
-    min-width: 500px;
-    max-height: 40vh;
-    font-size: 3.5rem; 
-    background-color: #f3f3f3;
+    margin: 0 auto;
 }
 
-
-/* Legend */
-.legend-table-container {
-    width: 90%;
-    min-width: 500px;
-    max-height: 40vh;
-    font-size: 3.5rem;
-    overflow: auto;
-    margin-bottom: 2rem;
-}
-.legend-table {
-    width: 90%;
-    border-collapse: collapse;
-    font-size: 3.5rem;
-}
-.legend-table tr {
-    height: 3rem;
-}
-.legend-table th {
-    padding: 0;
-    width: 6%;
-    text-align: center;
-    vertical-align: middle;
-}
-.legend-table td {
-    width: auto;
-    text-align: left;
-}
-
-/* Analyze Area */
-
-#critical-path-info-div {
-    width: 100%;
-    min-width: 500px;
-    white-space: nowrap; 
-    font-size: 3.5rem; 
-    padding: 0px 0px 0px 0px;
-    display: none;
-    position: relative;
-}
-
-#critical-path-container {
-    overflow: hidden; 
-    font-size: 3.5rem;
-    max-height: 8vh;
-    border: 1px solid #ccc;
-    margin-top: 2rem;
-    width: 90%;
-    margin-bottom: 2rem;
-}
-
-#analyze-task-display-details {
-    white-space: nowrap; 
-    font-size: 3.5rem; 
-    padding: 10px 0px; 
-    display: none;
-    margin: 2rem 0rem;
-}
-
-
-#analyze-task-display-task-information {
-    width: 90%;
-    display: block;
-    overflow: auto; 
-}
-
-#analyze-task-display-input-files {
-    width: 100%;
-}
-
-
-/* MANAGER info part, not hidden */
-#manager-info-container {
-    width: 90%;
-    min-width: 500px;
-    max-height: 50vh;
-    white-space: nowrap; 
-    font-size: 3.5rem; 
-    padding: 0px 0px 0px 0px;
+.section-header {
     display: flex;
-    position: relative;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 5px;
+    padding: 0 8px;
+    height: 18rem;
+    flex: 0 0 auto;
 }
 
-#manager-description-container {
-    position: relative;
-    overflow: hidden; 
+.section-title {
+    font-size: 5rem;
+    font-weight: 600;
+    color: #2c3e50;
+    letter-spacing: 0.5px;
+    border-bottom: 2px solid #eee;
+    white-space: nowrap;
+    height: 6rem;
+    line-height: 6rem;
 }
 
-#manager-description-table {
+.section-buttons {
+    display: flex;
+    gap: 8px;
+    margin-left: 50px;
+}
+
+.section-content {
     width: 100%;
-    max-width: 600px;
-    margin: 20px auto;
-    border-collapse: collapse;
+    height: 100%;
+    overflow: auto;
+    border: 1px solid #ccc;
 }
-#manager-description-table th, 
-#manager-description-table td {
-    border-bottom: 1px solid #ddd;
-    padding: 8px;
-    text-align: left;
-}
-#manager-description-table th {
-    width: 50%;
+
+.section-legend,
+.section-controls {
+    flex: 0 0 auto;
+    width: 100%;
 }
 
 
@@ -322,7 +214,6 @@ table.dataTable thead th {
     border-bottom: 1px solid #999999;
 }
 
-/* Task Type Checkboxes */
 .legend-flex-container {
     display: flex;
     flex-wrap: wrap;
@@ -383,16 +274,16 @@ table.dataTable thead th {
     background-color: #f5f5f5;
 }
 
+.legend-item.checked .legend-color {
+    border-color: #666;
+    background-color: var(--color);
+}
+
 .legend-color {
     width: 14px;
     height: 14px;
     border-radius: 2px;
     border: 1px solid #ccc;
-}
-
-.legend-item.checked .legend-color {
-    border-color: #666;
-    background-color: var(--color);
 }
 
 .legend-item span {
@@ -449,33 +340,6 @@ table.dataTable thead th {
 
 .legend-help-icon:hover {
     background-color: #ddd;
-}
-
-/* Section Headers - unified style for all major section titles */
-.section-header {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-    margin-bottom: 5px;
-    padding: 0 8px;
-    height: 18rem;
-}
-
-.section-title {
-    font-size: 5rem;
-    font-weight: 600;
-    color: #2c3e50;
-    letter-spacing: 0.5px;
-    border-bottom: 2px solid #eee;
-    white-space: nowrap;
-    height: 6rem;
-    line-height: 6rem;
-}
-
-.section-buttons {
-    display: flex;
-    gap: 8px;
-    margin-left: 50px;
 }
 
 /* Control groups in toolbox */

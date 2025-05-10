@@ -125,71 +125,81 @@ export class BaseModule {
     }
 
     clearSVG() {
-        this.svgElement.selectAll('*').remove();
+        while (this.svgNode.firstChild) {
+            this.svgNode.removeChild(this.svgNode.firstChild);
+        }
+    
+        this.svgNode.removeAttribute('width');
+        this.svgNode.removeAttribute('height');
+    
+        this.svgNode.style.width = '';
+        this.svgNode.style.height = '';
     }
     
     fetchData() {}
 
     plot() {}
 
+    initZoomTrackingAfterRender() {
+        const scrollbarAllowance = 4;
+        this.originalWidth = Math.floor(this.svgContainer.clientWidth - scrollbarAllowance);
+        this.originalHeight = Math.floor(this.svgContainer.clientHeight - scrollbarAllowance);
+    
+        this.svgNode.style.width = `${this.originalWidth}px`;
+        this.svgNode.style.height = `${this.originalHeight}px`;
+    
+        this.currentWidth = this.originalWidth;
+        this.currentHeight = this.originalHeight;
+    }
+    
     setupZoomAndScroll() {
-        // store the initial width and height of the SVG.
-        let initialWidth = this.svgNode.getBoundingClientRect().width;
-        let initialHeight = this.svgNode.getBoundingClientRect().height;
+        this.svgNode.removeAttribute('width');
+        this.svgNode.removeAttribute('height');
     
-        // define the maximum and minimum zoom scales.
-        const maxWidth = initialWidth * 64;
-        const maxHeight = initialHeight * 64; 
-        const minWidth = initialWidth * 0.95;
-        const minHeight = initialHeight * 0.95;
+        this.svgContainer.addEventListener('wheel', (event) => {
+            if (event.ctrlKey) {
+                event.preventDefault();
     
-        this.svgContainer.addEventListener('wheel', function(event) {
-            if (event.ctrlKey) { // check if the ctrl key is pressed during scroll.
-                event.preventDefault(); // prevent the default scroll behavior.
-    
-                const zoomFactor = event.deltaY < 0 ? 1.1 : 0.9; // determine the zoom direction.
-                let newWidth = initialWidth * zoomFactor; // calculate the new width based on the zoom factor.
-                let newHeight = initialHeight * zoomFactor; // calculate the new height based on the zoom factor.
-    
-                // check if the new dimensions exceed the zoom limits.
-                if ((newWidth >= maxWidth && zoomFactor > 1) || (newWidth <= minWidth && zoomFactor < 1) ||
-                    (newHeight >= maxHeight && zoomFactor > 1) || (newHeight <= minHeight && zoomFactor < 1)) {
-                    return; // if the new dimensions are outside the limits, exit the function.
+                const zoomFactor = event.deltaY < 0 ? 1.1 : 0.9;
+                let newWidth = this.currentWidth * zoomFactor;
+                let newHeight = this.currentHeight * zoomFactor;
+
+                if (zoomFactor < 1 && (this.currentWidth <= this.originalWidth || this.currentHeight <= this.originalHeight)) {
+                    return;
                 }
+                
+                if (newWidth <= this.originalWidth || newHeight <= this.originalHeight) {
+                    newWidth = this.originalWidth;
+                    newHeight = this.originalHeight;
+                }                
     
-                // calculate the mouse position relative to the SVG content before scaling.
-                const rect = this.svgElement.getBoundingClientRect(); // get the current size and position of the SVG.
-                const mouseX = event.clientX - rect.left; // mouse X position within the SVG.
-                const mouseY = event.clientY - rect.top; // mouse Y position within the SVG.
+                const rect = this.svgNode.getBoundingClientRect();
+                const mouseX = event.clientX - rect.left;
+                const mouseY = event.clientY - rect.top;
+                const scaleX = mouseX / rect.width;
+                const scaleY = mouseY / rect.height;
     
-                // determine the mouse position as a fraction of the SVG's width and height.
-                const scaleX = mouseX / rect.width; 
-                const scaleY = mouseY / rect.height; 
+                this.svgNode.style.width = `${Math.round(newWidth)}px`;
+                this.svgNode.style.height = `${Math.round(newHeight)}px`;
     
-                // apply the new dimensions to the SVG element.
-                this.svgElement.style.width = `${newWidth}px`;
-                this.svgElement.style.height = `${newHeight}px`;
+                const newRect = this.svgNode.getBoundingClientRect();
+                const targetX = scaleX * newRect.width;
+                const targetY = scaleY * newRect.height;
     
-                // after scaling, calculate where the mouse position would be relative to the new size.
-                const newRect = this.svgElement.getBoundingClientRect(); // get the new size and position of the SVG.
-                const targetX = scaleX * newRect.width; 
-                const targetY = scaleY * newRect.height; 
+                const offsetX = targetX - mouseX;
+                const offsetY = targetY - mouseY;
     
-                // calculate the scroll offsets needed to keep the mouse-over point visually static.
-                const offsetX = targetX - mouseX; 
-                const offsetY = targetY - mouseY; 
-    
-                // adjust the scroll position of the container to compensate for the scaling.
                 this.svgContainer.scrollLeft += offsetX;
                 this.svgContainer.scrollTop += offsetY;
     
-                // update the initial dimensions for the next scaling operation.
-                initialWidth = newWidth;
-                initialHeight = newHeight;
+                this.currentWidth = newRect.width;
+                this.currentHeight = newRect.height;
+                  
             }
         });
     }
-
+    
+    
     setTopDomain(domain) {
         this.topDomain = domain;
     }
@@ -365,11 +375,6 @@ export class BaseModule {
     /* plot all axes */
     plotAxes() {
         this.clearSVG();
-
-        /* setup zoom and scroll */
-        this.svgElement.style('width', '100%');
-        this.svgElement.style('height', '100%');
-        this.setupZoomAndScroll();
 
         /* create the scales */
         this.createScales();
@@ -566,9 +571,6 @@ export class BaseModule {
     }
 
     initResetButton() {
-        this.svgNode.setAttribute('width', '100%');
-        this.svgNode.setAttribute('height', '100%');
-    
         if (this._boundPlot) {
             this.resetButton.removeEventListener('click', this._boundPlot);
         }
