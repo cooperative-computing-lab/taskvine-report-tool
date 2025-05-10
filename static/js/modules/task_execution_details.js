@@ -154,6 +154,10 @@ export class TaskExecutionDetailsModule extends BaseModule {
         /* plot axes */
         const svg = this.plotAxes();
 
+        /* initialize zoom tracking after render */
+        this.initZoomTrackingAfterRender();
+        this.setupZoomAndScroll();
+
         /* plot workers */
         if (this._isTaskTypeChecked('workers') && this.data['worker_info']) {
             this.data['worker_info'].forEach(worker => {

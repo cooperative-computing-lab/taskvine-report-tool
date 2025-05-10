@@ -176,8 +176,13 @@ export class WorkerStorageConsumptionModule extends BaseModule {
         if (!this.data || !this.data['storage_data']) return;
 
         this.clearSVG();
-
+        
+        /* plot axes */
         const svg = this.plotAxes();
+
+        /* initialize zoom tracking after render */
+        this.initZoomTrackingAfterRender();
+        this.setupZoomAndScroll();
 
         Object.entries(this.data['storage_data']).forEach(([workerId, points]) => {
             this._plotWorkerLine(svg, workerId, points);

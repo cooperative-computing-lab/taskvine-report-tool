@@ -153,6 +153,10 @@ export class BaseModule {
     }
     
     setupZoomAndScroll() {
+        /* do not bind the handler multiple times */
+        if (this._zoomHandlerInitialized) return;
+        this._zoomHandlerInitialized = true;
+
         this.svgNode.removeAttribute('width');
         this.svgNode.removeAttribute('height');
     
@@ -160,7 +164,7 @@ export class BaseModule {
             if (event.ctrlKey) {
                 event.preventDefault();
     
-                const zoomFactor = event.deltaY < 0 ? 1.1 : 0.9;
+                const zoomFactor = event.deltaY < 0 ? 1.05 : 0.95;
                 let newWidth = this.currentWidth * zoomFactor;
                 let newHeight = this.currentHeight * zoomFactor;
 

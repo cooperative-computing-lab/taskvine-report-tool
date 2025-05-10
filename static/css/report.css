@@ -109,10 +109,9 @@ svg {
 }
 
 .section {
-
     flex-direction: column;
     width: 90%;
-    margin: 0 auto;
+    margin: 0;
 }
 
 .section-header {
@@ -218,8 +217,9 @@ table.dataTable thead th {
     display: flex;
     flex-wrap: wrap;
     justify-content: space-between;
+    align-items: flex-start;
     gap: 16px;
-    width: 90%;
+    width: 100%;
     margin: 0 0 10px 0;
     max-height: 10vh;
     overflow-y: auto;
