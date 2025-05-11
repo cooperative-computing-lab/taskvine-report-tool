@@ -33,6 +33,12 @@ def downsample_storage_data(points):
     result = [points[i] for i in sorted(keep_indices)]
     return result
 
+def filter_valid_points(points, x_domain, y_domain):
+    return [p for p in points if (
+        not np.isnan(p[0]) and not np.isnan(p[1]) and
+        p[0] >= x_domain[0] and p[0] <= x_domain[1] and
+        p[1] >= y_domain[0] and p[1] <= y_domain[1]
+    )]
 
 @worker_storage_consumption_bp.route('/worker-storage-consumption')
 @check_and_reload_data()
@@ -170,6 +176,11 @@ def get_worker_storage_consumption():
         # plotting parameters
         data['x_domain'] = [0, float(runtime_state.MAX_TIME - runtime_state.MIN_TIME)]
         data['y_domain'] = [0, max(1.0, max_storage_consumption)]
+
+        # filter valid points for each worker
+        for destination in data['storage_data']:
+            points = data['storage_data'][destination]
+            data['storage_data'][destination] = filter_valid_points(points, data['x_domain'], data['y_domain'])
 
         # Ensure all tick values are valid numbers
         x_range = data['x_domain'][1] - data['x_domain'][0]

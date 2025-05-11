@@ -66,8 +66,9 @@ def get_task_response_time():
     try:
         data = {}
 
-        task_data = []
-        for task in runtime_state.tasks.values():
+        # Calculate response time for each task
+        points = []
+        for i, task in enumerate(runtime_state.tasks.values()):
             # skip tasks that haven't started running yet
             if not task.when_running:
                 continue
@@ -75,59 +76,35 @@ def get_task_response_time():
             response_time = round(task.when_running - task.when_ready, 2)
             # set minimum response time to 0.01
             response_time = max(response_time, 0.01)
-            task_data.append((task.task_id, response_time, task.when_ready))
+            points.append([i, response_time])
 
-        task_data.sort(key=lambda x: x[2])
-        
-        task_response_time_list = [(task_id, response_time) for task_id, response_time, _ in task_data]
+        # Calculate domains and tick values
+        x_domain = [0, len(points)]
+        y_domain = [0, max(p[1] for p in points) if points else 0]
 
-        # use full dataset for now
-        data['task_response_time'] = task_response_time_list
-
-        # calculate CDF properly
-        # extract just the response times
-        response_times = [x[1] for x in task_response_time_list]
-        
-        # sort response times in ascending order
-        response_times_sorted = sorted(response_times)
-        
-        # calculate CDF points using numpy for better accuracy
-        cdf_values = np.linspace(0, 1, len(response_times_sorted))
-        cdf_points = [(response_time, round(prob, 4)) for response_time, prob in zip(response_times_sorted, cdf_values)]
-        
-        data['task_response_time_cdf'] = cdf_points
-
-        # tick values - use original data ranges to maintain proper axis scaling
-        num_tasks = len(task_response_time_list)
-        data['response_time_x_tick_values'] = [
+        x_tick_values = [
             1,
-            round(num_tasks * 0.25, 2),
-            round(num_tasks * 0.5, 2),
-            round(num_tasks * 0.75, 2),
-            num_tasks
+            round(len(points) * 0.25, 2),
+            round(len(points) * 0.5, 2),
+            round(len(points) * 0.75, 2),
+            len(points)
         ]
 
-        max_response_time = max(x[1] for x in task_response_time_list)
-        data['response_time_y_tick_values'] = [
+        y_tick_values = [
             0,
-            round(max_response_time * 0.25, 2),
-            round(max_response_time * 0.5, 2),
-            round(max_response_time * 0.75, 2),
-            max_response_time
+            round(y_domain[1] * 0.25, 2),
+            round(y_domain[1] * 0.5, 2),
+            round(y_domain[1] * 0.75, 2),
+            y_domain[1]
         ]
 
-        data['probability_y_tick_values'] = [0, 0.25, 0.5, 0.75, 1]
-        data['probability_x_tick_values'] = [
-            0,
-            round(max_response_time * 0.25, 2),
-            round(max_response_time * 0.5, 2),
-            round(max_response_time * 0.75, 2),
-            max_response_time
-        ]
-
-        data['tickFontSize'] = runtime_state.tick_size
-
-        return jsonify(data)
+        return jsonify({
+            'points': points,
+            'x_domain': x_domain,
+            'y_domain': y_domain,
+            'x_tick_values': x_tick_values,
+            'y_tick_values': y_tick_values
+        })
 
     except Exception as e:
         print(f"Error in get_task_response_time: {str(e)}")

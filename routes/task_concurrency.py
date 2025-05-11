@@ -65,17 +65,6 @@ def get_task_concurrency():
     try:
         data = {}
 
-        # Get selected task types
-        selected_types = request.args.get('types', '').split(',')
-        if not selected_types or selected_types == ['']:
-            selected_types = [
-                'tasks_waiting',
-                'tasks_committing',
-                'tasks_executing',
-                'tasks_retrieving',
-                'tasks_done'
-            ]
-
         # Initialize task type lists
         all_task_types = {
             'tasks_waiting': [],
@@ -86,13 +75,13 @@ def get_task_concurrency():
         }
         data.update(all_task_types)
 
-        # Process selected task types
+        # Process all task types
         for task in runtime_state.tasks.values():
             if task.when_failure_happens is not None:
                 continue
 
             # Collect task state data
-            if 'tasks_waiting' in selected_types and task.when_ready:
+            if task.when_ready:
                 # waiting tasks can happen before the start time
                 data['tasks_waiting'].append(
                     (max(task.when_ready - runtime_state.MIN_TIME, 0), 1))
@@ -100,31 +89,30 @@ def get_task_concurrency():
                     data['tasks_waiting'].append(
                         (task.when_running - runtime_state.MIN_TIME, -1))
 
-            if 'tasks_committing' in selected_types and task.when_running:
+            if task.when_running:
                 data['tasks_committing'].append(
                     (task.when_running - runtime_state.MIN_TIME, 1))
                 if task.time_worker_start:
                     data['tasks_committing'].append(
                         (task.time_worker_start - runtime_state.MIN_TIME, -1))
 
-            if 'tasks_executing' in selected_types and task.time_worker_start:
+            if task.time_worker_start:
                 data['tasks_executing'].append(
                     (task.time_worker_start - runtime_state.MIN_TIME, 1))
                 if task.time_worker_end:
                     data['tasks_executing'].append(
                         (task.time_worker_end - runtime_state.MIN_TIME, -1))
 
-            if 'tasks_retrieving' in selected_types and task.time_worker_end:
+            if task.time_worker_end:
                 data['tasks_retrieving'].append(
                     (task.time_worker_end - runtime_state.MIN_TIME, 1))
                 if task.when_retrieved:
                     data['tasks_retrieving'].append(
                         (task.when_retrieved - runtime_state.MIN_TIME, -1))
 
-            if 'tasks_done' in selected_types:
-                if task.when_done:
-                    data['tasks_done'].append(
-                        (task.when_done - runtime_state.MIN_TIME, 1))
+            if task.when_done:
+                data['tasks_done'].append(
+                    (task.when_done - runtime_state.MIN_TIME, 1))
 
         def process_task_type(tasks):
             if not tasks:
@@ -140,41 +128,34 @@ def get_task_concurrency():
             # Downsample data
             return downsample_task_concurrency(points)
 
-        # Process all task types data
-        max_time = float('-inf')
+        # process all task types data
         max_concurrent = 0
         for task_type in all_task_types:
             data[task_type] = process_task_type(data[task_type])
             # Update max values
             if data[task_type]:
-                max_time = max(max_time, max(
-                    point[0] for point in data[task_type]))
-                if task_type in selected_types:
-                    max_concurrent = max(max_concurrent, max(
-                        point[1] for point in data[task_type]))
+                max_concurrent = max(max_concurrent, max(
+                    point[1] for point in data[task_type]))
 
         # Set axis ranges
-        data['xMin'] = 0
-        data['xMax'] = max_time
-        data['yMin'] = 0
-        data['yMax'] = max_concurrent
+        data['x_domain'] = [0, runtime_state.MAX_TIME - runtime_state.MIN_TIME]
+        data['y_domain'] = [0, max_concurrent]
 
         # Generate tick values
-        data['xTickValues'] = [
-            round(data['xMin'], 2),
-            round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.25, 2),
-            round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.5, 2),
-            round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.75, 2),
-            round(data['xMax'], 2)
+        data['x_tick_values'] = [
+            round(data['x_domain'][0], 2),
+            round(data['x_domain'][0] + (data['x_domain'][1] - data['x_domain'][0]) * 0.25, 2),
+            round(data['x_domain'][0] + (data['x_domain'][1] - data['x_domain'][0]) * 0.5, 2),
+            round(data['x_domain'][0] + (data['x_domain'][1] - data['x_domain'][0]) * 0.75, 2),
+            round(data['x_domain'][1], 2)
         ]
-        data['yTickValues'] = [
-            round(data['yMin'], 2),
-            round(data['yMin'] + (data['yMax'] - data['yMin']) * 0.25, 2),
-            round(data['yMin'] + (data['yMax'] - data['yMin']) * 0.5, 2),
-            round(data['yMin'] + (data['yMax'] - data['yMin']) * 0.75, 2),
-            round(data['yMax'], 2)
+        data['y_tick_values'] = [
+            round(data['y_domain'][0], 2),
+            round(data['y_domain'][0] + (data['y_domain'][1] - data['y_domain'][0]) * 0.25, 2),
+            round(data['y_domain'][0] + (data['y_domain'][1] - data['y_domain'][0]) * 0.5, 2),
+            round(data['y_domain'][0] + (data['y_domain'][1] - data['y_domain'][0]) * 0.75, 2),
+            round(data['y_domain'][1], 2)
         ]
-        data['tickFontSize'] = runtime_state.tick_size
 
         return jsonify(data)
     except Exception as e:

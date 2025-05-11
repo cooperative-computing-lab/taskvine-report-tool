@@ -184,7 +184,7 @@ if __name__ == "__main__":
 
     api_list = [
         {"name": "runtime-template-list", "params": None},
-        {"name": "storage-consumption", "params": {
+        {"name": "worker-storage-consumption", "params": {
             "show_percentage": "true"
         }},
         {"name": "file-replicas", "params": None},

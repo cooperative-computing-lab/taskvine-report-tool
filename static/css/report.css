@@ -221,12 +221,13 @@ table.dataTable thead th {
     gap: 16px;
     width: 100%;
     margin: 0 0 10px 0;
-    max-height: 10vh;
+    max-height: 20vh;
     overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .legend-flex-container::-webkit-scrollbar {
-    height: 8px;
+    height: 0;
     width: 8px;
 }
 

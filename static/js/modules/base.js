@@ -18,6 +18,8 @@ export class BaseModule {
         this.tickFontSize = 12;
         this.padding = 40;
         this.highlightColor = 'orange';
+        this.highlightRadius = 6;
+        this.highlightStrokeWidth = 3;
 
         /* plotting parameters */
         this.margin = null;
@@ -436,6 +438,53 @@ export class BaseModule {
         return svg;
     }
 
+    plotPath(svg, points, options = {}) {
+        const {
+            stroke = '#2077B4',
+            strokeWidth = 1.2,
+            tooltipFormatter = (d) => `${d}`,
+            className = 'data-path',
+            id = ''
+        } = options;
+
+        const tooltip = document.getElementById('vine-tooltip');
+        const safeId = id.replace(/[.:]/g, '-');
+
+        const line = d3.line()
+            .x(d => this.bottomScale(d[0]))
+            .y(d => this.leftScale(d[1]))
+            .defined(d => !isNaN(d[0]) && !isNaN(d[1]) && d[1] >= 0)
+            .curve(d3.curveStepAfter);
+
+        svg.append('path')
+            .datum(points)
+            .attr('fill', 'none')
+            .attr('stroke', stroke)
+            .attr('stroke-width', strokeWidth)
+            .attr('d', line)
+            .attr('original-stroke', stroke)
+            .attr('original-stroke-width', strokeWidth)
+            .attr('class', `${className} ${className}-${safeId}`)
+            .on('mouseover', (event) => {
+                svg.selectAll(`path.${className}`)
+                    .filter(el => el !== event.currentTarget)
+                    .attr('stroke', '#ddd')
+                    .attr('stroke-width', strokeWidth);
+                d3.select(event.currentTarget)
+                    .attr('stroke', this.highlightColor)
+                    .attr('stroke-width', this.highlightStrokeWidth)
+                    .raise();
+            })
+            .on('mouseout', () => {
+                svg.selectAll(`path.${className}`)
+                    .each(function () {
+                        const sel = d3.select(this);
+                        sel.attr('stroke', sel.attr('original-stroke'))
+                           .attr('stroke-width', sel.attr('original-stroke-width'));
+                    });
+            });
+    }
+
     plotRect(svg, x, y, width, height, fill, opacity, innerHTML) {
         const tooltip = document.getElementById('vine-tooltip');
     
@@ -593,4 +642,46 @@ export class BaseModule {
     }
 
     initLegend() {}
+
+    plotCircle(svg, points, options = {}) {
+        const {
+            radius = 1.5,
+            color = 'steelblue',
+            tooltipFormatter = (d) => `${d}`,
+            className = 'data-point'
+        } = options;
+
+        const tooltip = document.getElementById('vine-tooltip');
+
+        svg.selectAll(`circle.${className}`)
+            .data(points)
+            .enter()
+            .append('circle')
+            .attr('class', className)
+            .attr('cx', d => this.bottomScale(d[0]))
+            .attr('cy', d => this.leftScale(d[1]))
+            .attr('r', radius)
+            .attr('fill', color)
+            .on('mouseover', (event, d) => {
+                d3.select(event.currentTarget)
+                    .attr('fill', this.highlightColor)
+                    .attr('r', radius * 4);
+
+                tooltip.innerHTML = tooltipFormatter(d);
+                tooltip.style.visibility = 'visible';
+                tooltip.style.top = (event.pageY + 10) + 'px';
+                tooltip.style.left = (event.pageX + 10) + 'px';
+            })
+            .on('mousemove', (event) => {
+                tooltip.style.top = (event.pageY + 10) + 'px';
+                tooltip.style.left = (event.pageX + 10) + 'px';
+            })
+            .on('mouseout', (event) => {
+                d3.select(event.currentTarget)
+                    .attr('fill', color)
+                    .attr('r', radius);
+
+                tooltip.style.visibility = 'hidden';
+            });
+    }
 }
