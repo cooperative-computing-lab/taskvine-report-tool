@@ -149,14 +149,9 @@ export class TaskExecutionDetailsModule extends BaseModule {
     }
 
     plot() {
-        this.clearSVG();
+        if (!this.data) return;
 
-        /* plot axes */
-        const svg = this.plotAxes();
-
-        /* initialize zoom tracking after render */
-        this.initZoomTrackingAfterRender();
-        this.setupZoomAndScroll();
+        const svg = this.initSVG();
 
         /* plot workers */
         if (this._isTaskTypeChecked('workers') && this.data['worker_info']) {

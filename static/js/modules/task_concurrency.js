@@ -138,8 +138,6 @@ export class TaskConcurrencyModule extends BaseModule {
 
     plot() {
         if (!this.data) return;
-
-        this.clearSVG();
         
         /* calculate scaling factor based on visible task types */
         const originalMax = this.data.y_domain[1];
@@ -155,14 +153,9 @@ export class TaskConcurrencyModule extends BaseModule {
 
         this.setLeftDomain(scaledYDomain);
         this.setLeftTickValues(scaledYTickValues);
+
+        const svg = this.initSVG();
         
-        /* plot axes */
-        const svg = this.plotAxes();
-
-        /* initialize zoom tracking after render */
-        this.initZoomTrackingAfterRender();
-        this.setupZoomAndScroll();
-
         /* plot each task type */
         for (const [type, config] of Object.entries(this.taskConfigs)) {
             if (this.data[type] && this.data[type].length > 0) {

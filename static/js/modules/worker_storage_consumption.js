@@ -50,14 +50,7 @@ export class WorkerStorageConsumptionModule extends BaseModule {
     plot() {
         if (!this.data || !this.data['storage_data']) return;
 
-        this.clearSVG();
-        
-        /* plot axes */
-        const svg = this.plotAxes();
-
-        /* initialize zoom tracking after render */
-        this.initZoomTrackingAfterRender();
-        this.setupZoomAndScroll();
+        const svg = this.initSVG();
 
         /* plot each worker's storage consumption */
         for (const [workerId, points] of Object.entries(this.data['storage_data'])) {

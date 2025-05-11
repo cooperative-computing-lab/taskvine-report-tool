@@ -641,6 +641,22 @@ export class BaseModule {
         this.downloadButton.addEventListener('click', this._boundDownload);
     }
 
+    initSVG() {
+        if (!this.data) {
+            return;
+        }
+
+        this.clearSVG();
+
+        const svg = this.plotAxes();
+
+        this.initZoomTrackingAfterRender();
+
+        this.setupZoomAndScroll();
+
+        return svg;
+    }
+
     initLegend() {}
 
     plotCircle(svg, points, options = {}) {
