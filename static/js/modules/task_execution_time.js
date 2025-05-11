@@ -39,7 +39,7 @@ export class TaskExecutionTimeModule extends BaseModule {
         const svg = this.initSVG();
 
         /* plot execution time points */
-        this.plotCircle(svg, this.data.points, {
+        this.plotPoints(svg, this.data.points, {
             tooltipFormatter: d => `Task ID: ${d[0]}<br>Execution Time: ${d[1].toFixed(2)}s`,
             className: 'execution-time-point'
         });

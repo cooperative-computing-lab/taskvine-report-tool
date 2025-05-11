@@ -26,10 +26,10 @@ export class WorkerIncomingTransfersModule extends BaseModule {
 
         this.data = data;
 
-        this.setBottomDomain([data.x_domain[0], data.x_domain[1]]);
-        this.setLeftDomain([data.y_domain[0], data.y_domain[1]]);
-        this.setBottomTickValues(data.x_tick_values);
-        this.setLeftTickValues(data.y_tick_values);
+        this.setBottomDomain(data['x_domain']);
+        this.setLeftDomain(data['y_domain']);
+        this.setBottomTickValues(data['x_tick_values']);
+        this.setLeftTickValues(data['y_tick_values']);
     }
 
     plot() {
@@ -44,7 +44,8 @@ export class WorkerIncomingTransfersModule extends BaseModule {
             this.plotPath(svg, points, {
                 stroke: color,
                 className: 'transfer-line',
-                id: `transfer-${safeId}`
+                id: `transfer-${safeId}`,
+                tooltipInnerHTML: `${worker}`
             });
         });
 

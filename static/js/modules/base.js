@@ -439,13 +439,14 @@ export class BaseModule {
     }
 
     plotPath(svg, points, options = {}) {
-        points = points.filter(p => Array.isArray(p) && p.length >= 2 && !isNaN(p[0]) && !isNaN(p[1]));
+        points = points.filter(p => Array.isArray(p) && p.length >= 2 && !isNaN(p[0]) && !isNaN(p[1]) && p[0] >= 0 && p[1] >= 0);
         const {
             stroke = '#2077B4',
             strokeWidth = 1.2,
-            tooltipFormatter = (d) => `${d}`,
             className = 'data-path',
-            id = ''
+            id = '',
+            tooltipInnerHTML = null,
+            tooltipFormatter = null
         } = options;
 
         const tooltip = document.getElementById('vine-tooltip');
@@ -475,6 +476,19 @@ export class BaseModule {
                     .attr('stroke', this.highlightColor)
                     .attr('stroke-width', this.highlightStrokeWidth)
                     .raise();
+                if (tooltipInnerHTML) {
+                    tooltip.innerHTML = tooltipInnerHTML;
+                    tooltip.style.visibility = 'visible';
+                    tooltip.style.top = (event.pageY + 10) + 'px';
+                    tooltip.style.left = (event.pageX + 10) + 'px';
+                } else if (tooltipFormatter) {
+                    tooltip.innerHTML = tooltipFormatter(event.currentTarget);
+                    tooltip.style.visibility = 'visible';
+                    tooltip.style.top = (event.pageY + 10) + 'px';
+                    tooltip.style.left = (event.pageX + 10) + 'px';
+                } else {
+                    tooltip.style.visibility = 'hidden';
+                }
             })
             .on('mouseout', () => {
                 svg.selectAll(`path.${className}`)
@@ -483,10 +497,11 @@ export class BaseModule {
                         sel.attr('stroke', sel.attr('original-stroke'))
                            .attr('stroke-width', sel.attr('original-stroke-width'));
                     });
+                tooltip.style.visibility = 'hidden';
             });
     }
 
-    plotRect(svg, x, y, width, height, fill, opacity, innerHTML) {
+    plotRect(svg, x, y, width, height, fill, opacity, tooltipInnerHTML) {
         const tooltip = document.getElementById('vine-tooltip');
     
         svg.append('rect')
@@ -499,7 +514,7 @@ export class BaseModule {
             .on('mouseover', (event) => {
                 d3.select(event.currentTarget)
                     .attr('fill', this.highlightColor);
-                tooltip.innerHTML = innerHTML;
+                tooltip.innerHTML = tooltipInnerHTML;
                 tooltip.style.visibility = 'visible';
                 tooltip.style.top = (event.pageY + 10) + 'px';
                 tooltip.style.left = (event.pageX + 10) + 'px';
@@ -660,11 +675,11 @@ export class BaseModule {
 
     initLegend() {}
 
-    plotCircle(svg, points, options = {}) {
+    plotPoints(svg, points, options = {}) {
         const {
             radius = 1.5,
             color = 'steelblue',
-            tooltipFormatter = (d) => `${d}`,
+            tooltipFormatter = null,
             className = 'data-point'
         } = options;
 
@@ -684,10 +699,12 @@ export class BaseModule {
                     .attr('fill', this.highlightColor)
                     .attr('r', radius * 4);
 
-                tooltip.innerHTML = tooltipFormatter(d);
-                tooltip.style.visibility = 'visible';
-                tooltip.style.top = (event.pageY + 10) + 'px';
-                tooltip.style.left = (event.pageX + 10) + 'px';
+                if (tooltipFormatter) {
+                    tooltip.innerHTML = tooltipFormatter(d);
+                    tooltip.style.visibility = 'visible';
+                    tooltip.style.top = (event.pageY + 10) + 'px';
+                    tooltip.style.left = (event.pageX + 10) + 'px';
+                }
             })
             .on('mousemove', (event) => {
                 tooltip.style.top = (event.pageY + 10) + 'px';
@@ -704,7 +721,7 @@ export class BaseModule {
 
     createLegendRow(container, items, options = {}) {
         const {
-            lineWidth = 2,
+            lineWidth = 4,
             onToggle = () => {},
             columnsPerRow = 6,
             checkboxName = 'legend-checkbox'
@@ -753,14 +770,16 @@ export class BaseModule {
             .style('max-width', '1200px')
             .style('margin', '0 auto')
             .style('max-height', '90px')
-            .style('overflow-y', 'auto');
+            .style('overflow-y', 'auto')
+            .style('overflow-x', 'auto');
 
-        for (let i = 0; i < items.length; i += columnsPerRow) {
-            const rowItems = items.slice(i, i + columnsPerRow);
+        const actualColumns = Math.min(columnsPerRow, items.length);
+        for (let i = 0; i < items.length; i += actualColumns) {
+            const rowItems = items.slice(i, i + actualColumns);
             const row = legend.append('div')
                 .attr('class', 'legend-row')
                 .style('display', 'grid')
-                .style('grid-template-columns', `repeat(${columnsPerRow}, 1fr)`)
+                .style('grid-template-columns', `repeat(${actualColumns}, 1fr)`)
                 .style('gap', '0px')
                 .style('margin-bottom', '5px')
                 .style('width', '100%');
@@ -813,13 +832,21 @@ export class BaseModule {
                     .attr('class', 'legend-label')
                     .text(item.label)
                     .style('font-size', '12px')
-                    .style('white-space', 'nowrap')
-                    .style('overflow', 'hidden')
-                    .style('text-overflow', 'ellipsis')
                     .style('flex', '1')
                     .style('padding-right', '2px')
                     .on('click', function(e) { e.stopPropagation(); });
             });
         }
+        setTimeout(() => {
+            const legendNode = legend.node();
+            const items = legendNode.querySelectorAll('.legend-item');
+            let maxItemWidth = 0;
+            items.forEach(item => {
+                maxItemWidth = Math.max(maxItemWidth, item.scrollWidth);
+            });
+            const cellWidth = maxItemWidth + 20;
+            const minWidth = actualColumns * cellWidth;
+            legend.selectAll('.legend-row').style('min-width', `${minWidth}px`);
+        }, 0);
     }
 }

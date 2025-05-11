@@ -85,6 +85,9 @@ def get_task_execution_time():
         data['x_tick_values'] = compute_tick_values(data['x_domain'])
         data['y_tick_values'] = compute_tick_values(data['y_domain'])
 
+        # downsample points
+        data['points'] = downsample_task_execution_time(data['points'])
+
         return jsonify(data)
 
     except Exception as e:

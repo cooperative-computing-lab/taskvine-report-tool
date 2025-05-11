@@ -2,6 +2,7 @@ from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
 from flask import Blueprint, jsonify
 import pandas as pd
 from collections import defaultdict
+import random
 from .utils import compute_tick_values
 
 worker_transfers_bp = Blueprint('worker_transfers', __name__, url_prefix='/api')

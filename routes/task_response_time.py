@@ -79,8 +79,6 @@ def get_task_response_time():
             response_time = max(response_time, 0.01)
             data['points'].append([i, response_time])
 
-        # downsample points
-        data['points'] = downsample_task_response_time(data['points'])
 
         # Calculate domains and tick values
         data['x_domain'] = [0, len(data['points'])]
@@ -88,6 +86,9 @@ def get_task_response_time():
         data['x_tick_values'] = compute_tick_values(data['x_domain'])
         data['y_tick_values'] = compute_tick_values(data['y_domain'])
 
+        # downsample points
+        data['points'] = downsample_task_response_time(data['points'])
+        
         return jsonify(data)
 
     except Exception as e:

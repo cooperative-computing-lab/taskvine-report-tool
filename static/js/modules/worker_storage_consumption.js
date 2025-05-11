@@ -26,15 +26,16 @@ export class WorkerStorageConsumptionModule extends BaseModule {
 
         this.data = data;
 
-        this.setBottomDomain(data.x_domain);
-        this.setLeftDomain(data.y_domain);
-        this.setBottomTickValues(data.x_tick_values);
-        this.setLeftTickValues(data.y_tick_values);
+        this.setBottomDomain(data['x_domain']);
+        this.setLeftDomain(data['y_domain']);
+        this.setBottomTickValues(data['x_tick_values']);
+        this.setLeftTickValues(data['y_tick_values']);
     }
 
     plot() {
         if (!this.data) return;
         const svg = this.initSVG();
+        
         /* plot each worker's storage consumption with unique color */
         Object.entries(this.data.storage_data).forEach(([worker, points], idx) => {
             const safeId = escapeWorkerId(worker);
@@ -42,7 +43,8 @@ export class WorkerStorageConsumptionModule extends BaseModule {
             this.plotPath(svg, points, {
                 stroke: color,
                 className: 'storage-line',
-                id: `storage-${safeId}`
+                id: `storage-${safeId}`,
+                tooltipInnerHTML: `${worker}`
             });
         });
 
@@ -56,7 +58,7 @@ export class WorkerStorageConsumptionModule extends BaseModule {
                 color: getWorkerColor(worker, idx)
             }));
             this.createLegendRow(legendContainer, legendItems, {
-                lineWidth: 3,
+                lineWidth: 4,
                 checkboxName: 'storage-consumption',
                 onToggle: async (id, visible) => {
                     const path = svg.selectAll(`#storage-${id}`);
