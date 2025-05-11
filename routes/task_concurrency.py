@@ -1,4 +1,5 @@
 from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
+from .utils import compute_tick_values
 
 import pandas as pd
 import random
@@ -142,20 +143,8 @@ def get_task_concurrency():
         data['y_domain'] = [0, max_concurrent]
 
         # Generate tick values
-        data['x_tick_values'] = [
-            round(data['x_domain'][0], 2),
-            round(data['x_domain'][0] + (data['x_domain'][1] - data['x_domain'][0]) * 0.25, 2),
-            round(data['x_domain'][0] + (data['x_domain'][1] - data['x_domain'][0]) * 0.5, 2),
-            round(data['x_domain'][0] + (data['x_domain'][1] - data['x_domain'][0]) * 0.75, 2),
-            round(data['x_domain'][1], 2)
-        ]
-        data['y_tick_values'] = [
-            round(data['y_domain'][0], 2),
-            round(data['y_domain'][0] + (data['y_domain'][1] - data['y_domain'][0]) * 0.25, 2),
-            round(data['y_domain'][0] + (data['y_domain'][1] - data['y_domain'][0]) * 0.5, 2),
-            round(data['y_domain'][0] + (data['y_domain'][1] - data['y_domain'][0]) * 0.75, 2),
-            round(data['y_domain'][1], 2)
-        ]
+        data['x_tick_values'] = compute_tick_values(data['x_domain'])
+        data['y_tick_values'] = compute_tick_values(data['y_domain'])
 
         return jsonify(data)
     except Exception as e:

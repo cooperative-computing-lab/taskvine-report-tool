@@ -1,4 +1,5 @@
 from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
+from .utils import compute_tick_values
 
 import pandas as pd
 import random
@@ -67,7 +68,7 @@ def get_task_execution_time():
         data = {}
 
         # calculate execution time for each task
-        points = []
+        data['points'] = []
         for i, task in enumerate(runtime_state.tasks.values()):
             # skip incomplete tasks
             if task.task_status != 0:
@@ -76,35 +77,15 @@ def get_task_execution_time():
                 task.time_worker_end - task.time_worker_start, 2)
             # set minimum execution time to 0.01
             task_execution_time = max(task_execution_time, 0.01)
-            points.append([i, task_execution_time])
+            data['points'].append([i, task_execution_time])
 
         # calculate domains and tick values
-        x_domain = [0, len(points)]
-        y_domain = [0, max(p[1] for p in points) if points else 0]
+        data['x_domain'] = [0, len(data['points'])]
+        data['y_domain'] = [0, max(p[1] for p in data['points']) if data['points'] else 0]
+        data['x_tick_values'] = compute_tick_values(data['x_domain'])
+        data['y_tick_values'] = compute_tick_values(data['y_domain'])
 
-        x_tick_values = [
-            1,
-            round(len(points) * 0.25, 2),
-            round(len(points) * 0.5, 2),
-            round(len(points) * 0.75, 2),
-            len(points)
-        ]
-
-        y_tick_values = [
-            0,
-            round(y_domain[1] * 0.25, 2),
-            round(y_domain[1] * 0.5, 2),
-            round(y_domain[1] * 0.75, 2),
-            y_domain[1]
-        ]
-
-        return jsonify({
-            'points': points,
-            'x_domain': x_domain,
-            'y_domain': y_domain,
-            'x_tick_values': x_tick_values,
-            'y_tick_values': y_tick_values
-        })
+        return jsonify(data)
 
     except Exception as e:
         print(f"Error in get_task_execution_time: {str(e)}")

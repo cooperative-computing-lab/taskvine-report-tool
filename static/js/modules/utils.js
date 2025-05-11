@@ -51,3 +51,16 @@ export function getWorkerInnerHTML(worker) {
         worker ip port: ${worker.worker_ip_port}<br>
     `
 }
+
+export function escapeWorkerId(workerId) {
+    return workerId.replace(/[.:]/g, '-');
+}
+
+const colorPalette = d3.schemeCategory10.concat(d3.schemeSet3).concat(d3.schemeTableau10);
+const workerColorMap = {};
+export function getWorkerColor(worker, idx) {
+    if (!(worker in workerColorMap)) {
+        workerColorMap[worker] = colorPalette[idx % colorPalette.length];
+    }
+    return workerColorMap[worker];
+}

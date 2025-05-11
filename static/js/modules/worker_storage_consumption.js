@@ -1,4 +1,6 @@
 import { BaseModule } from './base.js';
+import { escapeWorkerId, getWorkerColor } from './utils.js';
+
 
 export class WorkerStorageConsumptionModule extends BaseModule {
     constructor(id, title, api_url) {
@@ -8,7 +10,7 @@ export class WorkerStorageConsumptionModule extends BaseModule {
         this.setLeftScaleType('linear');
 
         this.setBottomFormatter(d => `${d3.format('.2f')(d)} s`);
-        this.setLeftFormatter(d => `${d3.format('.2f')(d)} ${this.data?.file_size_unit || 'MB'}`);
+        this.setLeftFormatter(d => `${d3.format('.2f')(d)} GB`);
     }
 
     async fetchData() {
@@ -17,7 +19,8 @@ export class WorkerStorageConsumptionModule extends BaseModule {
         const response = await fetch(this.api_url);
         const data = await response.json();
         
-        if (!data) {
+        if (!data || !data.storage_data) {
+            console.warn('Invalid or missing worker storage consumption data');
             return;
         }
 
@@ -29,39 +32,37 @@ export class WorkerStorageConsumptionModule extends BaseModule {
         this.setLeftTickValues(data.y_tick_values);
     }
 
-    _getLegendColor(workerId) {
-        const index = Object.keys(this.data['storage_data']).indexOf(workerId);
-        return d3.schemeCategory10[index % 10];
-    }
-
-    initLegend() {
-        if (!this.legendContainer) return;
-
-        return;
-    }
-
-    _formatSize(size, unit) {
-        if (size >= 1024 && unit === 'MB') {
-            return `${(size/1024).toFixed(2)} GB`;
-        }
-        return `${size.toFixed(2)} ${unit}`;
-    }
-
     plot() {
-        if (!this.data || !this.data['storage_data']) return;
-
+        if (!this.data) return;
         const svg = this.initSVG();
+        /* plot each worker's storage consumption with unique color */
+        Object.entries(this.data.storage_data).forEach(([worker, points], idx) => {
+            const safeId = escapeWorkerId(worker);
+            const color = getWorkerColor(worker, idx);
+            this.plotPath(svg, points, {
+                stroke: color,
+                className: 'storage-line',
+                id: `storage-${safeId}`
+            });
+        });
 
-        /* plot each worker's storage consumption */
-        for (const [workerId, points] of Object.entries(this.data['storage_data'])) {
-            if (points && points.length > 0) {
-                this.plotPath(svg, points, {
-                    stroke: this._getLegendColor(workerId),
-                    strokeWidth: 1.0,
-                    className: 'worker-storage',
-                    id: workerId
-                });
-            }
+        /* add legend */
+        const legendContainer = document.getElementById('worker-storage-consumption-legend');
+        if (legendContainer) {
+            legendContainer.innerHTML = '';
+            const legendItems = Object.keys(this.data.storage_data).map((worker, idx) => ({
+                id: escapeWorkerId(worker),
+                label: worker,
+                color: getWorkerColor(worker, idx)
+            }));
+            this.createLegendRow(legendContainer, legendItems, {
+                lineWidth: 3,
+                checkboxName: 'storage-consumption',
+                onToggle: async (id, visible) => {
+                    const path = svg.selectAll(`#storage-${id}`);
+                    path.style('display', visible ? null : 'none');
+                }
+            });
         }
     }
 }

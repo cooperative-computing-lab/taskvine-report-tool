@@ -1,4 +1,5 @@
 from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
+from .utils import compute_tick_values
 
 import pandas as pd
 import random
@@ -67,7 +68,7 @@ def get_task_response_time():
         data = {}
 
         # Calculate response time for each task
-        points = []
+        data['points'] = []
         for i, task in enumerate(runtime_state.tasks.values()):
             # skip tasks that haven't started running yet
             if not task.when_running:
@@ -76,35 +77,18 @@ def get_task_response_time():
             response_time = round(task.when_running - task.when_ready, 2)
             # set minimum response time to 0.01
             response_time = max(response_time, 0.01)
-            points.append([i, response_time])
+            data['points'].append([i, response_time])
+
+        # downsample points
+        data['points'] = downsample_task_response_time(data['points'])
 
         # Calculate domains and tick values
-        x_domain = [0, len(points)]
-        y_domain = [0, max(p[1] for p in points) if points else 0]
+        data['x_domain'] = [0, len(data['points'])]
+        data['y_domain'] = [0, max(p[1] for p in data['points']) if data['points'] else 0]
+        data['x_tick_values'] = compute_tick_values(data['x_domain'])
+        data['y_tick_values'] = compute_tick_values(data['y_domain'])
 
-        x_tick_values = [
-            1,
-            round(len(points) * 0.25, 2),
-            round(len(points) * 0.5, 2),
-            round(len(points) * 0.75, 2),
-            len(points)
-        ]
-
-        y_tick_values = [
-            0,
-            round(y_domain[1] * 0.25, 2),
-            round(y_domain[1] * 0.5, 2),
-            round(y_domain[1] * 0.75, 2),
-            y_domain[1]
-        ]
-
-        return jsonify({
-            'points': points,
-            'x_domain': x_domain,
-            'y_domain': y_domain,
-            'x_tick_values': x_tick_values,
-            'y_tick_values': y_tick_values
-        })
+        return jsonify(data)
 
     except Exception as e:
         print(f"Error in get_task_response_time: {str(e)}")

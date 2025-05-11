@@ -9,6 +9,7 @@ from routes.task_execution_time import task_execution_time_bp
 from routes.task_execution_details import task_execution_details_bp
 from routes.task_response_time import task_response_time_bp
 from routes.runtime_state import *
+from routes.worker_transfers import worker_transfers_bp
 
 import argparse
 import os
@@ -62,6 +63,9 @@ app.register_blueprint(subgraphs_bp)
 
 # runtime template
 app.register_blueprint(runtime_template_bp)
+
+# worker transfers
+app.register_blueprint(worker_transfers_bp)
 
 
 @app.route('/')

@@ -439,6 +439,7 @@ export class BaseModule {
     }
 
     plotPath(svg, points, options = {}) {
+        points = points.filter(p => Array.isArray(p) && p.length >= 2 && !isNaN(p[0]) && !isNaN(p[1]));
         const {
             stroke = '#2077B4',
             strokeWidth = 1.2,
@@ -448,7 +449,6 @@ export class BaseModule {
         } = options;
 
         const tooltip = document.getElementById('vine-tooltip');
-        const safeId = id.replace(/[.:]/g, '-');
 
         const line = d3.line()
             .x(d => this.bottomScale(d[0]))
@@ -464,7 +464,8 @@ export class BaseModule {
             .attr('d', line)
             .attr('original-stroke', stroke)
             .attr('original-stroke-width', strokeWidth)
-            .attr('class', `${className} ${className}-${safeId}`)
+            .attr('class', `${className} ${className}-${id}`)
+            .attr('id', id)
             .on('mouseover', (event) => {
                 svg.selectAll(`path.${className}`)
                     .filter(el => el !== event.currentTarget)
@@ -699,5 +700,126 @@ export class BaseModule {
 
                 tooltip.style.visibility = 'hidden';
             });
+    }
+
+    createLegendRow(container, items, options = {}) {
+        const {
+            lineWidth = 2,
+            onToggle = () => {},
+            columnsPerRow = 6,
+            checkboxName = 'legend-checkbox'
+        } = options;
+
+        const buttonGroup = d3.select(container)
+            .append('div')
+            .attr('class', 'legend-button-group')
+            .style('display', 'flex')
+            .style('align-items', 'center')
+            .style('gap', '12px')
+            .style('margin-bottom', '8px')
+            .style('justify-content', 'flex-start');
+
+        function addButton(row, text, onClick) {
+            const btn = row.append('button')
+                .attr('class', 'report-button')
+                .attr('type', 'button')
+                .text(text)
+                .on('click', onClick);
+            return btn;
+        }
+
+        addButton(buttonGroup, 'Select All', () => {
+            d3.select(container).selectAll(`input[name="${checkboxName}"]`)
+                .property('checked', true)
+                .each(function() {
+                    const id = this.getAttribute('data-id');
+                    onToggle(id, true);
+                });
+        });
+        addButton(buttonGroup, 'Clear All', () => {
+            d3.select(container).selectAll(`input[name="${checkboxName}"]`)
+                .property('checked', false)
+                .each(function() {
+                    const id = this.getAttribute('data-id');
+                    onToggle(id, false);
+                });
+        });
+
+        const legend = d3.select(container)
+            .append('div')
+            .attr('class', 'legend-container')
+            .style('display', 'flex')
+            .style('flex-direction', 'column')
+            .style('max-width', '1200px')
+            .style('margin', '0 auto')
+            .style('max-height', '90px')
+            .style('overflow-y', 'auto');
+
+        for (let i = 0; i < items.length; i += columnsPerRow) {
+            const rowItems = items.slice(i, i + columnsPerRow);
+            const row = legend.append('div')
+                .attr('class', 'legend-row')
+                .style('display', 'grid')
+                .style('grid-template-columns', `repeat(${columnsPerRow}, 1fr)`)
+                .style('gap', '0px')
+                .style('margin-bottom', '5px')
+                .style('width', '100%');
+
+            rowItems.forEach(item => {
+                const uniquePrefix = (container && container.id) ? container.id : (this.id || 'legend');
+                const safeCheckboxId = `legend-checkbox-${uniquePrefix}-${item.id}`;
+                const legendItem = row.append('div')
+                    .attr('class', 'legend-item')
+                    .style('display', 'flex')
+                    .style('align-items', 'center')
+                    .style('box-sizing', 'border-box')
+                    .style('min-width', 0)
+                    .style('padding', '2px 0')
+                    .style('cursor', 'pointer')
+                    .on('click', function(e) {
+                        if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'LABEL') {
+                            const checkbox = this.querySelector('input[type="checkbox"]');
+                            if (checkbox) {
+                                checkbox.checked = !checkbox.checked;
+                                checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+                            }
+                        }
+                    });
+
+                legendItem.append('input')
+                    .attr('type', 'checkbox')
+                    .attr('name', checkboxName)
+                    .attr('data-id', item.id)
+                    .attr('id', safeCheckboxId)
+                    .attr('checked', true)
+                    .style('margin-right', '5px')
+                    .style('flex-shrink', 0)
+                    .on('click', function(e) { e.stopPropagation(); })
+                    .on('change', function() {
+                        const visible = this.checked;
+                        onToggle(item.id, visible);
+                    });
+
+                legendItem.append('div')
+                    .attr('class', 'legend-line')
+                    .style('width', '20px')
+                    .style('height', `${lineWidth}px`)
+                    .style('background-color', item.color)
+                    .style('margin-right', '5px')
+                    .style('flex-shrink', 0);
+
+                legendItem.append('label')
+                    .attr('for', safeCheckboxId)
+                    .attr('class', 'legend-label')
+                    .text(item.label)
+                    .style('font-size', '12px')
+                    .style('white-space', 'nowrap')
+                    .style('overflow', 'hidden')
+                    .style('text-overflow', 'ellipsis')
+                    .style('flex', '1')
+                    .style('padding-right', '2px')
+                    .on('click', function(e) { e.stopPropagation(); });
+            });
+        }
     }
 }

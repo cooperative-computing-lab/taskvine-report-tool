@@ -1,5 +1,6 @@
 from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
 from src.utils import get_unit_and_scale_by_max_file_size_mb
+from .utils import compute_tick_values
 
 import pandas as pd
 import numpy as np
@@ -173,35 +174,10 @@ def get_worker_storage_consumption():
                     'gpus': worker.gpus
                 }
 
-        # plotting parameters
         data['x_domain'] = [0, float(runtime_state.MAX_TIME - runtime_state.MIN_TIME)]
         data['y_domain'] = [0, max(1.0, max_storage_consumption)]
-
-        # filter valid points for each worker
-        for destination in data['storage_data']:
-            points = data['storage_data'][destination]
-            data['storage_data'][destination] = filter_valid_points(points, data['x_domain'], data['y_domain'])
-
-        # Ensure all tick values are valid numbers
-        x_range = data['x_domain'][1] - data['x_domain'][0]
-        data['x_tick_values'] = [
-            float(data['x_domain'][0]),
-            float(data['x_domain'][0] + x_range * 0.25),
-            float(data['x_domain'][0] + x_range * 0.5),
-            float(data['x_domain'][0] + x_range * 0.75),
-            float(data['x_domain'][1])
-        ]
-
-        y_range = data['y_domain'][1] - data['y_domain'][0]
-        data['y_tick_values'] = [
-            float(data['y_domain'][0]),
-            float(data['y_domain'][0] + y_range * 0.25),
-            float(data['y_domain'][0] + y_range * 0.5),
-            float(data['y_domain'][0] + y_range * 0.75),
-            float(data['y_domain'][1])
-        ]
-
-        data['tickFontSize'] = int(runtime_state.tick_size)
+        data['x_tick_values'] = compute_tick_values(data['x_domain'])
+        data['y_tick_values'] = compute_tick_values(data['y_domain'])
 
         return jsonify(data)
 

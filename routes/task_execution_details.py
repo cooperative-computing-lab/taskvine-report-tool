@@ -1,4 +1,5 @@
 from .runtime_state import runtime_state, SAMPLING_TASK_BARS, check_and_reload_data
+from .utils import compute_tick_values
 
 import traceback
 from collections import defaultdict
@@ -221,14 +222,8 @@ def get_task_execution_details():
                                                reverse=True)[:SAMPLING_TASK_BARS]
 
         # calculate x-axis domain and ticks
-        data['x_domain'] = [data['x_min'], data['x_max']]
-        data['x_tick_values'] = [
-            round(data['x_min'], 2),
-            round(data['x_min'] + (data['x_max'] - data['x_min']) * 0.25, 2),
-            round(data['x_min'] + (data['x_max'] - data['x_min']) * 0.5, 2),
-            round(data['x_min'] + (data['x_max'] - data['x_min']) * 0.75, 2),
-            round(data['x_max'], 2)
-        ]
+        data['x_domain'] = [0, float(runtime_state.MAX_TIME - runtime_state.MIN_TIME)]
+        data['x_tick_values'] = compute_tick_values(data['x_domain'])
 
         # calculate y-axis domain and ticks
         data['y_domain'] = []
@@ -241,7 +236,6 @@ def get_task_execution_details():
         else:
             indices = [round(i) for i in linspace(0, n - 1, 5)]
             data['y_tick_values'] = [data['y_domain'][i] for i in indices]
-
 
         return jsonify(data)
 
