@@ -123,6 +123,8 @@ def get_file_sizes():
         # d: [file_idx, file_name, file_size, file_creation_time]
         data['points'] = [[d[0], d[2]] for d in points]
 
+        data['file_idx_to_names'] = {d[0]: d[1] for d in points}
+
         # set plotting parameters
         x_min = 1
         y_min = 0
