@@ -11,13 +11,12 @@ export class WorkerOutgoingTransfersModule extends BaseModule {
     }
 
     initLegend() {
-        this.legendContainer.innerHTML = '';
         const legendItems = Object.keys(this.data.transfers)
-                .map((worker, idx) => ({
-                    id: escapeWorkerId(worker),
-                    label: worker,
-                    color: getWorkerColor(worker, idx)
-                }))
+            .map((worker, idx) => ({
+                id: escapeWorkerId(worker),
+                label: worker,
+                color: getWorkerColor(worker, idx)
+            }))
             .sort((a, b) => a.label.localeCompare(b.label));
         this.createLegendRow(this.legendContainer, legendItems, {
             checkboxName: 'outgoing-transfers',

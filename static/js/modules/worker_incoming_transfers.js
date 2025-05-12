@@ -11,7 +11,6 @@ export class WorkerIncomingTransfersModule extends BaseModule {
     }
 
     initLegend() {
-        this.legendContainer.innerHTML = '';
         const legendItems = Object.keys(this.data.transfers)
             .map((worker, idx) => ({
                 id: escapeWorkerId(worker),

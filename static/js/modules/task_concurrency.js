@@ -25,7 +25,6 @@ export class TaskConcurrencyModule extends BaseModule {
     }
 
     initLegend() {
-        this.legendContainer.innerHTML = '';
         const legendItems = this.taskTypes.map(type => ({
             id: type,
             label: this.taskConfigs[type]?.label || type,

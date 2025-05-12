@@ -11,23 +11,19 @@ export class WorkerStorageConsumptionModule extends BaseModule {
     }
 
     initLegend() {
-        const legendContainer = document.getElementById('worker-storage-consumption-legend');
-        if (legendContainer) {
-            legendContainer.innerHTML = '';
-            const legendItems = Object.keys(this.data.storage_data).map((worker, idx) => ({
-                id: escapeWorkerId(worker),
-                label: worker,
-                color: getWorkerColor(worker, idx)
-            }));
-            this.createLegendRow(legendContainer, legendItems, {
-                lineWidth: 4,
-                checkboxName: 'storage-consumption',
-                onToggle: async (id, visible) => {
-                    const path = this.svg.selectAll(`#storage-${id}`);
-                    path.style('display', visible ? null : 'none');
-                }
-            });
-        }
+        const legendItems = Object.keys(this.data.storage_data).map((worker, idx) => ({
+            id: escapeWorkerId(worker),
+            label: worker,
+            color: getWorkerColor(worker, idx)
+        }));
+        this.createLegendRow(this.legendContainer, legendItems, {
+            lineWidth: 4,
+            checkboxName: 'storage-consumption',
+            onToggle: async (id, visible) => {
+                const path = this.svg.selectAll(`#storage-${id}`);
+                path.style('display', visible ? null : 'none');
+            }
+        });
     }
     
     plot() {

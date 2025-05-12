@@ -9,23 +9,19 @@ export class WorkerExecutinigTasksModule extends BaseModule {
     }
 
     initLegend() {
-        const legendContainer = document.getElementById('worker-executing-tasks-legend');
-        if (legendContainer) {
-            legendContainer.innerHTML = '';
-            const legendItems = Object.keys(this.data.executing_tasks_data).map((worker, idx) => ({
-                id: escapeWorkerId(worker),
-                label: worker,
-                color: getWorkerColor(worker, idx)
-            }));
-            this.createLegendRow(legendContainer, legendItems, {
-                lineWidth: 4,
-                checkboxName: 'worker-executing-tasks',
-                onToggle: async (id, visible) => {
-                    const path = this.svg.selectAll(`#executing-tasks-${id}`);
-                    path.style('display', visible ? null : 'none');
-                }
-            });
-        }
+        const legendItems = Object.keys(this.data.executing_tasks_data).map((worker, idx) => ({
+            id: escapeWorkerId(worker),
+            label: worker,
+            color: getWorkerColor(worker, idx)
+        }));
+        this.createLegendRow(this.legendContainer, legendItems, {
+            lineWidth: 4,
+            checkboxName: 'worker-executing-tasks',
+            onToggle: async (id, visible) => {
+                const path = this.svg.selectAll(`#executing-tasks-${id}`);
+                path.style('display', visible ? null : 'none');
+            }
+        });
     }
 
     plot() {
