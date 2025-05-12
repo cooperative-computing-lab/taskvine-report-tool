@@ -38,7 +38,7 @@ TASK_STATUS_TO_CHECKBOX_NAME = {
 LEGEND_SCHEMA = {
     'workers': ('Workers', 'Workers', 'lightgrey'),
 
-    'successful-committing-to-worker': ('Successful Tasks', 'Committing', '#4a4a4a'),
+    'successful-committing-to-worker': ('Successful Tasks', 'Committing', '#0ecfc8'),
     'successful-executing-on-worker':  ('Successful Tasks', 'Executing', 'steelblue'),
     'successful-retrieving-to-manager': ('Successful Tasks', 'Retrieving', '#cc5a12'),
 
