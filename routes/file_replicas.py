@@ -63,8 +63,6 @@ def get_file_replicas():
         y_domain = sorted(df['max_simul_replicas'].unique().tolist())
         downsampled = downsample_points(df.values.tolist(), SAMPLING_POINTS)
 
-        print(f'y_tick_values: {compute_discrete_tick_values(y_domain)}')
-
         data = {
             'points': [[d[0], d[2]] for d in downsampled],
             'file_idx_to_names': {d[0]: d[1] for d in downsampled},

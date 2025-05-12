@@ -9,11 +9,11 @@ from flask import Blueprint, jsonify
 from collections import defaultdict
 import pandas as pd
 
-worker_executing_tasks_bp = Blueprint('worker_executing_tasks', __name__, url_prefix='/api')
+worker_waiting_retrieval_tasks_bp = Blueprint('worker_waiting_retrieval_tasks', __name__, url_prefix='/api')
 
-@worker_executing_tasks_bp.route('/worker-executing-tasks')
+@worker_waiting_retrieval_tasks_bp.route('/worker-waiting-retrieval-tasks')
 @check_and_reload_data()
-def get_worker_executing_tasks():
+def get_worker_waiting_retrieval_tasks():
     try:
         base_time = runtime_state.MIN_TIME
         workers = runtime_state.workers
@@ -21,17 +21,17 @@ def get_worker_executing_tasks():
 
         all_worker_events = defaultdict(list)
         for task in tasks.values():
-            if not task.worker_id or not task.time_worker_start or not task.time_worker_end:
+            if not task.worker_id or not task.when_waiting_retrieval or not task.when_retrieved:
                 continue
             worker = (task.worker_ip, task.worker_port)
-            start = float(task.time_worker_start - base_time)
-            end = float(task.time_worker_end - base_time)
+            start = float(task.when_waiting_retrieval - base_time)
+            end = float(task.when_retrieved - base_time)
             all_worker_events[worker].append((start, 1))
             all_worker_events[worker].append((end, -1))
 
         raw_points_array = []
         worker_keys = []
-        max_executing_tasks = 0
+        max_waiting_retrieval_tasks = 0
 
         for worker, events in all_worker_events.items():
             df = pd.DataFrame(events, columns=['time', 'event']).sort_values('time')
@@ -50,23 +50,23 @@ def get_worker_executing_tasks():
                 continue
             worker_keys.append(worker)
             raw_points_array.append(points)
-            max_executing_tasks = max(max_executing_tasks, max(p[1] for p in points))
+            max_waiting_retrieval_tasks = max(max_waiting_retrieval_tasks, max(p[1] for p in points))
 
         downsampled_array = downsample_points_array(raw_points_array, SAMPLING_POINTS)
 
-        executing_tasks_data = {}
+        waiting_retrieval_tasks_data = {}
         for worker, points in zip(worker_keys, downsampled_array):
             wid = f"{worker[0]}:{worker[1]}"
-            executing_tasks_data[wid] = points
+            waiting_retrieval_tasks_data[wid] = points
 
-        if not executing_tasks_data:
-            return jsonify({'error': 'No valid worker executing tasks data available'}), 404
+        if not waiting_retrieval_tasks_data:
+            return jsonify({'error': 'No valid worker waiting retrieval tasks data available'}), 404
 
         x_domain = [0, float(runtime_state.MAX_TIME - base_time)]
-        y_domain = [0, max(1.0, max_executing_tasks)]
+        y_domain = [0, max(1.0, max_waiting_retrieval_tasks)]
 
         return jsonify({
-            'executing_tasks_data': executing_tasks_data,
+            'waiting_retrieval_tasks_data': waiting_retrieval_tasks_data,
             'x_domain': x_domain,
             'y_domain': y_domain,
             'x_tick_values': compute_tick_values(x_domain),

@@ -140,7 +140,7 @@ def get_task_execution_details():
 
                 successful_tasks.append({
                     'task_id': task.task_id,
-                    'try_id': task.try_id,
+                    'try_id': task.task_try_id,
                     'worker_ip': task.worker_ip,
                     'worker_port': task.worker_port,
                     'worker_id': task.worker_id,
@@ -164,7 +164,7 @@ def get_task_execution_details():
             else:
                 unsuccessful_tasks.append({
                     'task_id': task.task_id,
-                    'try_id': task.try_id,
+                    'try_id': task.task_try_id,
                     'worker_ip': task.worker_ip,
                     'worker_port': task.worker_port,
                     'worker_id': task.worker_id,
