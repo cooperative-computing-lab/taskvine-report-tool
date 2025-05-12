@@ -4,7 +4,8 @@ from .utils import (
     d3_size_formatter,
     compute_tick_values,
     d3_int_formatter,
-    downsample_points
+    downsample_points,
+    compute_discrete_tick_values
 )
 from flask import Blueprint, jsonify
 import pandas as pd
@@ -50,15 +51,16 @@ def get_file_sizes():
         df['file_size'] *= scale
         scaled_max = max_size * scale
 
+        y_domain = sorted(df['file_size'].unique().tolist())
         downsampled = downsample_points(df.values.tolist(), SAMPLING_POINTS)
 
         data = {
             'points': [[d[0], d[2]] for d in downsampled],
             'file_idx_to_names': {d[0]: d[1] for d in downsampled},
             'x_domain': [1, len(df)],
-            'y_domain': [0, scaled_max],
+            'y_domain': y_domain,
             'x_tick_values': compute_tick_values([1, len(df)]),
-            'y_tick_values': compute_tick_values([0, scaled_max]),
+            'y_tick_values': compute_discrete_tick_values(y_domain),
             'x_tick_formatter': d3_int_formatter(),
             'y_tick_formatter': d3_size_formatter(unit),
         }

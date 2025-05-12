@@ -3,7 +3,8 @@ from .utils import (
     compute_tick_values,
     d3_time_formatter,
     d3_int_formatter,
-    downsample_points
+    downsample_points,
+    compute_discrete_tick_values
 )
 
 from flask import Blueprint, jsonify
@@ -26,9 +27,8 @@ def get_task_response_time():
         if not raw_points:
             return jsonify({'error': 'No task has started running'}), 404
 
-        y_max = max(p[1] for p in raw_points)
         x_domain = [0, len(raw_points)]
-        y_domain = [0, y_max]
+        y_domain = sorted(set(p[1] for p in raw_points))
 
         points = downsample_points(raw_points, SAMPLING_POINTS)
 
@@ -37,7 +37,7 @@ def get_task_response_time():
             'x_domain': x_domain,
             'y_domain': y_domain,
             'x_tick_values': compute_tick_values(x_domain),
-            'y_tick_values': compute_tick_values(y_domain),
+            'y_tick_values': compute_discrete_tick_values(y_domain),
             'x_tick_formatter': d3_int_formatter(),
             'y_tick_formatter': d3_time_formatter()
         })

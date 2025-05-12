@@ -355,6 +355,8 @@ export class BaseModule {
             return d3.scaleLinear();
         } else if (scaleType === 'band') {
             return d3.scaleBand();
+        } else if (scaleType === 'point') {
+            return d3.scalePoint();
         } else {
             /* silently reject */
             return null;

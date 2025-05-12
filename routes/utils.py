@@ -28,6 +28,24 @@ def compute_tick_values(domain, num_ticks=5, round_digits=2):
     else:
         return [round(v, round_digits) for v in values]
 
+def compute_discrete_tick_values(domain_list, num_ticks=5):
+    if not domain_list:
+        return []
+    
+    domain_list = sorted(set(domain_list))
+    n = len(domain_list)
+
+    if n <= num_ticks:
+        return domain_list
+
+    tick_indices = [0]
+    for i in range(1, num_ticks - 1):
+        idx = round(i * (n - 1) / (num_ticks - 1))
+        tick_indices.append(idx)
+    tick_indices.append(n - 1)
+
+    tick_indices = sorted(set(tick_indices))
+    return [domain_list[i] for i in tick_indices]
 
 def d3_time_formatter():
     return '(d) => d3.format(".2f")(d) + " s"'

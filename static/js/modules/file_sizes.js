@@ -5,7 +5,7 @@ export class FileSizesModule extends BaseModule {
         super(id, title, api_url);
 
         this.setBottomScaleType('linear');
-        this.setLeftScaleType('linear');
+        this.setLeftScaleType('point');
     }
 
     plot() {

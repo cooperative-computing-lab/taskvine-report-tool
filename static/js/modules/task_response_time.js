@@ -5,11 +5,7 @@ export class TaskResponseTimeModule extends BaseModule {
         super(id, title, api_url);
 
         this.setBottomScaleType('linear');
-        this.setLeftScaleType('linear');
-    }
-
-    initLegend() {
-        
+        this.setLeftScaleType('point');
     }
 
     plot() {

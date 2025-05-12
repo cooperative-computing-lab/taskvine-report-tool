@@ -6,6 +6,7 @@ import { TaskExecutionTimeModule } from './task_execution_time.js';
 import { WorkerIncomingTransfersModule } from './worker_incoming_transfers.js';
 import { WorkerOutgoingTransfersModule } from './worker_outgoing_transfers.js';
 import { FileSizesModule } from './file_sizes.js';
+import { FileReplicasModule } from './file_replicas.js';
 import { TaskRetrievalTimeModule } from './task_retrieval_time.js';
 import { WorkerConcurrencyModule } from './worker_concurrency.js';
 
@@ -20,6 +21,7 @@ export const moduleClasses = {
     'worker-incoming-transfers': WorkerIncomingTransfersModule,
     'worker-outgoing-transfers': WorkerOutgoingTransfersModule,
     'file-sizes': FileSizesModule,
+    'file-replicas': FileReplicasModule,
 };
 
 export const moduleConfigs = [
@@ -33,4 +35,5 @@ export const moduleConfigs = [
     { id: 'worker-incoming-transfers', title: 'Worker Incoming Transfers', api_url: '/api/worker-incoming-transfers' },
     { id: 'worker-outgoing-transfers', title: 'Worker Outgoing Transfers', api_url: '/api/worker-outgoing-transfers' },
     { id: 'file-sizes', title: 'File Sizes', api_url: '/api/file-sizes' },
+    { id: 'file-replicas', title: 'File Replicas', api_url: '/api/file-replicas' },
 ];
