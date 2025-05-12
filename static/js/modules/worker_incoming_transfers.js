@@ -10,24 +10,7 @@ export class WorkerIncomingTransfersModule extends BaseModule {
         this.setLeftScaleType('linear');
     }
 
-    plot() {
-        if (!this.data) return;
-
-        const svg = this.initSVG();
-
-        /* plot each worker's transfers with unique color */
-        Object.entries(this.data.transfers).forEach(([worker, points], idx) => {
-            const safeId = escapeWorkerId(worker);
-            const color = getWorkerColor(worker, idx);
-            this.plotPath(svg, points, {
-                stroke: color,
-                className: 'transfer-line',
-                id: `transfer-${safeId}`,
-                tooltipInnerHTML: `${worker}`
-            });
-        });
-
-        /* add legend */
+    initLegend() {
         this.legendContainer.innerHTML = '';
         const legendItems = Object.keys(this.data.transfers)
             .map((worker, idx) => ({
@@ -42,6 +25,23 @@ export class WorkerIncomingTransfersModule extends BaseModule {
                 const path = svg.selectAll(`#transfer-${id}`);
                 path.style('display', visible ? null : 'none');
             }
+        });
+    }
+
+    plot() {
+        if (!this.data) return;
+
+        const svg = this.initSVG();
+
+        Object.entries(this.data.transfers).forEach(([worker, points], idx) => {
+            const safeId = escapeWorkerId(worker);
+            const color = getWorkerColor(worker, idx);
+            this.plotPath(svg, points, {
+                stroke: color,
+                className: 'transfer-line',
+                id: `transfer-${safeId}`,
+                tooltipInnerHTML: `${worker}`
+            });
         });
     }
 } 

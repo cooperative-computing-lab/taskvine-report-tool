@@ -10,23 +10,7 @@ export class WorkerStorageConsumptionModule extends BaseModule {
         this.setLeftScaleType('linear');
     }
 
-    plot() {
-        if (!this.data) return;
-        const svg = this.initSVG();
-        
-        /* plot each worker's storage consumption with unique color */
-        Object.entries(this.data.storage_data).forEach(([worker, points], idx) => {
-            const safeId = escapeWorkerId(worker);
-            const color = getWorkerColor(worker, idx);
-            this.plotPath(svg, points, {
-                stroke: color,
-                className: 'storage-line',
-                id: `storage-${safeId}`,
-                tooltipInnerHTML: `${worker}`
-            });
-        });
-
-        /* add legend */
+    initLegend() {
         const legendContainer = document.getElementById('worker-storage-consumption-legend');
         if (legendContainer) {
             legendContainer.innerHTML = '';
@@ -44,5 +28,21 @@ export class WorkerStorageConsumptionModule extends BaseModule {
                 }
             });
         }
+    }
+    
+    plot() {
+        if (!this.data) return;
+        const svg = this.initSVG();
+        
+        Object.entries(this.data.storage_data).forEach(([worker, points], idx) => {
+            const safeId = escapeWorkerId(worker);
+            const color = getWorkerColor(worker, idx);
+            this.plotPath(svg, points, {
+                stroke: color,
+                className: 'storage-line',
+                id: `storage-${safeId}`,
+                tooltipInnerHTML: `${worker}`
+            });
+        });
     }
 }

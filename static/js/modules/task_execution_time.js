@@ -8,6 +8,10 @@ export class TaskExecutionTimeModule extends BaseModule {
         this.setLeftScaleType('linear');
     }
 
+    initLegend() {
+        
+    }
+
     plot() {
         if (!this.data) return;
 
