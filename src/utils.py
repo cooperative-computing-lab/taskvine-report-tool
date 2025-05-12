@@ -11,19 +11,6 @@ def all_subfolders_exists(parent: str, folder_names: list[str]) -> bool:
             return False
     return True
 
-# get file size unit and scale factor based on max size
-def get_unit_and_scale_by_max_file_size_mb(max_file_size_mb) -> tuple[str, float]:
-    if max_file_size_mb < 1 / 1024:
-        return 'Bytes',  1024 * 1024
-    elif max_file_size_mb < 1:
-        return 'KB', 1024
-    elif max_file_size_mb > 1024:
-        return 'GB', 1 / 1024
-    elif max_file_size_mb > 1024 * 1024:
-        return 'TB', 1 / (1024 * 1024)
-    else:
-        return 'MB', 1
-
 # get file stats safely
 def get_file_stat(file_path):
     try:

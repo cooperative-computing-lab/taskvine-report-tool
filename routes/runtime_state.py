@@ -17,7 +17,7 @@ SERVICE_API_LISTS = [
     'task-execution-details',
     'task-execution-time',
     'task-concurrency',
-    'storage-consumption',
+    'worker-storage-consumption',
     'file-transfers',
     'file-sizes',
     'file-replicas',
@@ -161,10 +161,10 @@ class RuntimeState:
                 return True
 
             # first check if previous template change is still ongoing
-            if self.runtime_template and not self.has_all_service_apis_responded():
-                self.log_warning(
-                    f"Skipping change runtime template to {runtime_template} because we are busy serving the previous template.")
-                return False
+            # if self.runtime_template and not self.has_all_service_apis_responded():
+            #     self.log_warning(
+            #         f"Skipping change runtime template to {runtime_template} because we are busy serving the previous template.")
+            #     return False
 
             # clear the api_responded because we are changing to a new runtime template
             self.api_responded.clear()
