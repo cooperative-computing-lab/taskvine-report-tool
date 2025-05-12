@@ -30,7 +30,7 @@ export class TaskConcurrencyModule extends BaseModule {
             label: this.taskConfigs[type]?.label || type,
             color: this.taskConfigs[type]?.color || '#87CEEB'
         }));
-        this.createLegendRow(this.legendContainer, legendItems, {
+        this.createLegendRow(legendItems, {
             lineWidth: 3,
             checkboxName: 'task-concurrency',
             onToggle: async (id, visible) => {

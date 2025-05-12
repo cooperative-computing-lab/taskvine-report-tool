@@ -12,77 +12,42 @@ export class TaskExecutionDetailsModule extends BaseModule {
 
     _getLegendColor(taskType) {
         return this.legendMap[taskType]?.color;
-    }    
+    }   
 
     initLegend() {
         if (!this.legendContainer) return;
-
+    
         this.checkboxStates = {};
-        this.legendMap = {};
+        const groups = this.data['legend'].map(group => ({
+            groupLabel: `${group.group} (${group.total})`,
+            showGroupLabel: true,
+            items: group.items.map(item => ({
+                id: item.id,
+                label: group.group === 'Successful Tasks' ? item.label : `${item.label} (${item.count})`,
+                color: item.color,
+                checked: true,
+                showLabel: true
+            }))
+        }));
+    
+        this.createLegendGroup(groups, {
+            checkboxName: 'task-details',
+            onToggle: (id, visible) => {
+                this.checkboxStates[id] = visible;
+                this.plot();
+            }
+        });
 
-        this.data['legend'].forEach(group => {
+        this.legendMap = {};
+        groups.forEach(group => {
             group.items.forEach(item => {
-                this.checkboxStates[item.id] = item.default_checked ?? true;
                 this.legendMap[item.id] = {
                     color: item.color,
                     label: item.label
                 };
             });
         });
-
-        this.legendContainer.innerHTML = '';
-        const flexContainer = document.createElement('div');
-        flexContainer.className = 'legend-flex-container';
-        this.legendContainer.appendChild(flexContainer);
-    
-        this.data['legend'].forEach(group => {
-            const groupDiv = document.createElement('div');
-            groupDiv.className = 'legend-group';
-    
-            const titleDiv = document.createElement('div');
-            titleDiv.className = 'legend-group-title-container';
-            const title = document.createElement('div');
-            title.className = 'legend-group-title';
-            title.textContent = `${group.group} (${group.total})`;
-            titleDiv.appendChild(title);
-            groupDiv.appendChild(titleDiv);
-    
-            group.items.forEach(item => {
-                const legendItem = document.createElement('div');
-                legendItem.className = `legend-item${this.checkboxStates[item.id] ? ' checked' : ''}`;
-            
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.id = `${item.id}-checkbox`;
-                checkbox.checked = this.checkboxStates[item.id];
-                checkbox.style.display = 'none';
-            
-                const colorBox = document.createElement('div');
-                colorBox.className = 'legend-color';
-                colorBox.style.setProperty('--color', item.color);
-            
-                const label = document.createElement('span');
-                label.textContent = group.group === 'Successful Tasks'
-                    ? item.label
-                    : `${item.label} (${item.count})`;
-            
-                legendItem.appendChild(checkbox);
-                legendItem.appendChild(colorBox);
-                legendItem.appendChild(label);
-            
-                legendItem.addEventListener('click', () => {
-                    checkbox.checked = !checkbox.checked;
-                    legendItem.classList.toggle('checked');
-                    this.checkboxStates[item.id] = checkbox.checked;
-                    this.plot();
-                });
-            
-                groupDiv.appendChild(legendItem);
-            });            
-    
-            flexContainer.appendChild(groupDiv);
-        });
-    }    
+    }
 
     _isTaskTypeChecked(taskType) {
         const checkbox = document.getElementById(`${taskType}-checkbox`);

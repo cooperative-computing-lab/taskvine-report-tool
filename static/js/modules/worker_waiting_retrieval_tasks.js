@@ -14,7 +14,7 @@ export class WorkerWaitingRetrievalTasksModule extends BaseModule {
             label: worker,
             color: getWorkerColor(worker, idx)
         }));
-        this.createLegendRow(this.legendContainer, legendItems, {
+        this.createLegendRow(legendItems, {
             lineWidth: 4,
             checkboxName: 'worker-waiting-retrieval-tasks',
             onToggle: async (id, visible) => {

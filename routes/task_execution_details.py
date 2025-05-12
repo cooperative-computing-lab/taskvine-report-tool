@@ -36,33 +36,33 @@ TASK_STATUS_TO_CHECKBOX_NAME = {
 }
 
 LEGEND_SCHEMA = {
-    'workers': ('Workers', 'Workers', 'lightgrey', True),
+    'workers': ('Workers', 'Workers', 'lightgrey'),
 
-    'successful-committing-to-worker': ('Successful Tasks', 'Committing', '#4a4a4a', False),
-    'successful-executing-on-worker':  ('Successful Tasks', 'Executing', 'steelblue', True),
-    'successful-retrieving-to-manager': ('Successful Tasks', 'Retrieving', '#cc5a12', False),
+    'successful-committing-to-worker': ('Successful Tasks', 'Committing', '#4a4a4a'),
+    'successful-executing-on-worker':  ('Successful Tasks', 'Executing', 'steelblue'),
+    'successful-retrieving-to-manager': ('Successful Tasks', 'Retrieving', '#cc5a12'),
 
-    'recovery-successful': ('Recovery Tasks', 'Successful', '#FF69B4', False),
-    'recovery-unsuccessful': ('Recovery Tasks', 'Unsuccessful', '#E3314F', False),
+    'recovery-successful': ('Recovery Tasks', 'Successful', '#FF69B4'),
+    'recovery-unsuccessful': ('Recovery Tasks', 'Unsuccessful', '#E3314F'),
 
-    'unsuccessful-input-missing': ('Unsuccessful Tasks', 'Input Missing', '#FFB6C1', False),
-    'unsuccessful-output-missing': ('Unsuccessful Tasks', 'Output Missing', '#FF69B4', False),
-    'unsuccessful-stdout-missing': ('Unsuccessful Tasks', 'Stdout Missing', '#FF1493', False),
-    'unsuccessful-signal': ('Unsuccessful Tasks', 'Signal', '#CD5C5C', False),
-    'unsuccessful-resource-exhaustion': ('Unsuccessful Tasks', 'Resource Exhaustion', '#8B0000', False),
-    'unsuccessful-max-end-time': ('Unsuccessful Tasks', 'Max End Time', '#B22222', False),
-    'unsuccessful-unknown': ('Unsuccessful Tasks', 'Unknown', '#A52A2A', False),
-    'unsuccessful-forsaken': ('Unsuccessful Tasks', 'Forsaken', '#E331EE', False),
-    'unsuccessful-max-retries': ('Unsuccessful Tasks', 'Max Retries', '#8B4513', False),
-    'unsuccessful-max-wall-time': ('Unsuccessful Tasks', 'Max Wall Time', '#D2691E', False),
-    'unsuccessful-monitor-error': ('Unsuccessful Tasks', 'Monitor Error', '#FF4444', False),
-    'unsuccessful-output-transfer-error': ('Unsuccessful Tasks', 'Output Transfer Error', '#FF6B6B', False),
-    'unsuccessful-location-missing': ('Unsuccessful Tasks', 'Location Missing', '#FF8787', False),
-    'unsuccessful-cancelled': ('Unsuccessful Tasks', 'Cancelled', '#FFA07A', False),
-    'unsuccessful-library-exit': ('Unsuccessful Tasks', 'Library Exit', '#FA8072', False),
-    'unsuccessful-sandbox-exhaustion': ('Unsuccessful Tasks', 'Sandbox Exhaustion', '#E9967A', False),
-    'unsuccessful-missing-library': ('Unsuccessful Tasks', 'Missing Library', '#F08080', False),
-    'unsuccessful-worker-disconnected': ('Unsuccessful Tasks', 'Worker Disconnected', '#FF0000', False),
+    'unsuccessful-input-missing': ('Unsuccessful Tasks', 'Input Missing', '#FFB6C1'),
+    'unsuccessful-output-missing': ('Unsuccessful Tasks', 'Output Missing', '#FF69B4'),
+    'unsuccessful-stdout-missing': ('Unsuccessful Tasks', 'Stdout Missing', '#FF1493'),
+    'unsuccessful-signal': ('Unsuccessful Tasks', 'Signal', '#CD5C5C'),
+    'unsuccessful-resource-exhaustion': ('Unsuccessful Tasks', 'Resource Exhaustion', '#8B0000'),
+    'unsuccessful-max-end-time': ('Unsuccessful Tasks', 'Max End Time', '#B22222'),
+    'unsuccessful-unknown': ('Unsuccessful Tasks', 'Unknown', '#A52A2A'),
+    'unsuccessful-forsaken': ('Unsuccessful Tasks', 'Forsaken', '#E331EE'),
+    'unsuccessful-max-retries': ('Unsuccessful Tasks', 'Max Retries', '#8B4513'),
+    'unsuccessful-max-wall-time': ('Unsuccessful Tasks', 'Max Wall Time', '#D2691E'),
+    'unsuccessful-monitor-error': ('Unsuccessful Tasks', 'Monitor Error', '#FF4444'),
+    'unsuccessful-output-transfer-error': ('Unsuccessful Tasks', 'Output Transfer Error', '#FF6B6B'),
+    'unsuccessful-location-missing': ('Unsuccessful Tasks', 'Location Missing', '#FF8787'),
+    'unsuccessful-cancelled': ('Unsuccessful Tasks', 'Cancelled', '#FFA07A'),
+    'unsuccessful-library-exit': ('Unsuccessful Tasks', 'Library Exit', '#FA8072'),
+    'unsuccessful-sandbox-exhaustion': ('Unsuccessful Tasks', 'Sandbox Exhaustion', '#E9967A'),
+    'unsuccessful-missing-library': ('Unsuccessful Tasks', 'Missing Library', '#F08080'),
+    'unsuccessful-worker-disconnected': ('Unsuccessful Tasks', 'Worker Disconnected', '#FF0000'),
 }
 
 def calculate_legend(successful_tasks, unsuccessful_tasks, workers):
@@ -85,7 +85,7 @@ def calculate_legend(successful_tasks, unsuccessful_tasks, workers):
     counts['workers'] = len(workers)
 
     group_map = defaultdict(lambda: {'total': 0, 'items': []})
-    for key, (group, label, color, default_checked) in LEGEND_SCHEMA.items():
+    for key, (group, label, color) in LEGEND_SCHEMA.items():
         count = counts.get(key, 0)
         if count == 0:
             continue
@@ -94,7 +94,6 @@ def calculate_legend(successful_tasks, unsuccessful_tasks, workers):
             'label': label,
             'count': count,
             'color': color,
-            'default_checked': default_checked
         })
 
     for group in ['Successful Tasks', 'Unsuccessful Tasks']:

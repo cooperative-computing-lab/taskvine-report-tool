@@ -18,7 +18,7 @@ export class WorkerOutgoingTransfersModule extends BaseModule {
                 color: getWorkerColor(worker, idx)
             }))
             .sort((a, b) => a.label.localeCompare(b.label));
-        this.createLegendRow(this.legendContainer, legendItems, {
+        this.createLegendRow(legendItems, {
             checkboxName: 'outgoing-transfers',
             onToggle: async (id, visible) => {
                 const path = this.svg.selectAll(`#transfer-${id}`);

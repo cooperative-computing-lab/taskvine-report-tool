@@ -16,7 +16,7 @@ export class WorkerStorageConsumptionModule extends BaseModule {
             label: worker,
             color: getWorkerColor(worker, idx)
         }));
-        this.createLegendRow(this.legendContainer, legendItems, {
+        this.createLegendRow(legendItems, {
             lineWidth: 4,
             checkboxName: 'storage-consumption',
             onToggle: async (id, visible) => {

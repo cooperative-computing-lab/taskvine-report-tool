@@ -681,9 +681,16 @@ export class BaseModule {
 
     resetLegend() {
         if (this.legendContainer) {
+            /* handle both createLegendRow and createLegendGroup created legends */
             const checkboxes = this.legendContainer.querySelectorAll('input[type="checkbox"]');
             checkboxes.forEach(cb => {
                 cb.checked = true;
+                /* add checked class to parent legend-item for createLegendGroup */
+                const legendItem = cb.closest('.legend-item');
+                if (legendItem) {
+                    legendItem.classList.add('checked');
+                }
+                /* trigger change event */
                 cb.dispatchEvent(new Event('change', { bubbles: true }));
             });
         }
@@ -771,7 +778,7 @@ export class BaseModule {
             });
     }
 
-    createLegendRow(container, items, options = {}) {
+    createLegendRow(items, options = {}) {
         const {
             lineWidth = 4,
             onToggle = () => {},
@@ -779,7 +786,10 @@ export class BaseModule {
             checkboxName = 'legend-checkbox'
         } = options;
 
-        const buttonGroup = d3.select(container)
+        const legendContainer = d3.select(this.legendContainer);
+        legendContainer.html('');
+
+        const buttonGroup = legendContainer
             .append('div')
             .attr('class', 'legend-button-group')
             .style('display', 'flex')
@@ -798,7 +808,7 @@ export class BaseModule {
         }
 
         addButton(buttonGroup, 'Select All', () => {
-            d3.select(container).selectAll(`input[name="${checkboxName}"]`)
+            legendContainer.selectAll(`input[name="${checkboxName}"]`)
                 .property('checked', true)
                 .each(function() {
                     const id = this.getAttribute('data-id');
@@ -806,7 +816,7 @@ export class BaseModule {
                 });
         });
         addButton(buttonGroup, 'Clear All', () => {
-            d3.select(container).selectAll(`input[name="${checkboxName}"]`)
+            legendContainer.selectAll(`input[name="${checkboxName}"]`)
                 .property('checked', false)
                 .each(function() {
                     const id = this.getAttribute('data-id');
@@ -814,7 +824,7 @@ export class BaseModule {
                 });
         });
 
-        const legend = d3.select(container)
+        const legend = legendContainer
             .append('div')
             .attr('class', 'legend-container')
             .style('display', 'flex')
@@ -837,7 +847,7 @@ export class BaseModule {
                 .style('width', '100%');
 
             rowItems.forEach(item => {
-                const uniquePrefix = (container && container.id) ? container.id : (this.id || 'legend');
+                const uniquePrefix = (legendContainer && legendContainer.id) ? legendContainer.id : (this.id || 'legend');
                 const safeCheckboxId = `legend-checkbox-${uniquePrefix}-${item.id}`;
                 const legendItem = row.append('div')
                     .attr('class', 'legend-item')
@@ -900,5 +910,59 @@ export class BaseModule {
             const minWidth = actualColumns * cellWidth;
             legend.selectAll('.legend-row').style('min-width', `${minWidth}px`);
         }, 0);
+    }
+
+    createLegendGroup(groups, options = {}) {
+        const {
+            checkboxName = 'legend-checkbox',
+            onToggle = () => {}
+        } = options;
+    
+        const legendContainer = d3.select(this.legendContainer);
+        legendContainer.html('');
+    
+        const flexContainer = legendContainer.append('div')
+            .attr('class', 'legend-flex-container');
+    
+        groups.forEach(group => {
+            const groupDiv = flexContainer.append('div')
+                .attr('class', 'legend-group');
+    
+            if (group.showGroupLabel) {
+                groupDiv.append('div')
+                    .attr('class', 'legend-group-title-container')
+                    .append('div')
+                    .attr('class', 'legend-group-title')
+                    .text(group.groupLabel);
+            }
+    
+            group.items.forEach(item => {
+                const legendItem = groupDiv.append('div')
+                    .attr('class', 'legend-item' + (item.checked ? ' checked' : ''));
+    
+                const checkbox = legendItem.append('input')
+                    .attr('type', 'checkbox')
+                    .attr('id', `${item.id}-checkbox`)
+                    .attr('name', checkboxName)
+                    .property('checked', item.checked)
+                    .style('display', 'none')
+                    .node();
+    
+                legendItem.append('div')
+                    .attr('class', 'legend-color')
+                    .style('--color', item.color);
+    
+                if (item.showLabel) {
+                    legendItem.append('span')
+                        .text(item.label);
+                }
+    
+                legendItem.on('click', () => {
+                    checkbox.checked = !checkbox.checked;
+                    legendItem.classed('checked', checkbox.checked);
+                    onToggle(item.id, checkbox.checked);
+                });
+            });
+        });
     }
 }

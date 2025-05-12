@@ -14,7 +14,7 @@ export class WorkerExecutinigTasksModule extends BaseModule {
             label: worker,
             color: getWorkerColor(worker, idx)
         }));
-        this.createLegendRow(this.legendContainer, legendItems, {
+        this.createLegendRow(legendItems, {
             lineWidth: 4,
             checkboxName: 'worker-executing-tasks',
             onToggle: async (id, visible) => {
