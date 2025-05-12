@@ -1,5 +1,6 @@
 from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
 from src.utils import get_unit_and_scale_by_max_file_size_mb
+from .utils import d3_size_formatter, compute_tick_values, d3_int_formatter
 
 import pandas as pd
 import random
@@ -67,9 +68,8 @@ def downsample_file_sizes(points):
 @check_and_reload_data()
 def get_file_sizes():
     try:
-        # get query parameters
-        order = request.args.get('order', 'asc')  # default to ascending
-        file_type = request.args.get('type', 'all')  # default to all
+        order = request.args.get('order', 'asc')
+        file_type = request.args.get('type', 'all')
         if order not in ['asc', 'desc', 'created-time']:
             return jsonify({'error': 'Invalid order'}), 400
         if file_type not in ['temp', 'meta', 'buffer', 'task-created', 'transferred', 'all']:
@@ -81,7 +81,6 @@ def get_file_sizes():
         data['file_sizes'] = []
         max_file_size_mb = 0
         for file in runtime_state.files.values():
-            # skip unstaged files
             if len(file.transfers) == 0:
                 continue
             file_name = file.filename
@@ -97,64 +96,49 @@ def get_file_sizes():
                     continue
                 if file_type == 'transferred' and len(file.transfers) == 0:
                     continue
-            file_created_time = float('inf')
+            file_creation_time = float('inf')
             for transfer in file.transfers:
-                file_created_time = round(
-                    min(file_created_time, transfer.time_start_stage_in - runtime_state.MIN_TIME), 2)
-            if file_created_time == float('inf'):
+                file_creation_time = round(
+                    min(file_creation_time, transfer.time_start_stage_in - runtime_state.MIN_TIME), 2)
+            if file_creation_time == float('inf'):
                 print(f"Warning: file {file_name} has no transfer")
             data['file_sizes'].append(
-                (0, file_name, file_size, file_created_time))
+                (0, file_name, file_size, file_creation_time))
             max_file_size_mb = max(max_file_size_mb, file_size)
 
         # sort data
         df = pd.DataFrame(data['file_sizes'], columns=[
                           'file_idx', 'file_name', 'file_size', 'file_created_time'])
-        if order == 'asc':
-            df = df.sort_values(by=['file_size'])
-        elif order == 'desc':
-            df = df.sort_values(by=['file_size'], ascending=False)
-        elif order == 'created-time':
-            df = df.sort_values(by=['file_created_time'])
+        df = df.sort_values(by=['file_created_time'])
 
         # set index and scale file size
         df['file_idx'] = range(1, len(df) + 1)
-        data['file_size_unit'], scale = get_unit_and_scale_by_max_file_size_mb(
-            max_file_size_mb)
+        y_unit, scale = get_unit_and_scale_by_max_file_size_mb(max_file_size_mb)
         df['file_size'] = df['file_size'] * scale
 
         # downsample data
         points = df.values.tolist()
         points = downsample_file_sizes(points)
-        data['file_sizes'] = points
+
+        # d: [file_idx, file_name, file_size, file_creation_time]
+        data['points'] = [[d[0], d[2]] for d in points]
 
         # set plotting parameters
+        x_min = 1
+        y_min = 0
         if len(points) == 0:
-            data['xMin'] = 1
-            data['xMax'] = 1
-            data['yMin'] = 0
-            data['yMax'] = 0
+            x_max = 1
+            y_max = 0
         else:
-            data['xMin'] = 1
-            data['xMax'] = len(df)  # use original length
-            data['yMin'] = 0
-            data['yMax'] = max_file_size_mb * scale  # use scaled max
-        data['xTickValues'] = [
-            round(data['xMin'], 2),
-            round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.25, 2),
-            round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.5, 2),
-            round(data['xMin'] + (data['xMax'] - data['xMin']) * 0.75, 2),
-            round(data['xMax'], 2)
-        ]
-        data['yTickValues'] = [
-            round(data['yMin'], 2),
-            round(data['yMin'] + (data['yMax'] - data['yMin']) * 0.25, 2),
-            round(data['yMin'] + (data['yMax'] - data['yMin']) * 0.5, 2),
-            round(data['yMin'] + (data['yMax'] - data['yMin']) * 0.75, 2),
-            round(data['yMax'], 2)
-        ]
-        data['tickFontSize'] = runtime_state.tick_size
-        data['file_size_unit'] = data['file_size_unit']
+            x_max = len(df)
+            y_max = max_file_size_mb * scale
+        data['x_domain'] = [x_min, x_max]
+        data['y_domain'] = [y_min, y_max]
+        data['x_tick_values'] = compute_tick_values(data['x_domain'])
+        data['y_tick_values'] = compute_tick_values(data['y_domain'])
+        
+        data['x_tick_formatter'] = d3_int_formatter()
+        data['y_tick_formatter'] = d3_size_formatter(y_unit)
 
         return jsonify(data)
     except Exception as e:
