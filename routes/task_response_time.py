@@ -26,7 +26,6 @@ def get_task_response_time():
         if not raw_points:
             return jsonify({'error': 'No task has started running'}), 404
 
-
         y_max = max(p[1] for p in raw_points)
         x_domain = [0, len(raw_points)]
         y_domain = [0, y_max]

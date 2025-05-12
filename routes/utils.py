@@ -9,7 +9,7 @@ def get_unit_and_scale_by_max_file_size_mb(max_file_size_mb) -> tuple[str, float
         return 'TB', 1 / (1024 * 1024)
     else:
         return 'MB', 1
-    
+
 def file_list_formatter(file_list):
     return ', '.join([f for f in file_list if not f.startswith('file-meta-') and not f.startswith('file-buffer-')])
 

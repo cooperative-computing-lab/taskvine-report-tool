@@ -132,8 +132,8 @@ export class TaskExecutionDetailsModule extends BaseModule {
         this.initSVG();
 
         /* plot workers */
-        if (this._isTaskTypeChecked('workers') && this.data['worker_info']) {
-            this.data['worker_info'].forEach(worker => {
+        if (this._isTaskTypeChecked('workers') && this.data['workers']) {
+            this.data['workers'].forEach(worker => {
                 this._plotWorker(worker);
             });
         }

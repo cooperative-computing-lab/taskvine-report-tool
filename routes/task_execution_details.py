@@ -10,7 +10,6 @@ import traceback
 from collections import defaultdict
 from flask import Blueprint, jsonify
 from numpy import linspace
-import random
 
 task_execution_details_bp = Blueprint(
     'task_execution_details', __name__, url_prefix='/api')
@@ -66,27 +65,26 @@ LEGEND_SCHEMA = {
     'unsuccessful-worker-disconnected': ('Unsuccessful Tasks', 'Worker Disconnected', '#FF0000', False),
 }
 
-def calculate_legend(data):
+def calculate_legend(successful_tasks, unsuccessful_tasks, workers):
     counts = defaultdict(int)
 
-    for task in data['successful_tasks']:
+    for task in successful_tasks:
         counts['successful-committing-to-worker'] += 1
         counts['successful-executing-on-worker'] += 1
         counts['successful-retrieving-to-manager'] += 1
         if task['is_recovery_task']:
             counts['recovery-successful'] += 1
 
-    for task in data['unsuccessful_tasks']:
+    for task in unsuccessful_tasks:
         key = TASK_STATUS_TO_CHECKBOX_NAME.get(task['task_status'])
         if key:
             counts[key] += 1
             if task['is_recovery_task']:
                 counts['recovery-unsuccessful'] += 1
 
-    counts['workers'] = len(data['worker_info'])
+    counts['workers'] = len(workers)
 
     group_map = defaultdict(lambda: {'total': 0, 'items': []})
-
     for key, (group, label, color, default_checked) in LEGEND_SCHEMA.items():
         count = counts.get(key, 0)
         if count == 0:
@@ -100,16 +98,13 @@ def calculate_legend(data):
         })
 
     for group in ['Successful Tasks', 'Unsuccessful Tasks']:
-        group_map[group]['total'] = len(data['successful_tasks'] if group == 'Successful Tasks' else data['unsuccessful_tasks'])
+        group_map[group]['total'] = len(successful_tasks if group == 'Successful Tasks' else unsuccessful_tasks)
 
     for group in ['Recovery Tasks', 'Workers']:
         group_map[group]['total'] = sum(item['count'] for item in group_map[group]['items'])
 
-    group_order = ['Successful Tasks', 'Unsuccessful Tasks', 'Recovery Tasks', 'Workers']
     legend = []
-    for group in group_order:
-        if group not in group_map:
-            group_map[group] = {'total': 0, 'items': []}
+    for group in ['Successful Tasks', 'Unsuccessful Tasks', 'Recovery Tasks', 'Workers']:
         legend.append({
             'group': group,
             'total': group_map[group]['total'],
@@ -131,15 +126,9 @@ def downsample_tasks(tasks, key="execution_time", max_tasks=SAMPLING_TASK_BARS):
 @check_and_reload_data()
 def get_task_execution_details():
     try:
-        base_time = runtime_state.MIN_TIME
-        max_time = runtime_state.MAX_TIME
-
         successful_tasks = []
         unsuccessful_tasks = []
-        worker_info = []
-        num_status = defaultdict(int)
-        num_successful_recovery = 0
-        num_unsuccessful_recovery = 0
+        workers = []
 
         for task in runtime_state.tasks.values():
             if not task.core_id:
@@ -148,10 +137,6 @@ def get_task_execution_details():
             if task.task_status == 0:
                 if not task.when_retrieved or task.is_library_task:
                     continue
-
-                num_status[task.task_status] += 1
-                if task.is_recovery_task:
-                    num_successful_recovery += 1
 
                 successful_tasks.append({
                     'task_id': task.task_id,
@@ -166,19 +151,16 @@ def get_task_execution_details():
                     'num_output_files': len(task.output_files),
                     'task_status': task.task_status,
                     'category': task.category,
-                    'when_ready': task.when_ready - base_time,
-                    'when_running': task.when_running - base_time,
-                    'time_worker_start': task.time_worker_start - base_time,
-                    'time_worker_end': task.time_worker_end - base_time,
+                    'when_ready': task.when_ready - runtime_state.MIN_TIME,
+                    'when_running': task.when_running - runtime_state.MIN_TIME,
+                    'time_worker_start': task.time_worker_start - runtime_state.MIN_TIME,
+                    'time_worker_end': task.time_worker_end - runtime_state.MIN_TIME,
                     'execution_time': task.time_worker_end - task.time_worker_start,
-                    'when_waiting_retrieval': task.when_waiting_retrieval - base_time,
-                    'when_retrieved': task.when_retrieved - base_time
+                    'when_waiting_retrieval': task.when_waiting_retrieval - runtime_state.MIN_TIME,
+                    'when_retrieved': task.when_retrieved - runtime_state.MIN_TIME,
+                    'when_done': task.when_done - runtime_state.MIN_TIME if task.when_done else -1
                 })
             else:
-                num_status[task.task_status] += 1
-                if task.is_recovery_task:
-                    num_unsuccessful_recovery += 1
-
                 unsuccessful_tasks.append({
                     'task_id': task.task_id,
                     'worker_ip': task.worker_ip,
@@ -192,11 +174,12 @@ def get_task_execution_details():
                     'num_output_files': len(task.output_files),
                     'task_status': task.task_status,
                     'category': task.category,
-                    'when_ready': task.when_ready - base_time,
-                    'when_running': task.when_running - base_time,
-                    'when_failure_happens': task.when_failure_happens - base_time,
+                    'when_ready': task.when_ready - runtime_state.MIN_TIME,
+                    'when_running': task.when_running - runtime_state.MIN_TIME,
+                    'when_failure_happens': task.when_failure_happens - runtime_state.MIN_TIME,
                     'execution_time': task.when_failure_happens - task.when_running,
-                    'unsuccessful_checkbox_name': TASK_STATUS_TO_CHECKBOX_NAME.get(task.task_status, 'unknown')
+                    'unsuccessful_checkbox_name': TASK_STATUS_TO_CHECKBOX_NAME.get(task.task_status, 'unknown'),
+                    'when_done': task.when_done - runtime_state.MIN_TIME if task.when_done else -1
                 })
 
         for w in runtime_state.workers.values():
@@ -204,21 +187,21 @@ def get_task_execution_details():
                 continue
 
             if len(w.time_disconnected) != len(w.time_connected):
-                w.time_disconnected = [max_time] * (len(w.time_connected) - len(w.time_disconnected))
+                w.time_disconnected = [runtime_state.MAX_TIME] * (len(w.time_connected) - len(w.time_disconnected))
 
-            worker_info.append({
+            workers.append({
                 'hash': w.hash,
                 'id': w.id,
                 'worker_ip_port': f"{w.ip}:{w.port}",
-                'time_connected': [max(t - base_time, 0) for t in w.time_connected],
-                'time_disconnected': [max(t - base_time, 0) for t in w.time_disconnected],
+                'time_connected': [max(t - runtime_state.MIN_TIME, 0) for t in w.time_connected],
+                'time_disconnected': [max(t - runtime_state.MIN_TIME, 0) for t in w.time_disconnected],
                 'cores': w.cores,
                 'memory_mb': w.memory_mb,
                 'disk_mb': w.disk_mb,
                 'gpus': w.gpus
             })
 
-        y_domain = [f"{w['id']}-{i}" for w in worker_info for i in range(1, w['cores'] + 1)]
+        y_domain = [f"{w['id']}-{i}" for w in workers for i in range(1, w['cores'] + 1)]
         if len(y_domain) <= 5:
             y_tick_values = y_domain
         else:
@@ -226,20 +209,17 @@ def get_task_execution_details():
             y_tick_values = [y_domain[i] for i in indices]
 
         data = {
+            'legend': calculate_legend(successful_tasks, unsuccessful_tasks, workers),
             'successful_tasks': downsample_tasks(successful_tasks),
             'unsuccessful_tasks': downsample_tasks(unsuccessful_tasks),
-            'worker_info': worker_info,
-            'num_of_status': num_status,
-            'num_successful_recovery_tasks': num_successful_recovery,
-            'num_unsuccessful_recovery_tasks': num_unsuccessful_recovery,
-            'x_domain': [0, max_time - base_time],
-            'x_tick_values': compute_tick_values([0, max_time - base_time]),
+            'workers': workers,
+            'x_domain': [0, runtime_state.MAX_TIME - runtime_state.MIN_TIME],
+            'x_tick_values': compute_tick_values([0, runtime_state.MAX_TIME - runtime_state.MIN_TIME]),
             'x_tick_formatter': d3_time_formatter(),
             'y_domain': y_domain,
             'y_tick_values': y_tick_values,
             'y_tick_formatter': d3_worker_core_formatter()
         }
-        data['legend'] = calculate_legend(data)
 
         return jsonify(data)
 

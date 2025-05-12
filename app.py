@@ -7,8 +7,10 @@ from routes.task_concurrency import task_concurrency_bp
 from routes.task_execution_time import task_execution_time_bp
 from routes.task_execution_details import task_execution_details_bp
 from routes.task_response_time import task_response_time_bp
+from routes.task_retrieval_time import task_retrieval_time_bp
 from routes.runtime_state import *
 from routes.worker_transfers import worker_transfers_bp
+
 
 import argparse
 import os
@@ -48,6 +50,7 @@ app.register_blueprint(task_execution_details_bp)
 app.register_blueprint(task_execution_time_bp)
 app.register_blueprint(task_concurrency_bp)
 app.register_blueprint(task_response_time_bp)
+app.register_blueprint(task_retrieval_time_bp)
 
 # files
 app.register_blueprint(file_replicas_bp)

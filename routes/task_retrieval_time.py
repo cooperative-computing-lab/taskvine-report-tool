@@ -1,41 +1,31 @@
 from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
-from .utils import (
-    compute_tick_values,
-    d3_time_formatter,
-    d3_int_formatter,
-    downsample_points
-)
-
+from .utils import compute_tick_values, d3_time_formatter, d3_int_formatter, downsample_points
 from flask import Blueprint, jsonify
 
-task_execution_time_bp = Blueprint(
-    'task_execution_time', __name__, url_prefix='/api'
-)
+task_retrieval_time_bp = Blueprint('task_retrieval_time', __name__, url_prefix='/api')
 
-@task_execution_time_bp.route('/task-execution-time')
+@task_retrieval_time_bp.route('/task-retrieval-time')
 @check_and_reload_data()
-def get_task_execution_time():
+def get_task_retrieval_time():
     try:
         raw_points = []
 
         for idx, task in enumerate(runtime_state.tasks.values()):
-            if task.task_status != 0:
+            if not task.when_retrieved or not task.when_waiting_retrieval:
                 continue
-            exec_time = round(task.time_worker_end - task.time_worker_start, 2)
-            exec_time = max(exec_time, 0.01)
-            raw_points.append([idx, exec_time])
+            retrieval_time = round(task.when_retrieved - task.when_waiting_retrieval, 2)
+            retrieval_time = max(retrieval_time, 0.01)
+            raw_points.append([idx, retrieval_time])
 
         if not raw_points:
-            return jsonify({'error': 'No completed tasks available'}), 404
+            return jsonify({'error': 'No task retrieval time data available'}), 404
 
         y_max = max(p[1] for p in raw_points)
         x_domain = [0, len(raw_points)]
         y_domain = [0, y_max]
 
-        points = downsample_points(raw_points, SAMPLING_POINTS)
-
         return jsonify({
-            'points': points,
+            'points': downsample_points(raw_points, SAMPLING_POINTS),
             'x_domain': x_domain,
             'y_domain': y_domain,
             'x_tick_values': compute_tick_values(x_domain),
@@ -43,7 +33,5 @@ def get_task_execution_time():
             'x_tick_formatter': d3_int_formatter(),
             'y_tick_formatter': d3_time_formatter()
         })
-
     except Exception as e:
-        print(f"Error in get_task_execution_time: {str(e)}")
         return jsonify({'error': str(e)}), 500
