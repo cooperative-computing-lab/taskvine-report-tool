@@ -1,31 +1,7 @@
 import { moduleClasses, moduleConfigs } from './modules/configs.js';
 import { LogManager } from './modules/log_manager.js';
+import { updateSidebarButtons } from './modules/utils.js';
 
-
-function updateSidebarButtons() {
-    const sectionHeaders = Array.from(document.querySelectorAll('.section-header'));
-    const sidebar = document.querySelector('#sidebar');
-    
-    const existingButtons = sidebar.querySelectorAll('.report-scroll-btn');
-    existingButtons.forEach(btn => btn.remove());
-    
-    sectionHeaders.sort((a, b) => {
-        return a.getBoundingClientRect().top - b.getBoundingClientRect().top;
-    });
-    
-    sectionHeaders.forEach(header => {
-        const title = header.querySelector('.section-title');
-        if (title) {
-            const button = document.createElement('button');
-            button.textContent = title.textContent;
-            button.classList.add('report-scroll-btn');
-            button.addEventListener('click', () => {
-                header.scrollIntoView({ behavior: 'smooth' });
-            });
-            sidebar.appendChild(button);
-        }
-    });
-}
 
 document.addEventListener('DOMContentLoaded', () => {
     const root = document.getElementById('content');
