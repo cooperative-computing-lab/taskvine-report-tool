@@ -23,7 +23,7 @@ export class WorkerStorageConsumptionModule extends BaseModule {
                 lineWidth: 4,
                 checkboxName: 'storage-consumption',
                 onToggle: async (id, visible) => {
-                    const path = svg.selectAll(`#storage-${id}`);
+                    const path = this.svg.selectAll(`#storage-${id}`);
                     path.style('display', visible ? null : 'none');
                 }
             });
@@ -32,12 +32,12 @@ export class WorkerStorageConsumptionModule extends BaseModule {
     
     plot() {
         if (!this.data) return;
-        const svg = this.initSVG();
+        this.initSVG();
         
         Object.entries(this.data.storage_data).forEach(([worker, points], idx) => {
             const safeId = escapeWorkerId(worker);
             const color = getWorkerColor(worker, idx);
-            this.plotPath(svg, points, {
+            this.plotPath(points, {
                 stroke: color,
                 className: 'storage-line',
                 id: `storage-${safeId}`,

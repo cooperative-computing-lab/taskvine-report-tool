@@ -1,11 +1,16 @@
 from .runtime_state import runtime_state, SAMPLING_TASK_BARS, check_and_reload_data
-from .utils import compute_tick_values, d3_time_formatter, d3_worker_core_formatter
+from .utils import (
+    compute_tick_values,
+    d3_time_formatter,
+    d3_worker_core_formatter,
+    file_list_formatter,
+)
 
 import traceback
 from collections import defaultdict
 from flask import Blueprint, jsonify
 from numpy import linspace
-
+import random
 
 task_execution_details_bp = Blueprint(
     'task_execution_details', __name__, url_prefix='/api')
@@ -113,137 +118,132 @@ def calculate_legend(data):
 
     return legend
 
+def downsample_tasks(tasks, key="execution_time", max_tasks=SAMPLING_TASK_BARS):
+    if len(tasks) <= max_tasks:
+        return tasks
+
+    # sort tasks by execution time
+    sorted_tasks = sorted(tasks, key=lambda x: x[key], reverse=True)
+
+    return sorted_tasks[:max_tasks]
+
 @task_execution_details_bp.route('/task-execution-details')
 @check_and_reload_data()
 def get_task_execution_details():
     try:
-        data = {}
+        base_time = runtime_state.MIN_TIME
+        max_time = runtime_state.MAX_TIME
 
-        data['x_min'] = 0
-        data['x_max'] = runtime_state.MAX_TIME - runtime_state.MIN_TIME
+        successful_tasks = []
+        unsuccessful_tasks = []
+        worker_info = []
+        num_status = defaultdict(int)
+        num_successful_recovery = 0
+        num_unsuccessful_recovery = 0
 
-        # prepare task information
-        data['successful_tasks'] = []
-        data['unsuccessful_tasks'] = []
-        data['num_of_status'] = defaultdict(int)
-        data['num_successful_recovery_tasks'] = 0
-        data['num_unsuccessful_recovery_tasks'] = 0
         for task in runtime_state.tasks.values():
-            if task.task_status == 0:
-                # skip tasks not retrieved or library tasks
-                if not task.when_retrieved:
-                    continue
-                if task.is_library_task:
-                    continue
-                if len(task.core_id) == 0:
-                    raise ValueError(f"Task {task.task_id} has no core_id, but when_running is {task.when_running}, when_failure_happens is {task.when_failure_happens}, when_waiting_retrieval is {task.when_waiting_retrieval}, when_retrieved is {task.when_retrieved}, when_done is {task.when_done}")
-                data['num_of_status'][task.task_status] += 1
-                if task.is_recovery_task:
-                    data['num_successful_recovery_tasks'] += 1
-                done_task_info = {
-                    'task_id': task.task_id,
-                    'worker_ip': task.worker_ip,
-                    'worker_port': task.worker_port,
-                    'worker_id': task.worker_id,
-                    'core_id': task.core_id[0],
-                    'is_recovery_task': task.is_recovery_task,
-                    'num_input_files': len(task.input_files),
-                    'num_output_files': len(task.output_files),
-                    'task_status': task.task_status,
-                    'category': task.category,
-                    'when_ready': task.when_ready - runtime_state.MIN_TIME,
-                    'when_running': task.when_running - runtime_state.MIN_TIME,
-                    'time_worker_start': task.time_worker_start - runtime_state.MIN_TIME,
-                    'time_worker_end': task.time_worker_end - runtime_state.MIN_TIME,
-                    'execution_time': task.time_worker_end - task.time_worker_start,
-                    'when_waiting_retrieval': task.when_waiting_retrieval - runtime_state.MIN_TIME,
-                    'when_retrieved': task.when_retrieved - runtime_state.MIN_TIME,
-                }
-                data['successful_tasks'].append(done_task_info)
-            else:
-                # skip tasks not assigned to any core
-                if len(task.core_id) == 0:
-                    continue
-                if task.is_recovery_task:
-                    data['num_unsuccessful_recovery_tasks'] += 1
-                data['num_of_status'][task.task_status] += 1
-                unsuccessful_task_info = {
-                    'task_id': task.task_id,
-                    'worker_ip': task.worker_ip,
-                    'worker_port': task.worker_port,
-                    'worker_id': task.worker_id,
-                    'core_id': task.core_id[0],
-                    'is_recovery_task': task.is_recovery_task,
-                    'num_input_files': len(task.input_files),
-                    'num_output_files': len(task.output_files),
-                    'task_status': task.task_status,
-                    'category': task.category,
-                    'when_ready': task.when_ready - runtime_state.MIN_TIME,
-                    'when_running': task.when_running - runtime_state.MIN_TIME,
-                    'when_failure_happens': task.when_failure_happens - runtime_state.MIN_TIME,
-                    'execution_time': task.when_failure_happens - task.when_running,
-                    'unsuccessful_checkbox_name': TASK_STATUS_TO_CHECKBOX_NAME[task.task_status]
-                }
-                data['unsuccessful_tasks'].append(unsuccessful_task_info)
-
-        # worker information
-        data['worker_info'] = []
-        for worker in runtime_state.workers.values():
-            if not worker.hash:
+            if not task.core_id:
                 continue
-            # handle workers with missing disconnect time
-            if len(worker.time_disconnected) != len(worker.time_connected):
-                worker.time_disconnected = [
-                    runtime_state.MAX_TIME] * (len(worker.time_connected) - len(worker.time_disconnected))
-            worker_info = {
-                'hash': worker.hash,
-                'id': worker.id,
-                'worker_ip_port': f"{worker.ip}:{worker.port}",
-                'time_connected': [max(t - runtime_state.MIN_TIME, 0) for t in worker.time_connected],
-                'time_disconnected': [max(t - runtime_state.MIN_TIME, 0) for t in worker.time_disconnected],
-                'cores': worker.cores,
-                'memory_mb': worker.memory_mb,
-                'disk_mb': worker.disk_mb,
-                'gpus': worker.gpus,
-            }
-            data['worker_info'].append(worker_info)
 
-        # calculate legend
-        data['legend'] = calculate_legend(data)
+            if task.task_status == 0:
+                if not task.when_retrieved or task.is_library_task:
+                    continue
 
-        # limit to top tasks by execution time if needed
-        if len(data['successful_tasks']) > SAMPLING_TASK_BARS:
-            data['successful_tasks'] = sorted(data['successful_tasks'],
-                                             key=lambda x: x['execution_time'],
-                                             reverse=True)[:SAMPLING_TASK_BARS]
-        if len(data['unsuccessful_tasks']) > SAMPLING_TASK_BARS:
-            data['unsuccessful_tasks'] = sorted(data['unsuccessful_tasks'],
-                                               key=lambda x: x['execution_time'],
-                                               reverse=True)[:SAMPLING_TASK_BARS]
+                num_status[task.task_status] += 1
+                if task.is_recovery_task:
+                    num_successful_recovery += 1
 
-        # calculate x-axis domain and ticks
-        data['x_domain'] = [0, float(runtime_state.MAX_TIME - runtime_state.MIN_TIME)]
-        data['x_tick_values'] = compute_tick_values(data['x_domain'])
+                successful_tasks.append({
+                    'task_id': task.task_id,
+                    'worker_ip': task.worker_ip,
+                    'worker_port': task.worker_port,
+                    'worker_id': task.worker_id,
+                    'core_id': task.core_id[0],
+                    'is_recovery_task': task.is_recovery_task,
+                    'input_files': file_list_formatter(task.input_files),
+                    'output_files': file_list_formatter(task.output_files),
+                    'num_input_files': len(task.input_files),
+                    'num_output_files': len(task.output_files),
+                    'task_status': task.task_status,
+                    'category': task.category,
+                    'when_ready': task.when_ready - base_time,
+                    'when_running': task.when_running - base_time,
+                    'time_worker_start': task.time_worker_start - base_time,
+                    'time_worker_end': task.time_worker_end - base_time,
+                    'execution_time': task.time_worker_end - task.time_worker_start,
+                    'when_waiting_retrieval': task.when_waiting_retrieval - base_time,
+                    'when_retrieved': task.when_retrieved - base_time
+                })
+            else:
+                num_status[task.task_status] += 1
+                if task.is_recovery_task:
+                    num_unsuccessful_recovery += 1
 
-        # calculate y-axis domain and ticks
-        data['y_domain'] = []
-        for w in data['worker_info']:
-            data['y_domain'].extend([f"{w['id']}-{i}" for i in range(1, w['cores'] + 1)])
+                unsuccessful_tasks.append({
+                    'task_id': task.task_id,
+                    'worker_ip': task.worker_ip,
+                    'worker_port': task.worker_port,
+                    'worker_id': task.worker_id,
+                    'core_id': task.core_id[0],
+                    'is_recovery_task': task.is_recovery_task,
+                    'input_files': file_list_formatter(task.input_files),
+                    'output_files': file_list_formatter(task.output_files),
+                    'num_input_files': len(task.input_files),
+                    'num_output_files': len(task.output_files),
+                    'task_status': task.task_status,
+                    'category': task.category,
+                    'when_ready': task.when_ready - base_time,
+                    'when_running': task.when_running - base_time,
+                    'when_failure_happens': task.when_failure_happens - base_time,
+                    'execution_time': task.when_failure_happens - task.when_running,
+                    'unsuccessful_checkbox_name': TASK_STATUS_TO_CHECKBOX_NAME.get(task.task_status, 'unknown')
+                })
 
-        n = len(data['y_domain'])
-        if n <= 5:
-            data['y_tick_values'] = data['y_domain']
+        for w in runtime_state.workers.values():
+            if not w.hash:
+                continue
+
+            if len(w.time_disconnected) != len(w.time_connected):
+                w.time_disconnected = [max_time] * (len(w.time_connected) - len(w.time_disconnected))
+
+            worker_info.append({
+                'hash': w.hash,
+                'id': w.id,
+                'worker_ip_port': f"{w.ip}:{w.port}",
+                'time_connected': [max(t - base_time, 0) for t in w.time_connected],
+                'time_disconnected': [max(t - base_time, 0) for t in w.time_disconnected],
+                'cores': w.cores,
+                'memory_mb': w.memory_mb,
+                'disk_mb': w.disk_mb,
+                'gpus': w.gpus
+            })
+
+        y_domain = [f"{w['id']}-{i}" for w in worker_info for i in range(1, w['cores'] + 1)]
+        if len(y_domain) <= 5:
+            y_tick_values = y_domain
         else:
-            indices = [round(i) for i in linspace(0, n - 1, 5)]
-            data['y_tick_values'] = [data['y_domain'][i] for i in indices]
+            indices = [round(i) for i in linspace(0, len(y_domain) - 1, 5)]
+            y_tick_values = [y_domain[i] for i in indices]
 
-        data['x_tick_formatter'] = d3_time_formatter()
-        data['y_tick_formatter'] = d3_worker_core_formatter()
+        data = {
+            'successful_tasks': downsample_tasks(successful_tasks),
+            'unsuccessful_tasks': downsample_tasks(unsuccessful_tasks),
+            'worker_info': worker_info,
+            'num_of_status': num_status,
+            'num_successful_recovery_tasks': num_successful_recovery,
+            'num_unsuccessful_recovery_tasks': num_unsuccessful_recovery,
+            'x_domain': [0, max_time - base_time],
+            'x_tick_values': compute_tick_values([0, max_time - base_time]),
+            'x_tick_formatter': d3_time_formatter(),
+            'y_domain': y_domain,
+            'y_tick_values': y_tick_values,
+            'y_tick_formatter': d3_worker_core_formatter()
+        }
+        data['legend'] = calculate_legend(data)
 
         return jsonify(data)
 
     except Exception as e:
-        error_message = ''.join(
-            traceback.format_exception(type(e), e, e.__traceback__))
-        print(error_message)
-        return jsonify({'error': str(e), 'details': error_message}), 500
+        err_msg = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
+        print(err_msg)
+        return jsonify({'error': str(e), 'details': err_msg}), 500

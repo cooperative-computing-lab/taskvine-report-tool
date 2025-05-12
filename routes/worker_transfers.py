@@ -1,125 +1,81 @@
-from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
 from flask import Blueprint, jsonify
 import pandas as pd
 from collections import defaultdict
-import random
-from .utils import compute_tick_values, d3_time_formatter, d3_int_formatter
+import math
+
+from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
+from .utils import (
+    compute_tick_values,
+    d3_time_formatter,
+    d3_int_formatter,
+    downsample_points_array
+)
 
 worker_transfers_bp = Blueprint('worker_transfers', __name__, url_prefix='/api')
 
-def downsample_worker_transfers(points):
-    # downsample while keeping first, last, and peak points
-    if len(points) <= SAMPLING_POINTS:
-        return points
+def extract_worker_transfer_points(role):
+    assert role in ['source', 'destination']
 
-    # find global peak (maximum transfers)
-    global_peak_idx = max(range(len(points)), key=lambda i: points[i][1])
-    global_peak = points[global_peak_idx]
+    base_time = runtime_state.MIN_TIME
+    transfers_by_worker = defaultdict(list)
 
-    # keep key points
-    keep_indices = {0, len(points) - 1, global_peak_idx}
+    for file in runtime_state.files.values():
+        for transfer in file.transfers:
+            worker = getattr(transfer, role)
+            if not isinstance(worker, tuple):
+                continue
 
-    # calculate remaining points to sample
-    remaining_points = SAMPLING_POINTS - len(keep_indices)
-    if remaining_points <= 0:
-        return [points[0], global_peak, points[-1]]
+            transfers_by_worker[worker].append((round(transfer.time_start_stage_in - base_time, 2), 1))
+            if transfer.time_stage_in:
+                transfers_by_worker[worker].append((round(transfer.time_stage_in - base_time, 2), -1))
+            elif transfer.time_stage_out:
+                transfers_by_worker[worker].append((round(transfer.time_stage_out - base_time, 2), -1))
 
-    # sort indices to find gaps
-    sorted_keep_indices = sorted(keep_indices)
+    worker_keys = []
+    raw_points_array = []
 
-    # calculate points per gap
-    points_per_gap = remaining_points // (len(sorted_keep_indices) - 1)
-    extra_points = remaining_points % (len(sorted_keep_indices) - 1)
+    for worker, events in transfers_by_worker.items():
+        df = pd.DataFrame(events, columns=['time', 'event']).sort_values('time')
+        df['cumulative'] = df['event'].cumsum()
+        df = df.drop_duplicates('time', keep='last')
+        points = df[['time', 'cumulative']].values.tolist()
 
-    # for each gap, sample points randomly
-    for i in range(len(sorted_keep_indices) - 1):
-        start_idx = sorted_keep_indices[i]
-        end_idx = sorted_keep_indices[i + 1]
-        gap_size = end_idx - start_idx - 1
+        for t0, t1 in zip(runtime_state.workers[worker].time_connected,
+                          runtime_state.workers[worker].time_disconnected):
+            points.insert(0, [t0 - base_time, 0])
+            points.append([t1 - base_time, 0])
 
-        if gap_size <= 0:
+        if not points or any(len(p) != 2 or math.isnan(p[0]) or math.isnan(p[1]) for p in points):
             continue
 
-        # calculate points for this gap
-        current_gap_points = points_per_gap
-        if extra_points > 0:
-            current_gap_points += 1
-            extra_points -= 1
+        worker_keys.append(worker)
+        raw_points_array.append(points)
 
-        if current_gap_points > 0:
-            # randomly sample from gap
-            available_indices = list(range(start_idx + 1, end_idx))
-            sampled_indices = random.sample(available_indices, min(
-                current_gap_points, len(available_indices)))
-            keep_indices.update(sampled_indices)
+    downsampled_array = downsample_points_array(raw_points_array, SAMPLING_POINTS)
 
-    # return sorted points
-    result = [points[i] for i in sorted(keep_indices)]
-    return result
+    transfers = {}
+    max_y = 0
+    for worker, points in zip(worker_keys, downsampled_array):
+        transfers[f"{worker[0]}:{worker[1]}"] = points
+        max_y = max(max_y, max(p[1] for p in points))
+
+    data = {
+        'transfers': transfers,
+        'x_domain': [0, runtime_state.MAX_TIME - base_time],
+        'y_domain': [0, int(max_y)],
+        'x_tick_values': compute_tick_values([0, runtime_state.MAX_TIME - base_time]),
+        'y_tick_values': compute_tick_values([0, int(max_y)]),
+        'x_tick_formatter': d3_time_formatter(),
+        'y_tick_formatter': d3_int_formatter(),
+    }
+
+    return data
 
 @worker_transfers_bp.route('/worker-incoming-transfers')
 @check_and_reload_data()
 def get_worker_incoming_transfers():
     try:
-        data = {}
-
-        # construct the file transfers
-        data['transfers'] = defaultdict(list)     # for destinations
-        for file in runtime_state.files.values():
-            for transfer in file.transfers:
-                destination = transfer.destination
-
-                # only consider file transfers to workers
-                if not isinstance(destination, tuple):
-                    continue
-
-                data['transfers'][destination].append(
-                    (round(transfer.time_start_stage_in - runtime_state.MIN_TIME, 2), 1))
-                if transfer.time_stage_in:
-                    data['transfers'][destination].append(
-                        (round(transfer.time_stage_in - runtime_state.MIN_TIME, 2), -1))
-                elif transfer.time_stage_out:
-                    data['transfers'][destination].append(
-                        (round(transfer.time_stage_out - runtime_state.MIN_TIME, 2), -1))
-
-        max_transfers = 0
-        for worker in data['transfers']:
-            df = pd.DataFrame(data['transfers'][worker],
-                            columns=['time', 'event'])
-            df = df.sort_values(by=['time'])
-            df['cumulative_transfers'] = df['event'].cumsum()
-            # if two rows have the same time, keep the one with the largest event
-            df = df.drop_duplicates(subset=['time'], keep='last')
-
-            # Convert to list of points and downsample
-            points = df[['time', 'cumulative_transfers']].values.tolist()
-            points = downsample_worker_transfers(points)
-            data['transfers'][worker] = points
-
-            # append the initial point at time_connected with 0
-            for time_connected, time_disconnected in zip(runtime_state.workers[worker].time_connected, runtime_state.workers[worker].time_disconnected):
-                data['transfers'][worker].insert(
-                    0, [time_connected - runtime_state.MIN_TIME, 0])
-                data['transfers'][worker].append(
-                    [time_disconnected - runtime_state.MIN_TIME, 0])
-            max_transfers = max(max_transfers, max(
-                point[1] for point in points))
-
-        # convert keys to string-formatted keys
-        data['transfers'] = {f"{k[0]}:{k[1]}": v for k,
-                            v in data['transfers'].items()}
-
-        # plotting parameters
-        data['x_domain'] = [0, runtime_state.MAX_TIME - runtime_state.MIN_TIME]
-        data['y_domain'] = [0, int(max_transfers)]
-        data['x_tick_values'] = compute_tick_values(data['x_domain'])
-        data['y_tick_values'] = compute_tick_values(data['y_domain'])
-
-        data['x_tick_formatter'] = d3_time_formatter()
-        data['y_tick_formatter'] = d3_int_formatter()
-
-        return jsonify(data)
-
+        return jsonify(extract_worker_transfer_points('destination'))
     except Exception as e:
         print(f"Error in get_worker_incoming_transfers: {str(e)}")
         return jsonify({'error': str(e)}), 500
@@ -128,65 +84,7 @@ def get_worker_incoming_transfers():
 @check_and_reload_data()
 def get_worker_outgoing_transfers():
     try:
-        data = {}
-
-        # construct the file transfers
-        data['transfers'] = defaultdict(list)     # for sources
-        for file in runtime_state.files.values():
-            for transfer in file.transfers:
-                source = transfer.source
-
-                # only consider file transfers from workers
-                if not isinstance(source, tuple):
-                    continue
-
-                data['transfers'][source].append(
-                    (round(transfer.time_start_stage_in - runtime_state.MIN_TIME, 2), 1))
-                if transfer.time_stage_in:
-                    data['transfers'][source].append(
-                        (round(transfer.time_stage_in - runtime_state.MIN_TIME, 2), -1))
-                elif transfer.time_stage_out:
-                    data['transfers'][source].append(
-                        (round(transfer.time_stage_out - runtime_state.MIN_TIME, 2), -1))
-
-        max_transfers = 0
-        for worker in data['transfers']:
-            df = pd.DataFrame(data['transfers'][worker],
-                            columns=['time', 'event'])
-            df = df.sort_values(by=['time'])
-            df['cumulative_transfers'] = df['event'].cumsum()
-            # if two rows have the same time, keep the one with the largest event
-            df = df.drop_duplicates(subset=['time'], keep='last')
-
-            # Convert to list of points and downsample
-            points = df[['time', 'cumulative_transfers']].values.tolist()
-            points = downsample_worker_transfers(points)
-            data['transfers'][worker] = points
-
-            # append the initial point at time_connected with 0
-            for time_connected, time_disconnected in zip(runtime_state.workers[worker].time_connected, runtime_state.workers[worker].time_disconnected):
-                data['transfers'][worker].insert(
-                    0, [time_connected - runtime_state.MIN_TIME, 0])
-                data['transfers'][worker].append(
-                    [time_disconnected - runtime_state.MIN_TIME, 0])
-            max_transfers = max(max_transfers, max(
-                point[1] for point in points))
-
-        # convert keys to string-formatted keys
-        data['transfers'] = {f"{k[0]}:{k[1]}": v for k,
-                            v in data['transfers'].items()}
-
-        # plotting parameters
-        data['x_domain'] = [0, runtime_state.MAX_TIME - runtime_state.MIN_TIME]
-        data['y_domain'] = [0, int(max_transfers)]
-        data['x_tick_values'] = compute_tick_values(data['x_domain'])
-        data['y_tick_values'] = compute_tick_values(data['y_domain'])
-
-        data['x_tick_formatter'] = d3_time_formatter()
-        data['y_tick_formatter'] = d3_int_formatter()
-
-        return jsonify(data)
-
+        return jsonify(extract_worker_transfer_points('source'))
     except Exception as e:
         print(f"Error in get_worker_outgoing_transfers: {str(e)}")
-        return jsonify({'error': str(e)}), 500 
+        return jsonify({'error': str(e)}), 500

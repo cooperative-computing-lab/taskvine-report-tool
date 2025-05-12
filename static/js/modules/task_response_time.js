@@ -15,9 +15,9 @@ export class TaskResponseTimeModule extends BaseModule {
     plot() {
         if (!this.data) return;
 
-        const svg = this.initSVG();
+        this.initSVG();
 
-        this.plotPoints(svg, this.data['points'], {
+        this.plotPoints(this.data['points'], {
             tooltipFormatter: d => `Task ID: ${d[0]}<br>Response Time: ${d[1].toFixed(2)}s`,
             className: 'task-response-time-point'
         });

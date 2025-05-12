@@ -22,6 +22,8 @@ export class BaseModule {
         this.highlightStrokeWidth = 3;
 
         /* plotting parameters */
+        this.svg = null;
+
         this.margin = null;
 
         this.topDomain = null;
@@ -136,6 +138,8 @@ export class BaseModule {
     
         this.svgNode.style.width = '';
         this.svgNode.style.height = '';
+
+        this.svg = null;
     }
     
     async fetchData() {
@@ -435,7 +439,7 @@ export class BaseModule {
         this.createAxes();
 
         /* initialize svg */
-        const svg = this.svgElement
+        this.svg = this.svgElement
             .attr('viewBox', `0 0 ${this.svgContainer.clientWidth} ${this.svgContainer.clientHeight}`)
             .attr('preserveAspectRatio', 'xMidYMid meet')
             .append('g')
@@ -443,38 +447,36 @@ export class BaseModule {
         
         /* plot the axes */
         if (this.topScaleType) {
-            svg.append('g')
+            this.svg.append('g')
                 .attr('transform', `translate(0, 0)`)
                 .call(this.topAxis)
                 .selectAll('text')
                 .style('font-size', this.tickFontSize);
         }
         if (this.rightScaleType) {
-            svg.append('g')
+            this.svg.append('g')
                 .attr('transform', `translate(${svgWidth}, 0)`)
                 .call(this.rightAxis)
                 .selectAll('text')
                 .style('font-size', this.tickFontSize);
         }
         if (this.bottomScaleType) {
-            svg.append('g')
+            this.svg.append('g')
                 .attr('transform', `translate(0, ${svgHeight})`)
                 .call(this.bottomAxis)
                 .selectAll('text')
                 .style('font-size', this.tickFontSize);
         }
         if (this.leftScaleType) {
-            svg.append('g')
+            this.svg.append('g')
                 .attr('transform', `translate(0, 0)`)
                 .call(this.leftAxis)
                 .selectAll('text')
                 .style('font-size', this.tickFontSize);
         }
-
-        return svg;
     }
 
-    plotPath(svg, points, options = {}) {
+    plotPath(points, options = {}) {
         points = points.filter(p => Array.isArray(p) && p.length >= 2 && !isNaN(p[0]) && !isNaN(p[1]) && p[0] >= 0 && p[1] >= 0);
         const {
             stroke = '#2077B4',
@@ -493,7 +495,7 @@ export class BaseModule {
             .defined(d => !isNaN(d[0]) && !isNaN(d[1]) && d[1] >= 0)
             .curve(d3.curveStepAfter);
 
-        svg.append('path')
+        this.svg.append('path')
             .datum(points)
             .attr('fill', 'none')
             .attr('stroke', stroke)
@@ -504,7 +506,7 @@ export class BaseModule {
             .attr('class', `${className} ${className}-${id}`)
             .attr('id', id)
             .on('mouseover', (event) => {
-                svg.selectAll(`path.${className}`)
+                this.svg.selectAll(`path.${className}`)
                     .filter(el => el !== event.currentTarget)
                     .attr('stroke', '#ddd')
                     .attr('stroke-width', strokeWidth);
@@ -527,7 +529,7 @@ export class BaseModule {
                 }
             })
             .on('mouseout', () => {
-                svg.selectAll(`path.${className}`)
+                this.svg.selectAll(`path.${className}`)
                     .each(function () {
                         const sel = d3.select(this);
                         sel.attr('stroke', sel.attr('original-stroke'))
@@ -537,10 +539,10 @@ export class BaseModule {
             });
     }
 
-    plotRect(svg, x, y, width, height, fill, opacity, tooltipInnerHTML) {
+    plotRect(x, y, width, height, fill, opacity, tooltipInnerHTML) {
         const tooltip = document.getElementById('vine-tooltip');
     
-        svg.append('rect')
+        this.svg.append('rect')
             .attr('x', x)
             .attr('y', y)
             .attr('width', width)
@@ -675,12 +677,26 @@ export class BaseModule {
         window.addEventListener('resize', this._boundResize);
     }
 
+    resetLegend() {
+        if (this.legendContainer) {
+            const checkboxes = this.legendContainer.querySelectorAll('input[type="checkbox"]');
+            checkboxes.forEach(cb => {
+                cb.checked = true;
+                cb.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+        }
+    }
+
     initResetButton() {
         if (this._boundPlot) {
             this.resetButton.removeEventListener('click', this._boundPlot);
         }
     
-        this._boundPlot = () => this.plot();
+        this._boundPlot = () => {
+            this.resetLegend();
+            this.plot();
+        }
+            
         this.resetButton.addEventListener('click', this._boundPlot);
     }
 
@@ -700,18 +716,16 @@ export class BaseModule {
 
         this.clearSVG();
 
-        const svg = this.plotAxes();
+        this.plotAxes();
 
         this.initZoomTrackingAfterRender();
 
         this.setupZoomAndScroll();
-
-        return svg;
     }
 
     initLegend() {}
 
-    plotPoints(svg, points, options = {}) {
+    plotPoints(points, options = {}) {
         const {
             radius = 1.5,
             color = 'steelblue',
@@ -721,7 +735,7 @@ export class BaseModule {
 
         const tooltip = document.getElementById('vine-tooltip');
 
-        svg.selectAll(`circle.${className}`)
+        this.svg.selectAll(`circle.${className}`)
             .data(points)
             .enter()
             .append('circle')

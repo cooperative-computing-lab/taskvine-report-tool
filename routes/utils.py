@@ -1,3 +1,18 @@
+def get_unit_and_scale_by_max_file_size_mb(max_file_size_mb) -> tuple[str, float]:
+    if max_file_size_mb < 1 / 1024:
+        return 'Bytes',  1024 * 1024
+    elif max_file_size_mb < 1:
+        return 'KB', 1024
+    elif max_file_size_mb > 1024:
+        return 'GB', 1 / 1024
+    elif max_file_size_mb > 1024 * 1024:
+        return 'TB', 1 / (1024 * 1024)
+    else:
+        return 'MB', 1
+    
+def file_list_formatter(file_list):
+    return ', '.join([f for f in file_list if not f.startswith('file-meta-') and not f.startswith('file-buffer-')])
+
 def compute_tick_values(domain, num_ticks=5, round_digits=2):
     start, end = domain
     if num_ticks < 2:
@@ -28,3 +43,51 @@ def d3_percentage_formatter():
 
 def d3_worker_core_formatter():
     return '(d) => d.split("-")[0]'
+
+def downsample_points(points, sampling_points=10000):
+    if len(points) <= sampling_points:
+        return points
+
+    y_max_idx = max(range(len(points)), key=lambda i: points[i][1])
+    keep_indices = {0, len(points) - 1, y_max_idx}
+
+    remaining = sampling_points - len(keep_indices)
+    if remaining <= 0:
+        return [points[0], points[y_max_idx], points[-1]]
+
+    sorted_indices = sorted(keep_indices)
+    points_per_gap = remaining // (len(sorted_indices) - 1)
+    extra = remaining % (len(sorted_indices) - 1)
+
+    for i in range(len(sorted_indices) - 1):
+        start, end = sorted_indices[i], sorted_indices[i + 1]
+        gap = end - start - 1
+        if gap <= 0:
+            continue
+        n = points_per_gap + (1 if extra > 0 else 0)
+        if extra > 0:
+            extra -= 1
+        if n > 0:
+            available = list(range(start + 1, end))
+            if len(available) <= n:
+                sampled = available
+            else:
+                step = len(available) / n
+                sampled = [available[int(i * step)] for i in range(n)]
+            keep_indices.update(sampled)
+
+    return [points[i] for i in sorted(keep_indices)]
+
+def downsample_points_array(points_array, sampling_points=10000):
+    total_points = sum(len(points) for points in points_array)
+    if total_points <= sampling_points:
+        return points_array
+
+    downsampled_array = []
+    for points in points_array:
+        proportion = len(points) / total_points
+        allocated = max(3, int(proportion * sampling_points))
+        downsampled = downsample_points(points, allocated)
+        downsampled_array.append(downsampled)
+
+    return downsampled_array

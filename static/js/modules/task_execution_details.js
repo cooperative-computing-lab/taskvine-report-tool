@@ -89,7 +89,7 @@ export class TaskExecutionDetailsModule extends BaseModule {
         return checkbox && checkbox.checked;
     }
 
-    _plotTask(svg, task, primaryName, recoveryName, timeStart, timeEnd) {
+    _plotTask(task, primaryName, recoveryName, timeStart, timeEnd) {
         if (!timeStart || !timeEnd) return;
         timeStart = +timeStart;
         timeEnd = +timeEnd;
@@ -109,10 +109,10 @@ export class TaskExecutionDetailsModule extends BaseModule {
         const height = this.getBandWidth(this.leftScale);
         const innerHTML = getTaskInnerHTML(task);
     
-        this.plotRect(svg, x, y, width, height, fill, 1, innerHTML);
+        this.plotRect(x, y, width, height, fill, 1, innerHTML);
     }
 
-    _plotWorker(svg, worker) {
+    _plotWorker(worker) {
         for (let i = 0; i < worker["time_connected"].length; i++) {
             const height = Math.max(0, this.getBandWidth(this.leftScale) * worker.cores +
                 (this.leftScale.step() - this.getBandWidth(this.leftScale)) * (worker.cores - 1));
@@ -122,32 +122,32 @@ export class TaskExecutionDetailsModule extends BaseModule {
             const fill = this._getLegendColor('workers');
             const opacity = 0.3;
             const innerHTML = getWorkerInnerHTML(worker);
-            this.plotRect(svg, x, y, width, height, fill, opacity, innerHTML);
+            this.plotRect(x, y, width, height, fill, opacity, innerHTML);
         }
     }
 
     plot() {
         if (!this.data) return;
 
-        const svg = this.initSVG();
+        this.initSVG();
 
         /* plot workers */
         if (this._isTaskTypeChecked('workers') && this.data['worker_info']) {
             this.data['worker_info'].forEach(worker => {
-                this._plotWorker(svg, worker);
+                this._plotWorker(worker);
             });
         }
 
         /* plot successful tasks */
         this.data['successful_tasks'].forEach(task => {
-            this._plotTask(svg, task, 'successful-committing-to-worker', 'recovery-successful', task.when_running, task.time_worker_start);
-            this._plotTask(svg, task, 'successful-executing-on-worker', 'recovery-successful', task.time_worker_start, task.time_worker_end);
-            this._plotTask(svg, task, 'successful-retrieving-to-manager', 'recovery-successful', task.time_worker_end, task.when_retrieved);
+            this._plotTask(task, 'successful-committing-to-worker', 'recovery-successful', task.when_running, task.time_worker_start);
+            this._plotTask(task, 'successful-executing-on-worker', 'recovery-successful', task.time_worker_start, task.time_worker_end);
+            this._plotTask(task, 'successful-retrieving-to-manager', 'recovery-successful', task.time_worker_end, task.when_retrieved);
         });
 
         /* plot unsuccessful tasks */
         this.data['unsuccessful_tasks'].forEach(task => {
-            this._plotTask(svg, task, task.unsuccessful_checkbox_name, 'recovery-unsuccessful', task.when_running, task.when_failure_happens);
+            this._plotTask(task, task.unsuccessful_checkbox_name, 'recovery-unsuccessful', task.when_running, task.when_failure_happens);
         });
 
     }

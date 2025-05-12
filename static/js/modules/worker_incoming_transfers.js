@@ -22,7 +22,7 @@ export class WorkerIncomingTransfersModule extends BaseModule {
         this.createLegendRow(this.legendContainer, legendItems, {
             checkboxName: 'incoming-transfers',
             onToggle: async (id, visible) => {
-                const path = svg.selectAll(`#transfer-${id}`);
+                const path = this.svg.selectAll(`#transfer-${id}`);
                 path.style('display', visible ? null : 'none');
             }
         });
@@ -31,12 +31,12 @@ export class WorkerIncomingTransfersModule extends BaseModule {
     plot() {
         if (!this.data) return;
 
-        const svg = this.initSVG();
+        this.initSVG();
 
         Object.entries(this.data.transfers).forEach(([worker, points], idx) => {
             const safeId = escapeWorkerId(worker);
             const color = getWorkerColor(worker, idx);
-            this.plotPath(svg, points, {
+            this.plotPath(points, {
                 stroke: color,
                 className: 'transfer-line',
                 id: `transfer-${safeId}`,

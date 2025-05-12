@@ -35,7 +35,7 @@ export class TaskConcurrencyModule extends BaseModule {
             lineWidth: 3,
             checkboxName: 'task-concurrency',
             onToggle: async (id, visible) => {
-                const path = svg.selectAll(`#${id}`);
+                const path = this.svg.selectAll(`#${id}`);
                 path.style('display', visible ? null : 'none');
             }
         });
@@ -44,11 +44,11 @@ export class TaskConcurrencyModule extends BaseModule {
     plot() {
         if (!this.data) return;
 
-        const svg = this.initSVG();
+        this.initSVG();
 
         for (const [type, config] of Object.entries(this.taskConfigs)) {
             if (this.data[type] && this.data[type].length > 0) {
-                this.plotPath(svg, this.data[type], {
+                this.plotPath(this.data[type], {
                     stroke: config.color,
                     className: `task-line`,
                     id: type
