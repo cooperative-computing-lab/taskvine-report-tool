@@ -1,5 +1,5 @@
 from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
-from .utils import compute_tick_values
+from .utils import compute_tick_values, d3_time_formatter, d3_int_formatter
 
 import pandas as pd
 import random
@@ -85,6 +85,9 @@ def get_task_response_time():
         data['y_domain'] = [0, max(p[1] for p in data['points']) if data['points'] else 0]
         data['x_tick_values'] = compute_tick_values(data['x_domain'])
         data['y_tick_values'] = compute_tick_values(data['y_domain'])
+
+        data['x_tick_formatter'] = d3_int_formatter()
+        data['y_tick_formatter'] = d3_time_formatter()
 
         # downsample points
         data['points'] = downsample_task_response_time(data['points'])

@@ -12,3 +12,19 @@ def compute_tick_values(domain, num_ticks=5, round_digits=2):
         return [int(v) for v in values]
     else:
         return [round(v, round_digits) for v in values]
+
+
+def d3_time_formatter():
+    return '(d) => d3.format(".2f")(d) + " s"'
+
+def d3_int_formatter():
+    return '(d) => d3.format(".0f")(d)'
+
+def d3_size_formatter(unit):
+    return f'(d) => d3.format(".2f")(d) + " {unit}"'
+
+def d3_percentage_formatter():
+    return '(d) => d3.format(".2f")(d) + " %"'
+
+def d3_worker_core_formatter():
+    return '(d) => d.split("-")[0]'

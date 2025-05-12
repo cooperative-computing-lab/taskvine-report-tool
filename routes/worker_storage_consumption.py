@@ -1,6 +1,6 @@
 from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
 from src.utils import get_unit_and_scale_by_max_file_size_mb
-from .utils import compute_tick_values
+from .utils import compute_tick_values, d3_time_formatter, d3_size_formatter, d3_percentage_formatter
 
 import pandas as pd
 import numpy as np
@@ -150,10 +150,10 @@ def get_worker_storage_consumption():
             f"{k[0]}:{k[1]}": v for k, v in data['storage_data'].items()}
 
         if show_percentage:
-            data['file_size_unit'] = '%'
             max_storage_consumption = 100
+            data['y_tick_formatter'] = d3_percentage_formatter()
         else:
-            data['file_size_unit'], scale = get_unit_and_scale_by_max_file_size_mb(
+            y_tick_unit, scale = get_unit_and_scale_by_max_file_size_mb(
                 max_storage_consumption)
             # also update the source data
             if scale != 1:
@@ -162,8 +162,9 @@ def get_worker_storage_consumption():
                     data['storage_data'][destination] = [
                         [p[0], p[1] * scale] for p in points]
                 max_storage_consumption *= scale
+            data['y_tick_formatter'] = d3_size_formatter(y_tick_unit)
 
-        # Add worker resource information
+        # add worker resource information
         for worker_entry, worker in runtime_state.workers.items():
             worker_id = f"{worker_entry[0]}:{worker_entry[1]}"
             if worker_id in data['storage_data']:
@@ -178,6 +179,8 @@ def get_worker_storage_consumption():
         data['y_domain'] = [0, max(1.0, max_storage_consumption)]
         data['x_tick_values'] = compute_tick_values(data['x_domain'])
         data['y_tick_values'] = compute_tick_values(data['y_domain'])
+
+        data['x_tick_formatter'] = d3_time_formatter()
 
         return jsonify(data)
 

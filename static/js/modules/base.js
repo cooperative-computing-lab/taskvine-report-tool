@@ -138,7 +138,43 @@ export class BaseModule {
         this.svgNode.style.height = '';
     }
     
-    fetchData() {}
+    async fetchData() {
+        this.clearSVG();
+
+        const response = await fetch(this.api_url);
+        const data = await response.json();
+        
+        if (!data) {
+            console.warn('Invalid or missing data');
+            return;
+        }
+
+        this.data = data;
+
+        /* set domains and tick values */
+        if (this.bottomScaleType) {
+            this.setBottomDomain(data['x_domain']);
+            this.setBottomTickValues(data['x_tick_values']);
+            this.setBottomFormatter(eval(data['x_tick_formatter']));
+        } else if (this.topScaleType) {
+            this.setTopDomain(data['x_domain']);
+            this.setTopTickValues(data['x_tick_values']);
+            this.setTopFormatter(eval(data['x_tick_formatter']));
+        } else {
+            console.error('Invalid scale type for fetchData');
+        }
+        if (this.leftScaleType) {
+            this.setLeftDomain(data['y_domain']);
+            this.setLeftTickValues(data['y_tick_values']);
+            this.setLeftFormatter(eval(data['y_tick_formatter']));
+        } else if (this.rightScaleType) {
+            this.setRightDomain(data['y_domain']);
+            this.setRightTickValues(data['y_tick_values']);
+            this.setRightFormatter(eval(data['y_tick_formatter']));
+        } else {
+            console.error('Invalid scale type for fetchData');
+        }
+    }
 
     plot() {}
 

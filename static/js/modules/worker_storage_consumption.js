@@ -8,28 +8,6 @@ export class WorkerStorageConsumptionModule extends BaseModule {
 
         this.setBottomScaleType('linear');
         this.setLeftScaleType('linear');
-
-        this.setBottomFormatter(d => `${d3.format('.2f')(d)} s`);
-        this.setLeftFormatter(d => `${d3.format('.2f')(d)} GB`);
-    }
-
-    async fetchData() {
-        this.clearSVG();
-
-        const response = await fetch(this.api_url);
-        const data = await response.json();
-        
-        if (!data || !data.storage_data) {
-            console.warn('Invalid or missing worker storage consumption data');
-            return;
-        }
-
-        this.data = data;
-
-        this.setBottomDomain(data['x_domain']);
-        this.setLeftDomain(data['y_domain']);
-        this.setBottomTickValues(data['x_tick_values']);
-        this.setLeftTickValues(data['y_tick_values']);
     }
 
     plot() {

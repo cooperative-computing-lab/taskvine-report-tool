@@ -18,26 +18,6 @@ export class FileTransfersModule extends BaseModule {
         this.showIncoming = true;
     }
 
-    async fetchData() {
-        this.clearSVG();
-
-        const transferType = this.showIncoming ? 'incoming' : 'outgoing';
-        const response = await fetch(`${this.api_url}?type=${transferType}`);
-        const data = await response.json();
-        
-        if (!data || !data.transfers) {
-            console.warn('Invalid or missing file transfers data');
-            return;
-        }
-
-        this.data = data;
-
-        this.setBottomDomain([data.xMin, data.xMax]);
-        this.setLeftDomain([data.yMin, data.yMax]);
-        this.setBottomTickValues(data.xTickValues);
-        this.setLeftTickValues(data.yTickValues);
-    }
-
     initControls() {
         const buttonToggleType = document.getElementById('button-toggle-transfer-type');
         const transferTypeDisplay = document.getElementById('transfer-type-display');

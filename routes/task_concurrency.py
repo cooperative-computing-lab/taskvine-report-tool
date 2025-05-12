@@ -1,5 +1,5 @@
 from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
-from .utils import compute_tick_values
+from .utils import compute_tick_values, d3_time_formatter, d3_int_formatter
 
 import pandas as pd
 import random
@@ -66,7 +66,7 @@ def get_task_concurrency():
     try:
         data = {}
 
-        # Initialize task type lists
+        # initialize task type lists
         all_task_types = {
             'tasks_waiting': [],
             'tasks_committing': [],
@@ -76,12 +76,12 @@ def get_task_concurrency():
         }
         data.update(all_task_types)
 
-        # Process all task types
+        # process all task types
         for task in runtime_state.tasks.values():
             if task.when_failure_happens is not None:
                 continue
 
-            # Collect task state data
+            # collect task state data
             if task.when_ready:
                 # waiting tasks can happen before the start time
                 data['tasks_waiting'].append(
@@ -118,33 +118,36 @@ def get_task_concurrency():
         def process_task_type(tasks):
             if not tasks:
                 return []
-            # Convert to DataFrame and calculate cumulative events
+            # convert to DataFrame and calculate cumulative events
             df = pd.DataFrame(tasks, columns=['time', 'event'])
             df = df.sort_values(by=['time'])
             df['time'] = df['time'].round(2)
             df['cumulative_event'] = df['event'].cumsum()
-            # Keep last event for duplicate timestamps
+            # keep last event for duplicate timestamps
             df = df.drop_duplicates(subset=['time'], keep='last')
             points = df[['time', 'cumulative_event']].values.tolist()
-            # Downsample data
+            # downsample data
             return downsample_task_concurrency(points)
 
         # process all task types data
         max_concurrent = 0
         for task_type in all_task_types:
             data[task_type] = process_task_type(data[task_type])
-            # Update max values
+            # update max values
             if data[task_type]:
                 max_concurrent = max(max_concurrent, max(
                     point[1] for point in data[task_type]))
 
-        # Set axis ranges
+        # set axis ranges
         data['x_domain'] = [0, runtime_state.MAX_TIME - runtime_state.MIN_TIME]
         data['y_domain'] = [0, max_concurrent]
 
-        # Generate tick values
+        # generate tick values
         data['x_tick_values'] = compute_tick_values(data['x_domain'])
         data['y_tick_values'] = compute_tick_values(data['y_domain'])
+
+        data['x_tick_formatter'] = d3_time_formatter()
+        data['y_tick_formatter'] = d3_int_formatter()
 
         return jsonify(data)
     except Exception as e:

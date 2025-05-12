@@ -3,7 +3,7 @@ from flask import Blueprint, jsonify
 import pandas as pd
 from collections import defaultdict
 import random
-from .utils import compute_tick_values
+from .utils import compute_tick_values, d3_time_formatter, d3_int_formatter
 
 worker_transfers_bp = Blueprint('worker_transfers', __name__, url_prefix='/api')
 
@@ -115,6 +115,9 @@ def get_worker_incoming_transfers():
         data['x_tick_values'] = compute_tick_values(data['x_domain'])
         data['y_tick_values'] = compute_tick_values(data['y_domain'])
 
+        data['x_tick_formatter'] = d3_time_formatter()
+        data['y_tick_formatter'] = d3_int_formatter()
+
         return jsonify(data)
 
     except Exception as e:
@@ -178,6 +181,9 @@ def get_worker_outgoing_transfers():
         data['y_domain'] = [0, int(max_transfers)]
         data['x_tick_values'] = compute_tick_values(data['x_domain'])
         data['y_tick_values'] = compute_tick_values(data['y_domain'])
+
+        data['x_tick_formatter'] = d3_time_formatter()
+        data['y_tick_formatter'] = d3_int_formatter()
 
         return jsonify(data)
 

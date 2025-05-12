@@ -280,7 +280,6 @@ async function fetchData() {
 
 async function initialize(detail) {
     try {
-        // init dom elements
         buttonReset = document.getElementById('button-reset-task-concurrency');
         buttonDownload = document.getElementById('button-download-task-concurrency');
         svgContainer = document.getElementById('task-concurrency-container');

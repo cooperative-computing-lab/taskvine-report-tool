@@ -1,5 +1,5 @@
 from .runtime_state import runtime_state, SAMPLING_TASK_BARS, check_and_reload_data
-from .utils import compute_tick_values
+from .utils import compute_tick_values, d3_time_formatter, d3_worker_core_formatter
 
 import traceback
 from collections import defaultdict
@@ -236,6 +236,9 @@ def get_task_execution_details():
         else:
             indices = [round(i) for i in linspace(0, n - 1, 5)]
             data['y_tick_values'] = [data['y_domain'][i] for i in indices]
+
+        data['x_tick_formatter'] = d3_time_formatter()
+        data['y_tick_formatter'] = d3_worker_core_formatter()
 
         return jsonify(data)
 

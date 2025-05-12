@@ -7,9 +7,6 @@ export class TaskConcurrencyModule extends BaseModule {
         this.setBottomScaleType('linear');
         this.setLeftScaleType('linear');
 
-        this.setBottomFormatter(d => `${d3.format('.2f')(d)} s`);
-        this.setLeftFormatter(d => `${d3.format('.0f')(d)}`);
-
         this.taskTypes = [
             'tasks_waiting',
             'tasks_committing',
@@ -27,31 +24,8 @@ export class TaskConcurrencyModule extends BaseModule {
         };
     }
 
-    async fetchData() {
-        this.clearSVG();
-
-        const response = await fetch(this.api_url);
-        const data = await response.json();
-        
-        if (!data || !data.tasks_waiting) {
-            console.warn('Invalid or missing task concurrency data');
-            return;
-        }
-
-        this.data = data;
-
-        this.setBottomDomain(data.x_domain);
-        this.setLeftDomain(data.y_domain);
-        this.setBottomTickValues(data.x_tick_values);
-        this.setLeftTickValues(data.y_tick_values);
-    }
-
     plot() {
         if (!this.data) return;
-
-        /* fix y axis domain and tick values */
-        this.setLeftDomain(this.data.y_domain);
-        this.setLeftTickValues(this.data.y_tick_values);
 
         const svg = this.initSVG();
 
