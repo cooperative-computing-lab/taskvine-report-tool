@@ -9,6 +9,7 @@ from routes.task_execution_details import task_execution_details_bp
 from routes.task_response_time import task_response_time_bp
 from routes.task_retrieval_time import task_retrieval_time_bp
 from routes.worker_concurrency import worker_concurrency_bp
+from routes.worker_executing_tasks import worker_executing_tasks_bp
 from routes.runtime_state import *
 from routes.worker_transfers import worker_transfers_bp
 
@@ -57,7 +58,7 @@ app.register_blueprint(task_retrieval_time_bp)
 app.register_blueprint(worker_storage_consumption_bp)
 app.register_blueprint(worker_concurrency_bp)
 app.register_blueprint(worker_transfers_bp)
-
+app.register_blueprint(worker_executing_tasks_bp)
 # files
 app.register_blueprint(file_replicas_bp)
 app.register_blueprint(file_sizes_bp)
