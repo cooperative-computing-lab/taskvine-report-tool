@@ -412,9 +412,9 @@ export class BaseModule {
         }
     }
 
-    getBandWidth(scale) {
+    getScaleBandWidth(scale) {
         if (!scale) {
-            console.error('Invalid scale type for getBandWidth');
+            console.error('Invalid scale type for getScaleBandWidth');
             return 0;
         }
         return Math.max(0, scale.bandwidth());
@@ -482,7 +482,7 @@ export class BaseModule {
         points = points.filter(p => Array.isArray(p) && p.length >= 2 && !isNaN(p[0]) && !isNaN(p[1]) && p[0] >= 0 && p[1] >= 0);
         const {
             stroke = '#2077B4',
-            strokeWidth = 1.2,
+            strokeWidth = 1.5,
             className = 'data-path',
             id = '',
             tooltipInnerHTML = null,

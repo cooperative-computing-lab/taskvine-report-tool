@@ -11,9 +11,11 @@ from routes.task_retrieval_time import task_retrieval_time_bp
 from routes.worker_concurrency import worker_concurrency_bp
 from routes.worker_executing_tasks import worker_executing_tasks_bp
 from routes.worker_waiting_retrieval_tasks import worker_waiting_retrieval_tasks_bp
+from routes.file_transferred_size import file_transferred_size_bp
+from routes.file_created_size import file_created_size_bp
 from routes.runtime_state import *
 from routes.worker_transfers import worker_transfers_bp
-
+from routes.task_completion_percentiles import task_completion_percentiles_bp
 
 import argparse
 import os
@@ -54,6 +56,7 @@ app.register_blueprint(task_execution_time_bp)
 app.register_blueprint(task_concurrency_bp)
 app.register_blueprint(task_response_time_bp)
 app.register_blueprint(task_retrieval_time_bp)
+app.register_blueprint(task_completion_percentiles_bp)
 
 # workers
 app.register_blueprint(worker_storage_consumption_bp)
@@ -65,6 +68,8 @@ app.register_blueprint(worker_waiting_retrieval_tasks_bp)
 # files
 app.register_blueprint(file_replicas_bp)
 app.register_blueprint(file_sizes_bp)
+app.register_blueprint(file_transferred_size_bp)
+app.register_blueprint(file_created_size_bp)
 
 # subgraphs
 app.register_blueprint(subgraphs_bp)

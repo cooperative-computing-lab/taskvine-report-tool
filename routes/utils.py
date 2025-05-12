@@ -1,14 +1,14 @@
 def get_unit_and_scale_by_max_file_size_mb(max_file_size_mb) -> tuple[str, float]:
-    if max_file_size_mb < 1 / 1024:
-        return 'Bytes',  1024 * 1024
-    elif max_file_size_mb < 1:
-        return 'KB', 1024
-    elif max_file_size_mb > 1024:
-        return 'GB', 1 / 1024
-    elif max_file_size_mb > 1024 * 1024:
+    if max_file_size_mb >= 1024 * 1024:
         return 'TB', 1 / (1024 * 1024)
-    else:
+    elif max_file_size_mb >= 1024:
+        return 'GB', 1 / 1024
+    elif max_file_size_mb >= 1:
         return 'MB', 1
+    elif max_file_size_mb >= 1 / 1024:
+        return 'KB', 1024
+    else:
+        return 'Bytes', 1024 * 1024
 
 def file_list_formatter(file_list):
     return ', '.join([f for f in file_list if not f.startswith('file-meta-') and not f.startswith('file-buffer-')])
@@ -59,8 +59,8 @@ def d3_int_formatter():
 def d3_size_formatter(unit):
     return f'(d) => d3.format(".2f")(d) + " {unit}"'
 
-def d3_percentage_formatter():
-    return '(d) => d3.format(".2f")(d) + " %"'
+def d3_percentage_formatter(digits=2):
+    return f'(d) => d3.format(".{digits}f")(d) + " %"'
 
 def d3_worker_core_formatter():
     return '(d) => d.split("-")[0]'

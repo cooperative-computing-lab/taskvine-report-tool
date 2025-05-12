@@ -106,7 +106,7 @@ export class TaskExecutionDetailsModule extends BaseModule {
         const x = this.bottomScale(timeStart);
         const y = this.leftScale(`${task.worker_id}-${task.core_id}`);
         const width = this.bottomScale(timeEnd) - this.bottomScale(timeStart);
-        const height = this.getBandWidth(this.leftScale);
+        const height = this.getScaleBandWidth(this.leftScale);
         const innerHTML = getTaskInnerHTML(task);
     
         this.plotRect(x, y, width, height, fill, 1, innerHTML);
@@ -114,8 +114,8 @@ export class TaskExecutionDetailsModule extends BaseModule {
 
     _plotWorker(worker) {
         for (let i = 0; i < worker["time_connected"].length; i++) {
-            const height = Math.max(0, this.getBandWidth(this.leftScale) * worker.cores +
-                (this.leftScale.step() - this.getBandWidth(this.leftScale)) * (worker.cores - 1));
+            const height = Math.max(0, this.getScaleBandWidth(this.leftScale) * worker.cores +
+                (this.leftScale.step() - this.getScaleBandWidth(this.leftScale)) * (worker.cores - 1));
             const x = this.bottomScale(worker["time_connected"][i]);
             const y = this.leftScale(worker.id + '-' + worker.cores);
             const width = Math.max(0, this.bottomScale(worker["time_disconnected"][i]) - this.bottomScale(worker["time_connected"][i]));
