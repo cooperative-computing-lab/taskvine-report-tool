@@ -32,6 +32,9 @@ def compute_discrete_tick_values(domain_list, num_ticks=5):
     if not domain_list:
         return []
     
+    if len(domain_list) <= num_ticks * 2:
+        return domain_list
+    
     domain_list = sorted(set(domain_list))
     n = len(domain_list)
 

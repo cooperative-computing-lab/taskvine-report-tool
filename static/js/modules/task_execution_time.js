@@ -18,4 +18,4 @@ export class TaskExecutionTimeModule extends BaseModule {
             className: 'execution-time-point'
         });
     }
-} 
+}
