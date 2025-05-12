@@ -7,6 +7,7 @@ import { WorkerIncomingTransfersModule } from './worker_incoming_transfers.js';
 import { WorkerOutgoingTransfersModule } from './worker_outgoing_transfers.js';
 import { FileSizesModule } from './file_sizes.js';
 import { TaskRetrievalTimeModule } from './task_retrieval_time.js';
+import { WorkerConcurrencyModule } from './worker_concurrency.js';
 
 export const moduleClasses = {
     'task-execution-details': TaskExecutionDetailsModule,
@@ -15,6 +16,7 @@ export const moduleClasses = {
     'task-execution-time': TaskExecutionTimeModule,
     'task-retrieval-time': TaskRetrievalTimeModule,
     'worker-storage-consumption': WorkerStorageConsumptionModule,
+    'worker-concurrency': WorkerConcurrencyModule,
     'worker-incoming-transfers': WorkerIncomingTransfersModule,
     'worker-outgoing-transfers': WorkerOutgoingTransfersModule,
     'file-sizes': FileSizesModule,
@@ -27,6 +29,7 @@ export const moduleConfigs = [
     { id: 'task-execution-time', title: 'Task Execution Time', api_url: '/api/task-execution-time' },
     { id: 'task-retrieval-time', title: 'Task Retrieval Time', api_url: '/api/task-retrieval-time' },
     { id: 'worker-storage-consumption', title: 'Worker Storage Consumption', api_url: '/api/worker-storage-consumption' },
+    { id: 'worker-concurrency', title: 'Worker Concurrency', api_url: '/api/worker-concurrency' },
     { id: 'worker-incoming-transfers', title: 'Worker Incoming Transfers', api_url: '/api/worker-incoming-transfers' },
     { id: 'worker-outgoing-transfers', title: 'Worker Outgoing Transfers', api_url: '/api/worker-outgoing-transfers' },
     { id: 'file-sizes', title: 'File Sizes', api_url: '/api/file-sizes' },
