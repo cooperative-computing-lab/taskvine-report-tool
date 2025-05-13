@@ -19,7 +19,7 @@ def get_task_dependents():
         'x_domain': x_domain,
         'y_domain': y_domain,
         'x_tick_values': compute_linear_tick_values(x_domain),
-        'y_tick_values': compute_linear_tick_values(y_domain),
+        'y_tick_values': compute_linear_tick_values(y_domain, round_digits=0, num_ticks=10),
         'x_tick_formatter': d3_int_formatter(),
         'y_tick_formatter': d3_int_formatter()
     })
