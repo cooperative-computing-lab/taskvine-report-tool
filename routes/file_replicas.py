@@ -1,9 +1,10 @@
 from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
 from .utils import (
-    compute_tick_values,
+    compute_linear_tick_values,
     d3_int_formatter,
     downsample_points,
-    compute_discrete_tick_values
+    compute_points_domain,
+    get_task_produced_files
 )
 from flask import Blueprint, jsonify
 import pandas as pd
@@ -15,14 +16,12 @@ file_replicas_bp = Blueprint('file_replicas', __name__, url_prefix='/api')
 def get_file_replicas():
     try:
         rows = []
-        for file in runtime_state.files.values():
-            if not file.transfers:
-                continue
-            fname = file.filename
-            if not fname.startswith('temp-'):
-                continue
+        
+        base_rows = get_task_produced_files(runtime_state.files, runtime_state.MIN_TIME)
+        
+        for file_idx, fname, created_time in base_rows:
+            file = runtime_state.files[fname]
             
-            # collect all time intervals of the file on all workers for calculating the max number of replicas at any time
             intervals = []
             for transfer in file.transfers:
                 if transfer.time_stage_in and transfer.time_stage_out:
@@ -40,9 +39,8 @@ def get_file_replicas():
                 for t, delta in events:
                     count += delta
                     max_simul = max(max_simul, count)
-            created_time = min((t.time_start_stage_in for t in file.transfers), default=float('inf')) - runtime_state.MIN_TIME
-            created_time = round(created_time, 2) if created_time != float('inf') else float('inf')
-            rows.append((0, fname, max_simul, created_time))
+            
+            rows.append((file_idx, fname, max_simul, created_time))
 
         if not rows:
             return jsonify({
@@ -50,8 +48,8 @@ def get_file_replicas():
                 'file_idx_to_names': {},
                 'x_domain': [1, 1],
                 'y_domain': [0, 0],
-                'x_tick_values': compute_tick_values([1, 1]),
-                'y_tick_values': compute_tick_values([0, 0]),
+                'x_tick_values': compute_linear_tick_values([1, 1]),
+                'y_tick_values': compute_linear_tick_values([0, 0]),
                 'x_tick_formatter': d3_int_formatter(),
                 'y_tick_formatter': d3_int_formatter()
             })
@@ -60,16 +58,20 @@ def get_file_replicas():
         df = df.sort_values(by='created_time')
         df['file_idx'] = range(1, len(df) + 1)
 
-        y_domain = sorted(df['max_simul_replicas'].unique().tolist())
-        downsampled = downsample_points(df.values.tolist(), SAMPLING_POINTS)
+        file_idx_to_names = {row[0]: row[1] for row in df[['file_idx', 'file_name']].values.tolist()}
+
+        points = [[d[0], d[2]] for d in df.values.tolist()]
+        x_domain, y_domain = compute_points_domain(points)
+
+        downsampled_points = downsample_points(points, SAMPLING_POINTS)
 
         data = {
-            'points': [[d[0], d[2]] for d in downsampled],
-            'file_idx_to_names': {d[0]: d[1] for d in downsampled},
-            'x_domain': [1, len(df)],
+            'points': downsampled_points,
+            'file_idx_to_names': file_idx_to_names,
+            'x_domain': x_domain,
             'y_domain': y_domain,
-            'x_tick_values': compute_tick_values([1, len(df)]),
-            'y_tick_values': compute_discrete_tick_values(y_domain),
+            'x_tick_values': compute_linear_tick_values(x_domain),
+            'y_tick_values': compute_linear_tick_values(y_domain, round_digits=0, num_ticks=10),
             'x_tick_formatter': d3_int_formatter(),
             'y_tick_formatter': d3_int_formatter()
         }

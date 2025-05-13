@@ -1,10 +1,10 @@
 from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
 from .utils import (
-    compute_tick_values,
+    compute_linear_tick_values,
     d3_time_formatter,
     d3_int_formatter,
     downsample_points,
-    compute_discrete_tick_values
+    compute_points_domain
 )
 from flask import Blueprint, jsonify
 
@@ -26,15 +26,14 @@ def get_task_retrieval_time():
         if not raw_points:
             return jsonify({'error': 'No task retrieval time data available'}), 404
 
-        y_domain = sorted(set(p[1] for p in raw_points))
-        x_domain = [0, len(raw_points)]
+        x_domain, y_domain = compute_points_domain(raw_points)
 
         return jsonify({
             'points': downsample_points(raw_points, SAMPLING_POINTS),
             'x_domain': x_domain,
             'y_domain': y_domain,
-            'x_tick_values': compute_tick_values(x_domain),
-            'y_tick_values': compute_discrete_tick_values(y_domain),
+            'x_tick_values': compute_linear_tick_values(x_domain),
+            'y_tick_values': compute_linear_tick_values(y_domain),
             'x_tick_formatter': d3_int_formatter(),
             'y_tick_formatter': d3_time_formatter()
         })

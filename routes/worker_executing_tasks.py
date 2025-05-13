@@ -1,6 +1,6 @@
 from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
 from .utils import (
-    compute_tick_values,
+    compute_linear_tick_values,
     d3_time_formatter,
     d3_int_formatter,
     downsample_points_array
@@ -69,8 +69,8 @@ def get_worker_executing_tasks():
             'executing_tasks_data': executing_tasks_data,
             'x_domain': x_domain,
             'y_domain': y_domain,
-            'x_tick_values': compute_tick_values(x_domain),
-            'y_tick_values': compute_tick_values(y_domain),
+            'x_tick_values': compute_linear_tick_values(x_domain),
+            'y_tick_values': compute_linear_tick_values(y_domain),
             'x_tick_formatter': d3_time_formatter(),
             'y_tick_formatter': d3_int_formatter(),
         })

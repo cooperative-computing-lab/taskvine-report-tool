@@ -5,7 +5,7 @@ import math
 
 from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
 from .utils import (
-    compute_tick_values,
+    compute_linear_tick_values,
     d3_time_formatter,
     d3_int_formatter,
     downsample_points_array
@@ -63,8 +63,8 @@ def extract_worker_transfer_points(role):
         'transfers': transfers,
         'x_domain': [0, runtime_state.MAX_TIME - base_time],
         'y_domain': [0, int(max_y)],
-        'x_tick_values': compute_tick_values([0, runtime_state.MAX_TIME - base_time]),
-        'y_tick_values': compute_tick_values([0, int(max_y)]),
+        'x_tick_values': compute_linear_tick_values([0, runtime_state.MAX_TIME - base_time]),
+        'y_tick_values': compute_linear_tick_values([0, int(max_y)]),
         'x_tick_formatter': d3_time_formatter(),
         'y_tick_formatter': d3_int_formatter(),
     }
