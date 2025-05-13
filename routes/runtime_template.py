@@ -2,7 +2,7 @@ from .runtime_state import runtime_state, LOGS_DIR
 
 import os
 from pathlib import Path
-from flask import render_template, jsonify, request, Blueprint, Response
+from flask import jsonify, request, Blueprint
 
 runtime_template_bp = Blueprint(
     'runtime_template', __name__, url_prefix='/api')
@@ -37,3 +37,12 @@ def change_runtime_template():
         success = True
     return jsonify({'success': success}), 200
 
+
+@runtime_template_bp.route('/reload-runtime-template')
+def reload_runtime_template():
+    runtime_template = request.args.get('runtime_template')
+    if runtime_template:
+        success = runtime_state.reload_template(runtime_template)
+    else:
+        success = False
+    return jsonify({'success': success}), 200
