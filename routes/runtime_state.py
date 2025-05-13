@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from collections import defaultdict
+from .utils import LeaseLock
 from src.data_parse import DataParser
 import traceback
 import functools
@@ -8,21 +8,11 @@ import time
 from src.logger import Logger
 from src.utils import get_file_stat, build_request_info_string, build_response_info_string
 import threading
+import json
 
 LOGS_DIR = 'logs'
 SAMPLING_POINTS = 10000  # at lease 3: the beginning, the end, and the global peak
 SAMPLING_TASK_BARS = 100000   # how many task bars to show
-
-SERVICE_API_LISTS = [
-    'task-execution-details',
-    'task-execution-time',
-    'task-concurrency',
-    'worker-storage-consumption',
-    'file-transfers',
-    'file-sizes',
-    'file-concurrent-replicas',
-    'subgraphs',
-]
 
 
 def check_and_reload_data():
@@ -31,7 +21,19 @@ def check_and_reload_data():
         def wrapper(*args, **kwargs):
             if runtime_state.check_pkl_files_changed():
                 runtime_state.reload_data()
-            return func(*args, **kwargs)
+            
+            # Get the response
+            response = func(*args, **kwargs)
+            
+            # Calculate response size if it is in json format, otherwise return 0
+            response_data = response.get_json() if hasattr(response, 'get_json') else response
+            response_size = len(json.dumps(response_data)) if response_data else 0
+
+            # Log the size
+            route_name = func.__name__
+            runtime_state.log_info(f"Route {route_name} response size: {response_size/1024/1024:.2f} MB")
+            
+            return response
         return wrapper
     return decorator
 
@@ -61,12 +63,7 @@ class RuntimeState:
         # set logger
         self.logger = Logger()
 
-        # last time process the template change
-        self.last_template_change_time = 0
-
-        self.api_responded = defaultdict(int)
-
-        self.runtime_template_lock = threading.Lock()
+        self.template_lock = LeaseLock(lease_duration_sec=60)
         self.reload_lock = threading.Lock()
 
     @property
@@ -92,11 +89,6 @@ class RuntimeState:
     def log_response(self, response, request, duration=None):
         self.logger.info(
             f"{self.log_prefix} {build_response_info_string(response, request, duration)}")
-
-    def has_all_service_apis_responded(self):
-        self.log_info(
-            f"Current processing template: {self.runtime_template} Responded APIs: {self.api_responded.keys()}")
-        return all(api in self.api_responded for api in SERVICE_API_LISTS)
 
     def check_pkl_files_changed(self):
         with self.reload_lock:
@@ -152,29 +144,14 @@ class RuntimeState:
                 traceback.print_exc()
 
     def change_runtime_template(self, runtime_template):
-        with self.runtime_template_lock:
-            if not runtime_template:
-                return False
-            if self.runtime_template and Path(runtime_template).name == Path(self.runtime_template).name:
-                self.log_info(
-                    f"Runtime template already set to: {runtime_template}")
-                return True
+        if not runtime_template:
+            return False
+        if self.runtime_template and Path(runtime_template).name == Path(self.runtime_template).name:
+            self.log_info(f"Runtime template already set to: {runtime_template}")
+            return True
 
-            # first check if previous template change is still ongoing
-            # if self.runtime_template and not self.has_all_service_apis_responded():
-            #     self.log_warning(
-            #         f"Skipping change runtime template to {runtime_template} because we are busy serving the previous template.")
-            #     return False
-
-            # clear the api_responded because we are changing to a new runtime template
-            self.api_responded.clear()
-
-            self.last_template_change_time = time.time()
-
-            self.runtime_template = os.path.join(
-                os.getcwd(), LOGS_DIR, Path(runtime_template).name)
-            self.log_info(
-                f"Restoring data for runtime template: {runtime_template}")
+        self.runtime_template = os.path.join(os.getcwd(), LOGS_DIR, Path(runtime_template).name)
+        self.log_info(f"Restoring data for runtime template: {runtime_template}")
 
         self.data_parser = DataParser(self.runtime_template)
         self.svg_files_dir = self.data_parser.svg_files_dir

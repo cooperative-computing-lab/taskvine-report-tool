@@ -1,104 +1,164 @@
 export class LogManager {
     constructor() {
         this.selectorId = 'log-selector';
-        this.apiUrl = '/api/runtime-template-list';
+        this.runtimeTemplateListAPI = '/api/runtime-template-list';
+        this.serverLockAPI = '/api/lock';
+        this.serverUnlockAPI = '/api/unlock';
+        
         this.selector = document.getElementById(this.selectorId);
+
         this._logChangeCallbacks = [];
-        this.lockKey = 'log-change-in-progress';
+        this._currentLogFolder = '--- select log ---';
+
+        this._loadingOption = document.createElement('option');
+        this._loadingOption.textContent = 'Loading...';
+
+        this._selectLogOption = document.createElement('option');
+        this._selectLogOption.textContent = this._currentLogFolder;
+    }
+
+    _setSelectorValue(value) {
+        this.selector.innerHTML = '';
+
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        this.selector.appendChild(option);
+        this.selector.value = value;
     }
 
     async init() {
-        try {
-            const response = await fetch(this.apiUrl);
-            const logFolders = await response.json();
+        this._setSelectorValue(this._currentLogFolder);
 
-            this._populateSelector(logFolders);
-            this.selector.addEventListener('change', () => this._handleUserLogChange());
+        this.selector.addEventListener('mousedown', async () => {
+            await this._refreshLogOptions();
+        });
 
-            window.addEventListener('storage', (e) => {
-                if (e.key === this.lockKey && e.newValue === null) {
-                    this.selector.disabled = false;
-                }
-            });
-
-            const saved = sessionStorage.getItem('selectedLogFolder');
-            if (saved && logFolders.includes(saved)) {
-                this.selector.value = saved;
-                this.selector.dispatchEvent(new Event('change'));
-            }
-        } catch (err) {
-            console.error('Failed to initialize log manager:', err);
-        }
+        this.selector.addEventListener('change', async () => {
+            this.selector.disabled = true;
+            await this._changeLogFolderTo(this.selector.value);
+            this.selector.disabled = false;
+        });
     }
 
-    onChange(callback) {
+    _showLoadingIndicator() {
+        this.selector.innerHTML = '';
+        this._loadingOption.disabled = true;
+        this._loadingOption.selected = true;
+        this.selector.appendChild(this._loadingOption);
+    }
+
+    _showSelectLogOption() {
+        this.selector.innerHTML = '';
+        this._selectLogOption.disabled = false;
+        this._selectLogOption.selected = true;
+        this.selector.appendChild(this._selectLogOption);
+    }
+
+    _removeLoadingIndicator() {
+        this._loadingOption?.remove();
+        this._selectLogOption.disabled = false;
+        this._selectLogOption.selected = false;
+    }
+
+    registerLogChangeCallback(callback) {
         if (typeof callback === 'function') {
             this._logChangeCallbacks.push(callback);
         }
     }
 
-    _getCurrentLogFolder() {
-        return this.selector.value;
-    }
-
-    _populateSelector(folders) {
-        this.selector.innerHTML = '';
-
-        const defaultOption = document.createElement('option');
-        defaultOption.value = '';
-        defaultOption.textContent = '--- select log ---';
-        defaultOption.selected = true;
-        this.selector.appendChild(defaultOption);
-
-        folders.forEach(folder => {
-            const option = document.createElement('option');
-            option.value = folder;
-            option.textContent = folder;
-            this.selector.appendChild(option);
-        });
-    }
-
-    async _handleUserLogChange() {
-        const folder = this._getCurrentLogFolder();
-        if (!folder) return;
-
-        this._acquireLock();
-        this.selector.disabled = true;
-
-        sessionStorage.setItem('selectedLogFolder', folder);
-
+    async _acquireServerLock() {
         try {
-            document.querySelectorAll('.error-tip').forEach(tip => {
-                tip.style.visibility = 'hidden';
+            const response = await fetch(this.serverLockAPI, {
+                method: 'POST',
             });
-
-            const res = await fetch(`/api/change-runtime-template?runtime_template=${folder}`);
-            const result = await res.json();
-
-            if (result.success) {
-                this._logChangeCallbacks.forEach(callback => {
-                    try {
-                        callback(folder);
-                    } catch (err) {
-                        console.error('Error in log change callback:', err);
-                    }
-                });
-            } else {
-                console.error(`Failed to change runtime template to "${folder}"`);
-            }
+            return response.status === 200;
         } catch (error) {
-            console.error('Template change error:', error);
-        } finally {
-            this._releaseLock();
-            this.selector.disabled = false;
+            return false;
         }
     }
 
-    _acquireLock() {
-        localStorage.setItem(this.lockKey, Date.now().toString());
+    async _releaseServerLock() {
+        try {
+            const response = await fetch(this.serverUnlockAPI, {
+                method: 'POST',
+            });
+            return response.status === 200;
+        } catch (error) {
+            return false;
+        }
     }
 
-    _releaseLock() {
-        localStorage.removeItem(this.lockKey);
+    async _refreshLogOptions() {
+        try {
+            /* loading log folders from the server */
+            this._showLoadingIndicator();
+            const response = await fetch(this.runtimeTemplateListAPI);
+            const logFolders = await response.json();
+            this._removeLoadingIndicator();
+
+            /* list log folders in the selector */
+            this._showSelectLogOption();
+            logFolders.forEach(folder => {
+                const option = document.createElement('option');
+                option.value = folder;
+                option.textContent = folder;
+                this.selector.appendChild(option);
+            });
+
+            /* select the current log folder */
+            if (this._currentLogFolder && logFolders.includes(this._currentLogFolder)) {
+                this.selector.value = this._currentLogFolder;
+            }
+        } catch (error) {
+            this._showSelectLogOption();
+            console.error('Error refreshing log options:', error);
+        }
     }
+
+    async _changeLogFolderTo(selectedFolder) {
+        if (!selectedFolder || selectedFolder === this._currentLogFolder) return;
+    
+        if (selectedFolder === '--- select log ---') {
+            this.selector.value = this._currentLogFolder;
+            return;
+        }
+    
+        let lockAcquired = false;
+    
+        try {
+            lockAcquired = await this._acquireServerLock();
+            if (!lockAcquired) {
+                console.warn('Server busy, please try again later');
+                this.selector.value = this._currentLogFolder;
+                return;
+            }
+    
+            const response = await fetch(`/api/change-runtime-template?runtime_template=${selectedFolder}`);
+            if (!response.ok) {
+                throw new Error('Failed to change runtime template');
+            }
+    
+            this._currentLogFolder = selectedFolder;
+    
+            const promises = this._logChangeCallbacks.map(callback => {
+                try {
+                    return Promise.resolve(callback(this._currentLogFolder));
+                } catch (err) {
+                    console.error('Error in log change callback:', err);
+                    return Promise.resolve();
+                }
+            });
+    
+            await Promise.all(promises);
+    
+        } catch (error) {
+            console.error('Template change error:', error);
+            this.selector.value = this._currentLogFolder;
+        } finally {
+            if (lockAcquired) {
+                await this._releaseServerLock();
+            }
+        }
+    }    
 }

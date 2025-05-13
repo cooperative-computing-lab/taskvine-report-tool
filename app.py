@@ -20,6 +20,7 @@ from routes.runtime_state import *
 from routes.worker_transfers import worker_transfers_bp
 from routes.task_completion_percentiles import task_completion_percentiles_bp
 from routes.task_dependencies import task_dependencies_bp
+from routes.lock import lock_bp
 
 import argparse
 import os
@@ -32,21 +33,18 @@ app = Flask(__name__)
 def setup_request_logging(app, runtime_state):
     @app.before_request
     def log_request_info():
+        runtime_state.template_lock.renew()
         runtime_state.log_request(request)
         request._start_time = time.time()
 
     @app.after_request
     def log_response_info(response):
+        runtime_state.template_lock.renew()
         if hasattr(request, '_start_time'):
             duration = time.time() - request._start_time
             runtime_state.log_response(response, request, duration)
         else:
             runtime_state.log_response(response, request)
-
-        if hasattr(request, '_start_time'):
-            base_name = os.path.basename(request.path)
-            if base_name in SERVICE_API_LISTS:
-                runtime_state.api_responded[base_name] += 1
         return response
 
     return app
@@ -84,6 +82,9 @@ app.register_blueprint(subgraphs_bp)
 
 # runtime template
 app.register_blueprint(runtime_template_bp)
+
+# lock
+app.register_blueprint(lock_bp)
 
 
 @app.route('/')
