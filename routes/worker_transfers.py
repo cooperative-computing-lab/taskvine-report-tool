@@ -86,5 +86,5 @@ def get_worker_outgoing_transfers():
     try:
         return jsonify(extract_worker_transfer_points('source'))
     except Exception as e:
-        print(f"Error in get_worker_outgoing_transfers: {str(e)}")
+        runtime_state.log_error(f"Error in get_worker_outgoing_transfers: {e}")
         return jsonify({'error': str(e)}), 500

@@ -11,15 +11,20 @@ task_dependents_bp = Blueprint('task_dependents', __name__, url_prefix='/api')
 
 @task_dependents_bp.route('/task-dependents')
 def get_task_dependents():
-    points = compute_task_dependency_metrics(runtime_state.tasks, mode='dependents')
-    x_domain, y_domain = compute_points_domain(points)
+    try:
+        points = compute_task_dependency_metrics(runtime_state.tasks, mode='dependents')
+        x_domain, y_domain = compute_points_domain(points)
 
-    return jsonify({
-        'points': points,
-        'x_domain': x_domain,
-        'y_domain': y_domain,
-        'x_tick_values': compute_linear_tick_values(x_domain),
-        'y_tick_values': compute_linear_tick_values(y_domain, round_digits=0, num_ticks=10),
-        'x_tick_formatter': d3_int_formatter(),
-        'y_tick_formatter': d3_int_formatter()
-    })
+        return jsonify({
+            'points': points,
+            'x_domain': x_domain,
+            'y_domain': y_domain,
+            'x_tick_values': compute_linear_tick_values(x_domain),
+            'y_tick_values': compute_linear_tick_values(y_domain, round_digits=0, num_ticks=10),
+            'x_tick_formatter': d3_int_formatter(),
+            'y_tick_formatter': d3_int_formatter()
+        })
+
+    except Exception as e:
+        runtime_state.log_error(f"Error in get_task_dependents: {e}")
+        return jsonify({'error': str(e)}), 500

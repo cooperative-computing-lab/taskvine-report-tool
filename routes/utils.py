@@ -1,5 +1,5 @@
-import threading
-import time
+import os
+import hashlib
 
 
 def get_unit_and_scale_by_max_file_size_mb(max_file_size_mb) -> tuple[str, float]:
@@ -174,42 +174,59 @@ def get_task_produced_files(files, min_time):
     
     return rows
 
+def build_request_info_string(request):
+    method = request.method
+    path = request.path
+    args = dict(request.args)
+    headers = {k: v for k, v in request.headers if k not in ['Cookie', 'Authorization']}
+    remote_addr = request.remote_addr
 
-class LeaseLock:
-    def __init__(self, lease_duration_sec=60):
-        self._lock = threading.Lock()
-        self._expiry_time = 0
-        self._lease_duration = lease_duration_sec
+    request_info = {
+        'method': method,
+        'path': path,
+        'args': args,
+        'headers': headers,
+        'remote_addr': remote_addr
+    }
 
-    def acquire(self):
-        now = time.time()
-        if self._lock.locked() and now > self._expiry_time:
-            try:
-                self._lock.release()
-            except RuntimeError:
-                pass
+    if path.startswith('/api/'):
+        return f"API Request: {method} {path} - {request_info}"
+    else:
+        return f"HTTP Request: {method} {path}"
 
-        if not self._lock.acquire(blocking=False):
-            return False
+def build_response_info_string(response, request, duration=None):
+    path = request.path
+    status_code = response.status_code
 
-        self._expiry_time = time.time() + self._lease_duration
-        return True
+    if path.startswith('/api/'):
+        if duration:
+            return f"API Response: {status_code} for {path} - completed in {duration:.4f}s"
+        else:
+            return f"API Response: {status_code} for {path}"
+    elif status_code >= 400:
+        return f"HTTP Error Response: {status_code} for {path}"
+    else:
+        return f"HTTP Response: {status_code} for {path}"
 
-    def release(self):
-        if self._lock.locked():
-            try:
-                self._lock.release()
-                self._expiry_time = 0
-                return True
-            except RuntimeError:
-                return False
-        return False
+def get_file_stat(file_path):
+    try:
+        stat = os.stat(file_path)
+        return {
+            'mtime': stat.st_mtime,
+            'size': stat.st_size
+        }
+    except Exception:
+        return None
     
-    def renew(self):
-        if self._lock.locked():
-            self._expiry_time = time.time() + self._lease_duration
-            return True
-        return False
+def get_files_fingerprint(files):
+    if not files:
+        return None
 
-    def is_locked(self):
-        return self._lock.locked() and time.time() <= self._expiry_time
+    parts = []
+    for file in files:
+        stat = get_file_stat(file)
+        if not stat:
+            continue
+        parts.append(f"{file}:{stat['mtime']}:{stat['size']}")
+
+    return hashlib.md5(";".join(parts).encode()).hexdigest()

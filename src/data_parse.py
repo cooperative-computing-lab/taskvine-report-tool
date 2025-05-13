@@ -58,6 +58,12 @@ class DataParser:
         self.taskgraph = os.path.join(self.vine_logs_dir, 'taskgraph')
         self.daskvine_log = os.path.join(self.vine_logs_dir, 'daskvine.log')
 
+        # these are the main files for data analysis
+        self.pkl_file_names = ['workers.pkl', 'files.pkl', 'tasks.pkl', 'manager.pkl', 'subgraphs.pkl']
+        self.pkl_files = []
+        for pkl_file_name in self.pkl_file_names:
+            self.pkl_files.append(os.path.join(self.pkl_files_dir, pkl_file_name))
+
         # output csv files
         self.manager = ManagerInfo()
 

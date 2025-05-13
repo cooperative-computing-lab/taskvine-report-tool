@@ -1,7 +1,9 @@
 from .runtime_state import runtime_state
 from flask import Blueprint, Response, jsonify
 
+
 lock_bp = Blueprint('lock', __name__)
+
 
 @lock_bp.route('/api/lock', methods=['POST'])
 def acquire_lock():

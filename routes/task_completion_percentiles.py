@@ -48,4 +48,5 @@ def get_task_completion_percentiles():
             'y_tick_formatter': d3_time_formatter()
         })
     except Exception as e:
+        runtime_state.log_error(f"Error in get_task_completion_percentiles: {e}")
         return jsonify({'error': str(e)}), 500 
