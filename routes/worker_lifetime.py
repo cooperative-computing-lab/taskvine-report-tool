@@ -51,5 +51,5 @@ def get_worker_lifetime():
             'y_tick_formatter': d3_int_formatter()
         })
     except Exception as e:
-        print(e)
+        runtime_state.log_error(f"Error in get_worker_lifetime: {e}")
         return jsonify({'error': str(e)}), 500

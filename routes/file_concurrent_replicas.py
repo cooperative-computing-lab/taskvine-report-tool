@@ -79,4 +79,5 @@ def get_file_concurrent_replicas():
         return jsonify(data)
 
     except Exception as e:
+        runtime_state.log_error(f"Error in get_file_concurrent_replicas: {e}")
         return jsonify({'error': str(e)}), 500

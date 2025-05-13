@@ -1,38 +1,84 @@
 import os
 from pathlib import Path
-from .utils import LeaseLock
 from src.data_parse import DataParser
-import traceback
 import functools
-import time
-from src.logger import Logger
-from src.utils import get_file_stat, build_request_info_string, build_response_info_string
-import threading
+from .logger import Logger
+from .utils import (
+    build_response_info_string,
+    build_request_info_string,
+    get_files_fingerprint
+)
 import json
+import time
+import threading
+
 
 LOGS_DIR = 'logs'
 SAMPLING_POINTS = 10000  # at lease 3: the beginning, the end, and the global peak
 SAMPLING_TASK_BARS = 100000   # how many task bars to show
 
 
+class LeaseLock:
+    def __init__(self, lease_duration_sec=60):
+        self._lock = threading.Lock()
+        self._expiry_time = 0
+        self._lease_duration = lease_duration_sec
+
+    def acquire(self):
+        now = time.time()
+        if self._lock.locked() and now > self._expiry_time:
+            try:
+                self._lock.release()
+            except RuntimeError:
+                pass
+
+        if not self._lock.acquire(blocking=False):
+            return False
+
+        self._expiry_time = time.time() + self._lease_duration
+        return True
+
+    def release(self):
+        if self._lock.locked():
+            try:
+                self._lock.release()
+                self._expiry_time = 0
+                return True
+            except RuntimeError:
+                return False
+        return False
+
+    def renew(self):
+        if self._lock.locked():
+            self._expiry_time = time.time() + self._lease_duration
+            return True
+        return False
+
+    def is_locked(self):
+        return self._lock.locked() and time.time() <= self._expiry_time
+
+    def __enter__(self):
+        self.acquire()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.release()
+
+
 def check_and_reload_data():
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            if runtime_state.check_pkl_files_changed():
-                runtime_state.reload_data()
-            
-            # Get the response
+            runtime_state.reload_data_if_needed()
+
             response = func(*args, **kwargs)
-            
-            # Calculate response size if it is in json format, otherwise return 0
+
             response_data = response.get_json() if hasattr(response, 'get_json') else response
             response_size = len(json.dumps(response_data)) if response_data else 0
 
-            # Log the size
             route_name = func.__name__
             runtime_state.log_info(f"Route {route_name} response size: {response_size/1024/1024:.2f} MB")
-            
+
             return response
         return wrapper
     return decorator
@@ -58,13 +104,15 @@ class RuntimeState:
 
         self.tick_size = 12
 
-        self.pkl_files_info = {}
-
         # set logger
         self.logger = Logger()
 
+        # for preventing multiple instances of the same runtime template
         self.template_lock = LeaseLock(lease_duration_sec=60)
-        self.reload_lock = threading.Lock()
+
+        # for preventing multiple reloads of the data
+        self._pkl_files_fingerprint = None
+        self.reload_lock = LeaseLock(lease_duration_sec=180)
 
     @property
     def log_prefix(self):
@@ -90,72 +138,33 @@ class RuntimeState:
         self.logger.info(
             f"{self.log_prefix} {build_response_info_string(response, request, duration)}")
 
-    def check_pkl_files_changed(self):
+    def reload_data_if_needed(self):
+        if not self.data_parser:
+            return False
+        
+        if not self.data_parser.pkl_files:
+            return False
+
         with self.reload_lock:
-            if not self.runtime_template:
+            if self._pkl_files_fingerprint == self._get_current_pkl_files_fingerprint():
                 return False
 
-        pkl_dir = self.data_parser.pkl_files_dir
-        pkl_files = ['workers.pkl', 'files.pkl',
-                     'tasks.pkl', 'manager.pkl', 'subgraphs.pkl']
-
-        for pkl_file in pkl_files:
-            file_path = os.path.join(pkl_dir, pkl_file)
-            current_stat = get_file_stat(file_path)
-
-            if not current_stat:
-                continue
-
-            if (file_path not in self.pkl_files_info or
-                current_stat['mtime'] != self.pkl_files_info[file_path]['mtime'] or
-                    current_stat['size'] != self.pkl_files_info[file_path]['size']):
-                self.log_info(f"Detected changes in {pkl_file}")
-                return True
-
-        return False
-
-    def reload_data(self):
-        with self.reload_lock:
-            try:
-                self.log_info("Reloading data from checkpoint...")
-                self.data_parser.restore_from_checkpoint()
-                self.manager = self.data_parser.manager
-                self.workers = self.data_parser.workers
-                self.files = self.data_parser.files
-                self.tasks = self.data_parser.tasks
-                self.subgraphs = self.data_parser.subgraphs
-
-                self.MIN_TIME = self.manager.when_first_task_start_commit
-                self.MAX_TIME = self.manager.time_end
-
-                # update the pkl files info
-                pkl_dir = self.data_parser.pkl_files_dir
-                pkl_files = ['workers.pkl', 'files.pkl',
-                             'tasks.pkl', 'manager.pkl', 'subgraphs.pkl']
-                for pkl_file in pkl_files:
-                    file_path = os.path.join(pkl_dir, pkl_file)
-                    info = get_file_stat(file_path)
-                    if info:
-                        self.pkl_files_info[file_path] = info
-
-                self.log_info("Data reload completed successfully")
-            except Exception as e:
-                self.log_error(f"Error reloading data: {e}")
-                traceback.print_exc()
-
-    def change_runtime_template(self, runtime_template):
-        if not runtime_template:
-            return False
-        if self.runtime_template and Path(runtime_template).name == Path(self.runtime_template).name:
-            self.log_info(f"Runtime template already set to: {runtime_template}")
+            self.reload_template(self.runtime_template)
             return True
+    
+    def _get_current_pkl_files_fingerprint(self):
+        if not self.data_parser or not self.data_parser.pkl_files:
+            return None
 
+        return get_files_fingerprint(self.data_parser.pkl_files)
+    
+
+    def reload_template(self, runtime_template):
+        # init template and data parser
         self.runtime_template = os.path.join(os.getcwd(), LOGS_DIR, Path(runtime_template).name)
-        self.log_info(f"Restoring data for runtime template: {runtime_template}")
-
         self.data_parser = DataParser(self.runtime_template)
-        self.svg_files_dir = self.data_parser.svg_files_dir
 
+        # load data
         self.data_parser.restore_from_checkpoint()
         self.manager = self.data_parser.manager
         self.workers = self.data_parser.workers
@@ -163,11 +172,14 @@ class RuntimeState:
         self.tasks = self.data_parser.tasks
         self.subgraphs = self.data_parser.subgraphs
 
+        # init time range
         self.MIN_TIME = self.manager.when_first_task_start_commit
         self.MAX_TIME = self.manager.time_end
 
-        self.reload_data()
-
+        # init pkl files fingerprint
+        self._pkl_files_fingerprint = self._get_current_pkl_files_fingerprint()
+        
+        # log info
         self.log_info(f"Runtime template changed to: {runtime_template}")
 
         return True

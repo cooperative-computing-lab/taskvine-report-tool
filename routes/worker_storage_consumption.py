@@ -119,5 +119,5 @@ def get_worker_storage_consumption():
         })
 
     except Exception as e:
-        print(f"Error in get_worker_storage_consumption: {str(e)}")
+        runtime_state.log_error(f"Error in get_worker_storage_consumption: {e}")
         return jsonify({'error': str(e)}), 500

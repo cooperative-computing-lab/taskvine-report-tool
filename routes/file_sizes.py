@@ -69,4 +69,5 @@ def get_file_sizes():
         return jsonify(data)
 
     except Exception as e:
+        runtime_state.log_error(f"Error in get_file_sizes: {e}")
         return jsonify({'error': str(e)}), 500

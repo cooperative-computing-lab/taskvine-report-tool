@@ -225,6 +225,5 @@ def get_task_execution_details():
         return jsonify(data)
 
     except Exception as e:
-        err_msg = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
-        print(err_msg)
-        return jsonify({'error': str(e), 'details': err_msg}), 500
+        runtime_state.log_error(f"Error in get_task_execution_details: {e}")
+        return jsonify({'error': str(e)}), 500

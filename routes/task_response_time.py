@@ -42,5 +42,5 @@ def get_task_response_time():
         })
 
     except Exception as e:
-        print(f"Error in get_task_response_time: {str(e)}")
+        runtime_state.log_error(f"Error in get_task_response_time: {e}")
         return jsonify({'error': str(e)}), 500

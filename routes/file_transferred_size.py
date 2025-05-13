@@ -58,4 +58,5 @@ def get_file_transferred_size():
             'y_tick_formatter': d3_size_formatter(unit)
         })
     except Exception as e:
+        runtime_state.log_error(f"Error in get_file_transferred_size: {e}")
         return jsonify({'error': str(e)}), 500 

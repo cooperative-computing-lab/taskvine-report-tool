@@ -38,4 +38,5 @@ def get_task_retrieval_time():
             'y_tick_formatter': d3_time_formatter()
         })
     except Exception as e:
+        runtime_state.log_error(f"Error in get_task_retrieval_time: {e}")
         return jsonify({'error': str(e)}), 500
