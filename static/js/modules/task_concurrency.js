@@ -20,7 +20,7 @@ export class TaskConcurrencyModule extends BaseModule {
             'tasks_committing': { color: '#0ecfc8', label: 'Committing' },
             'tasks_executing': { color: '#5581b0', label: 'Executing' },
             'tasks_retrieving': { color: '#be612a', label: 'Retrieving' },
-            'tasks_done': { color: '#2077B4', label: 'Done' }
+            'tasks_done': { color: '#BF40BF', label: 'Done' }
         };
     }
 
