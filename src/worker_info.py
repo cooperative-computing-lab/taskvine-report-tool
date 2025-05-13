@@ -76,6 +76,9 @@ class WorkerInfo:
         for core_id in task.core_id:
             self.coremap[core_id] = 0
 
+    def get_worker_ip_port(self):
+        return f"{self.ip}:{self.port}"
+
     def set_cores(self, cores: int):
         if self.cores and cores != self.cores:
             raise ValueError(

@@ -12,6 +12,7 @@ import { WorkerStorageConsumptionModule } from './worker_storage_consumption.js'
 import { WorkerConcurrencyModule } from './worker_concurrency.js';
 import { WorkerExecutinigTasksModule } from './worker_executing_tasks.js';
 import { WorkerWaitingRetrievalTasksModule } from './worker_waiting_retrieval_tasks.js';
+import { WorkerLifetimeModule } from './worker_lifetime.js';
 import { FileTransferredSizeModule } from './file_transferred_size.js';
 import { FileCreatedSizeModule } from './file_created_size.js';
 import { FileSizesModule } from './file_sizes.js';
@@ -32,6 +33,7 @@ export const moduleClasses = {
     'worker-outgoing-transfers': WorkerOutgoingTransfersModule,
     'worker-executing-tasks': WorkerExecutinigTasksModule,
     'worker-waiting-retrieval-tasks': WorkerWaitingRetrievalTasksModule,
+    'worker-lifetime': WorkerLifetimeModule,
     'file-sizes': FileSizesModule,
     'file-replicas': FileReplicasModule,
     'file-transferred-size': FileTransferredSizeModule,
@@ -53,6 +55,7 @@ export const moduleConfigs = [
     { id: 'worker-outgoing-transfers', title: 'Worker Outgoing Transfers', api_url: '/api/worker-outgoing-transfers' },
     { id: 'worker-executing-tasks', title: 'Worker Executing Tasks', api_url: '/api/worker-executing-tasks' },
     { id: 'worker-waiting-retrieval-tasks', title: 'Worker Waiting Retrieval Tasks', api_url: '/api/worker-waiting-retrieval-tasks' },
+    { id: 'worker-lifetime', title: 'Worker Lifetime', api_url: '/api/worker-lifetime' },
     { id: 'file-sizes', title: 'File Sizes', api_url: '/api/file-sizes' },
     { id: 'file-replicas', title: 'File Replicas', api_url: '/api/file-replicas' },
     { id: 'file-transferred-size', title: 'File Transferred Size', api_url: '/api/file-transferred-size' },
