@@ -73,8 +73,20 @@ def check_and_reload_data():
 
             response = func(*args, **kwargs)
 
-            response_data = response.get_json() if hasattr(response, 'get_json') else response
-            response_size = len(json.dumps(response_data)) if response_data else 0
+            if hasattr(response, 'get_json'):
+                try:
+                    response_data = response.get_json()
+                except Exception:
+                    response_data = None
+            else:
+                response_data = response
+
+            if isinstance(response_data, (dict, list)):
+                response_size = len(json.dumps(response_data)) if response_data else 0
+            elif hasattr(response, 'get_data'):
+                response_size = len(response.get_data())
+            else:
+                response_size = 0
 
             route_name = func.__name__
             runtime_state.log_info(f"Route {route_name} response size: {response_size/1024/1024:.2f} MB")

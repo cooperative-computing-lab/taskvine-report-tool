@@ -6,6 +6,7 @@ import { TaskCompletionPercentilesModule } from './task_completion_percentiles.j
 import { TaskDependenciesModule } from './task_dependencies.js';
 import { TaskDependentsModule } from './task_dependents.js';
 import { TaskRetrievalTimeModule } from './task_retrieval_time.js';
+import { TaskSubgraphsModule } from './task_subgraphs.js';
 import { WorkerIncomingTransfersModule } from './worker_incoming_transfers.js';
 import { WorkerOutgoingTransfersModule } from './worker_outgoing_transfers.js';
 import { WorkerStorageConsumptionModule } from './worker_storage_consumption.js';
@@ -28,6 +29,7 @@ export const moduleClasses = {
     'task-completion-percentiles': TaskCompletionPercentilesModule,
     'task-dependencies': TaskDependenciesModule,
     'task-dependents': TaskDependentsModule,
+    'task-subgraphs': TaskSubgraphsModule,
     'worker-storage-consumption': WorkerStorageConsumptionModule,
     'worker-concurrency': WorkerConcurrencyModule,
     'worker-incoming-transfers': WorkerIncomingTransfersModule,
@@ -51,6 +53,7 @@ export const moduleConfigs = [
     { id: 'task-completion-percentiles', title: 'Task Completion Percentiles', api_url: '/api/task-completion-percentiles' },
     { id: 'task-dependencies', title: 'Task Dependencies', api_url: '/api/task-dependencies' },
     { id: 'task-dependents', title: 'Task Dependents', api_url: '/api/task-dependents' },
+    { id: 'task-subgraphs', title: 'Task Subgraphs', api_url: '/api/task-subgraphs' },
     { id: 'worker-storage-consumption', title: 'Worker Storage Consumption', api_url: '/api/worker-storage-consumption' },
     { id: 'worker-concurrency', title: 'Worker Concurrency', api_url: '/api/worker-concurrency' },
     { id: 'worker-incoming-transfers', title: 'Worker Incoming Transfers', api_url: '/api/worker-incoming-transfers' },
