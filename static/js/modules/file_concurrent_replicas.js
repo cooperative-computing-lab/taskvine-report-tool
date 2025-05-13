@@ -1,6 +1,6 @@
 import { BaseModule } from './base.js';
 
-export class FileReplicasModule extends BaseModule {
+export class FileConcurrentReplicasModule extends BaseModule {
     constructor(id, title, api_url) {
         super(id, title, api_url);
         this.setBottomScaleType('linear');

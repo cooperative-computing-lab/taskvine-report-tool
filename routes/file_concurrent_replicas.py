@@ -9,11 +9,11 @@ from .utils import (
 from flask import Blueprint, jsonify
 import pandas as pd
 
-file_replicas_bp = Blueprint('file_replicas', __name__, url_prefix='/api')
+file_concurrent_replicas_bp = Blueprint('file_concurrent_replicas', __name__, url_prefix='/api')
 
-@file_replicas_bp.route('/file-replicas')
+@file_concurrent_replicas_bp.route('/file-concurrent-replicas')
 @check_and_reload_data()
-def get_file_replicas():
+def get_file_concurrent_replicas():
     try:
         rows = []
         
