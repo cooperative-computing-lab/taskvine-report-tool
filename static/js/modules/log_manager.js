@@ -4,8 +4,10 @@ export class LogManager {
         this.runtimeTemplateListAPI = '/api/runtime-template-list';
         this.serverLockAPI = '/api/lock';
         this.serverUnlockAPI = '/api/unlock';
+        this.reloadAPI = '/api/reload-runtime-template';
         
         this.selector = document.getElementById(this.selectorId);
+        this.reloadButton = document.getElementById('reload-button');
 
         this._logChangeCallbacks = [];
         this._currentLogFolder = '--- select log ---';
@@ -38,6 +40,10 @@ export class LogManager {
             this.selector.disabled = true;
             await this._changeLogFolderTo(this.selector.value);
             this.selector.disabled = false;
+        });
+
+        this.reloadButton.addEventListener('click', async () => {
+            await this._reloadCurrentLog();
         });
     }
 
@@ -160,5 +166,48 @@ export class LogManager {
                 await this._releaseServerLock();
             }
         }
-    }    
+    }
+
+    async _reloadCurrentLog() {
+        if (!this._currentLogFolder || this._currentLogFolder === '--- select log ---') {
+            return;
+        }
+
+        let lockAcquired = false;
+        try {
+            lockAcquired = await this._acquireServerLock();
+            if (!lockAcquired) {
+                console.warn('Server busy, please try again later');
+                return;
+            }
+
+            this.reloadButton.classList.add('loading');
+            this.reloadButton.disabled = true;
+
+            const response = await fetch(`${this.reloadAPI}?runtime_template=${this._currentLogFolder}`);
+            if (!response.ok) {
+                throw new Error('Failed to reload log');
+            }
+
+            const promises = this._logChangeCallbacks.map(callback => {
+                try {
+                    return Promise.resolve(callback(this._currentLogFolder));
+                } catch (err) {
+                    console.error('Error in log change callback:', err);
+                    return Promise.resolve();
+                }
+            });
+
+            await Promise.all(promises);
+
+        } catch (error) {
+            console.error('Reload error:', error);
+        } finally {
+            if (lockAcquired) {
+                await this._releaseServerLock();
+            }
+            this.reloadButton.classList.remove('loading');
+            this.reloadButton.disabled = false;
+        }
+    }
 }
