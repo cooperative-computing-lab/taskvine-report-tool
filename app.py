@@ -21,6 +21,7 @@ from routes.worker_transfers import worker_transfers_bp
 from routes.task_completion_percentiles import task_completion_percentiles_bp
 from routes.task_dependencies import task_dependencies_bp
 from routes.lock import lock_bp
+from routes.task_subgraphs import task_subgraphs_bp
 
 import argparse
 import os
@@ -79,6 +80,7 @@ app.register_blueprint(file_retention_time_bp)
 
 # subgraphs
 app.register_blueprint(subgraphs_bp)
+app.register_blueprint(task_subgraphs_bp)
 
 # runtime template
 app.register_blueprint(runtime_template_bp)
