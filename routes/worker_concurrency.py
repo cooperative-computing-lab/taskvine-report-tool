@@ -18,11 +18,11 @@ def get_worker_concurrency():
             return jsonify({'error': 'No worker concurrency data available'}), 404
 
         events.sort()
-        points = []
+        points = [[0, 0]]
         active = 0
         last_time = 0
         for time, delta in events:
-            if time != last_time or not points:
+            if time != last_time:
                 points.append([time, active])
                 last_time = time
             active += delta
