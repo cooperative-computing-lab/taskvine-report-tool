@@ -20,7 +20,7 @@ SERVICE_API_LISTS = [
     'worker-storage-consumption',
     'file-transfers',
     'file-sizes',
-    'file-replicas',
+    'file-concurrent-replicas',
     'subgraphs',
 ]
 

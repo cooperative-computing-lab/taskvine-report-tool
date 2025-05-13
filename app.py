@@ -2,7 +2,7 @@ from routes.runtime_template import runtime_template_bp
 from routes.subgraphs import subgraphs_bp
 from routes.worker_storage_consumption import worker_storage_consumption_bp
 from routes.file_sizes import file_sizes_bp
-from routes.file_replicas import file_replicas_bp
+from routes.file_concurrent_replicas import file_concurrent_replicas_bp
 from routes.task_concurrency import task_concurrency_bp
 from routes.task_execution_time import task_execution_time_bp
 from routes.task_execution_details import task_execution_details_bp
@@ -73,7 +73,7 @@ app.register_blueprint(worker_waiting_retrieval_tasks_bp)
 app.register_blueprint(worker_lifetime_bp)
 
 # files
-app.register_blueprint(file_replicas_bp)
+app.register_blueprint(file_concurrent_replicas_bp)
 app.register_blueprint(file_sizes_bp)
 app.register_blueprint(file_transferred_size_bp)
 app.register_blueprint(file_created_size_bp)

@@ -187,7 +187,7 @@ if __name__ == "__main__":
         {"name": "worker-storage-consumption", "params": {
             "show_percentage": "true"
         }},
-        {"name": "file-replicas", "params": None},
+        {"name": "file-concurrent-replicas", "params": None},
         {"name": "file-sizes", "params": {
             "order": "asc",
             "type": "transferred",

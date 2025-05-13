@@ -17,7 +17,7 @@ import { FileTransferredSizeModule } from './file_transferred_size.js';
 import { FileCreatedSizeModule } from './file_created_size.js';
 import { FileRetentionTimeModule } from './file_retention_time.js';
 import { FileSizesModule } from './file_sizes.js';
-import { FileReplicasModule } from './file_replicas.js';
+import { FileConcurrentReplicasModule } from './file_concurrent_replicas.js';
 
 export const moduleClasses = {
     'task-execution-details': TaskExecutionDetailsModule,
@@ -36,7 +36,7 @@ export const moduleClasses = {
     'worker-waiting-retrieval-tasks': WorkerWaitingRetrievalTasksModule,
     'worker-lifetime': WorkerLifetimeModule,
     'file-sizes': FileSizesModule,
-    'file-replicas': FileReplicasModule,
+    'file-concurrent-replicas': FileConcurrentReplicasModule,
     'file-retention-time': FileRetentionTimeModule,
     'file-transferred-size': FileTransferredSizeModule,
     'file-created-size': FileCreatedSizeModule,
@@ -59,7 +59,7 @@ export const moduleConfigs = [
     { id: 'worker-waiting-retrieval-tasks', title: 'Worker Waiting Retrieval Tasks', api_url: '/api/worker-waiting-retrieval-tasks' },
     { id: 'worker-lifetime', title: 'Worker Lifetime', api_url: '/api/worker-lifetime' },
     { id: 'file-sizes', title: 'File Sizes', api_url: '/api/file-sizes' },
-    { id: 'file-replicas', title: 'File Replicas (Temp Files)', api_url: '/api/file-replicas' },
+    { id: 'file-concurrent-replicas', title: 'File Concurrent Replicas', api_url: '/api/file-concurrent-replicas' },
     { id: 'file-retention-time', title: 'File Retention Time', api_url: '/api/file-retention-time' },
     { id: 'file-transferred-size', title: 'File Transferred Size', api_url: '/api/file-transferred-size' },
     { id: 'file-created-size', title: 'File Created Size', api_url: '/api/file-created-size' },
