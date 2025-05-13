@@ -26,9 +26,6 @@ def get_task_concurrency():
         }
 
         for task in runtime_state.tasks.values():
-            if task.when_failure_happens is not None:
-                continue
-
             if task.when_ready:
                 task_phases['tasks_waiting'].append((max(task.when_ready - runtime_state.MIN_TIME, 0), 1))
                 if task.when_running:
@@ -64,7 +61,6 @@ def get_task_concurrency():
             df['cumulative'] = df['event'].cumsum()
             df = df.drop_duplicates('time', keep='last')
             raw_points_array.append(df[['time', 'cumulative']].values.tolist())
-
 
         downsampled_array = downsample_points_array(raw_points_array, SAMPLING_POINTS)
         data = {}
