@@ -158,7 +158,7 @@ def get_task_execution_details():
                     'execution_time': task.time_worker_end - task.time_worker_start,
                     'when_waiting_retrieval': task.when_waiting_retrieval - runtime_state.MIN_TIME,
                     'when_retrieved': task.when_retrieved - runtime_state.MIN_TIME,
-                    'when_done': task.when_done - runtime_state.MIN_TIME if task.when_done else -1
+                    'when_done': task.when_done - runtime_state.MIN_TIME if task.when_done else 'N/A'
                 })
             else:
                 unsuccessful_tasks.append({
@@ -180,7 +180,7 @@ def get_task_execution_details():
                     'when_failure_happens': task.when_failure_happens - runtime_state.MIN_TIME,
                     'execution_time': task.when_failure_happens - task.when_running,
                     'unsuccessful_checkbox_name': TASK_STATUS_TO_CHECKBOX_NAME.get(task.task_status, 'unknown'),
-                    'when_done': task.when_done - runtime_state.MIN_TIME if task.when_done else -1
+                    'when_done': task.when_done - runtime_state.MIN_TIME if task.when_done else 'N/A'
                 })
 
         for w in runtime_state.workers.values():
