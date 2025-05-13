@@ -8,18 +8,25 @@ worker_concurrency_bp = Blueprint('worker_concurrency', __name__, url_prefix='/a
 @check_and_reload_data()
 def get_worker_concurrency():
     try:
-        events = []  # (time, +1/-1)
+        events = []
+        initial_active = 0
+        
         for worker in runtime_state.workers.values():
             for t in worker.time_connected:
-                events.append((t - runtime_state.MIN_TIME, 1))
+                if t <= runtime_state.MIN_TIME:
+                    initial_active += 1
+                else:
+                    events.append((t - runtime_state.MIN_TIME, 1))
             for t in worker.time_disconnected:
-                events.append((t - runtime_state.MIN_TIME, -1))
-        if not events:
+                if t > runtime_state.MIN_TIME:
+                    events.append((t - runtime_state.MIN_TIME, -1))
+
+        if not events and initial_active == 0:
             return jsonify({'error': 'No worker concurrency data available'}), 404
 
         events.sort()
-        points = [[0, 0]]
-        active = 0
+        points = [[0, initial_active]]
+        active = initial_active
         last_time = 0
         for time, delta in events:
             if time != last_time:
