@@ -19,6 +19,8 @@ def get_file_transferred_size():
         files = runtime_state.files
         events = []
         for file in files.values():
+            if not file.producers:
+                continue
             for transfer in file.transfers:
                 if transfer.time_stage_in:
                     t = float(transfer.time_stage_in - base_time)

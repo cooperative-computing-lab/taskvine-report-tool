@@ -15,6 +15,7 @@ from routes.worker_waiting_retrieval_tasks import worker_waiting_retrieval_tasks
 from routes.worker_lifetime import worker_lifetime_bp
 from routes.file_transferred_size import file_transferred_size_bp
 from routes.file_created_size import file_created_size_bp
+from routes.file_retention_time import file_retention_time_bp
 from routes.runtime_state import *
 from routes.worker_transfers import worker_transfers_bp
 from routes.task_completion_percentiles import task_completion_percentiles_bp
@@ -76,6 +77,7 @@ app.register_blueprint(file_replicas_bp)
 app.register_blueprint(file_sizes_bp)
 app.register_blueprint(file_transferred_size_bp)
 app.register_blueprint(file_created_size_bp)
+app.register_blueprint(file_retention_time_bp)
 
 # subgraphs
 app.register_blueprint(subgraphs_bp)

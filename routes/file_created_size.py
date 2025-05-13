@@ -19,6 +19,8 @@ def get_file_created_size():
         files = runtime_state.files
         events = []
         for file in files.values():
+            if not file.producers:
+                continue
 
             first_stage_in = None
             for transfer in file.transfers:
