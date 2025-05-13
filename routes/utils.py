@@ -13,7 +13,7 @@ def get_unit_and_scale_by_max_file_size_mb(max_file_size_mb) -> tuple[str, float
 def file_list_formatter(file_list):
     return ', '.join([f for f in file_list if not f.startswith('file-meta-') and not f.startswith('file-buffer-')])
 
-def compute_tick_values(domain, num_ticks=5, round_digits=2):
+def compute_linear_tick_values(domain, num_ticks=5, round_digits=2):
     start, end = domain
     if num_ticks < 2:
         raise ValueError("num_ticks must be at least 2")
@@ -112,3 +112,46 @@ def downsample_points_array(points_array, sampling_points=10000):
         downsampled_array.append(downsampled)
 
     return downsampled_array
+
+def compute_points_domain(points):
+    x_domain = [min(points, key=lambda p: p[0])[0], max(points, key=lambda p: p[0])[0]]
+    y_domain = [min(points, key=lambda p: p[1])[1], max(points, key=lambda p: p[1])[1]]
+
+    return x_domain, y_domain
+
+def compute_task_dependency_metrics(tasks, mode='dependencies'):
+    output_file_to_task = {}
+    for task in tasks.values():
+        for f in task.output_files:
+            output_file_to_task[f] = task.task_id
+
+    count = {}
+    for task in tasks.values():
+        if task.is_library_task:
+            continue
+        count.setdefault(task.task_id, 0)
+
+    if mode == 'dependencies':
+        for task in tasks.values():
+            if task.is_library_task:
+                continue
+            parent_tasks = set()
+            for f in task.input_files:
+                parent_id = output_file_to_task.get(f)
+                if parent_id and parent_id != task.task_id:
+                    parent_tasks.add(parent_id)
+            count[task.task_id] = len(parent_tasks)
+
+    elif mode == 'dependents':
+        for task in tasks.values():
+            if task.is_library_task:
+                continue
+            for f in task.input_files:
+                producer_id = output_file_to_task.get(f)
+                if producer_id and producer_id != task.task_id and producer_id in count:
+                    count[producer_id] += 1
+
+    else:
+        raise ValueError(f"Unknown mode: {mode}")
+
+    return [[task_id, count[task_id]] for task_id in sorted(count.keys())]

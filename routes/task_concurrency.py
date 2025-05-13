@@ -1,6 +1,6 @@
 from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
 from .utils import (
-    compute_tick_values,
+    compute_linear_tick_values,
     d3_time_formatter,
     d3_int_formatter,
     downsample_points_array
@@ -77,8 +77,8 @@ def get_task_concurrency():
         data.update({
             'x_domain': [0, runtime_state.MAX_TIME - runtime_state.MIN_TIME],
             'y_domain': [0, max_y],
-            'x_tick_values': compute_tick_values([0, runtime_state.MAX_TIME - runtime_state.MIN_TIME]),
-            'y_tick_values': compute_tick_values([0, max_y]),
+            'x_tick_values': compute_linear_tick_values([0, runtime_state.MAX_TIME - runtime_state.MIN_TIME]),
+            'y_tick_values': compute_linear_tick_values([0, max_y]),
             'x_tick_formatter': d3_time_formatter(),
             'y_tick_formatter': d3_int_formatter(),
         })

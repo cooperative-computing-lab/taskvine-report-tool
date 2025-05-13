@@ -5,7 +5,7 @@ export class TaskExecutionTimeModule extends BaseModule {
         super(id, title, api_url);
 
         this.setBottomScaleType('linear');
-        this.setLeftScaleType('point');
+        this.setLeftScaleType('linear');
     }
 
     plot() {

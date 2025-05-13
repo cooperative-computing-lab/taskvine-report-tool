@@ -1,5 +1,5 @@
 from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
-from .utils import compute_tick_values, d3_time_formatter, d3_int_formatter, downsample_points
+from .utils import compute_linear_tick_values, d3_time_formatter, d3_int_formatter, downsample_points
 from flask import Blueprint, jsonify
 
 worker_concurrency_bp = Blueprint('worker_concurrency', __name__, url_prefix='/api')
@@ -38,8 +38,8 @@ def get_worker_concurrency():
             'points': downsample_points(points, SAMPLING_POINTS),
             'x_domain': x_domain,
             'y_domain': y_domain,
-            'x_tick_values': compute_tick_values(x_domain),
-            'y_tick_values': compute_tick_values(y_domain),
+            'x_tick_values': compute_linear_tick_values(x_domain),
+            'y_tick_values': compute_linear_tick_values(y_domain),
             'x_tick_formatter': d3_time_formatter(),
             'y_tick_formatter': d3_int_formatter()
         })

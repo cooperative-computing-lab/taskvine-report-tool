@@ -1,6 +1,6 @@
 from .runtime_state import runtime_state, SAMPLING_TASK_BARS, check_and_reload_data
 from .utils import (
-    compute_tick_values,
+    compute_linear_tick_values,
     d3_time_formatter,
     d3_worker_core_formatter,
     file_list_formatter,
@@ -215,7 +215,7 @@ def get_task_execution_details():
             'unsuccessful_tasks': downsample_tasks(unsuccessful_tasks),
             'workers': workers,
             'x_domain': [0, runtime_state.MAX_TIME - runtime_state.MIN_TIME],
-            'x_tick_values': compute_tick_values([0, runtime_state.MAX_TIME - runtime_state.MIN_TIME]),
+            'x_tick_values': compute_linear_tick_values([0, runtime_state.MAX_TIME - runtime_state.MIN_TIME]),
             'x_tick_formatter': d3_time_formatter(),
             'y_domain': y_domain,
             'y_tick_values': y_tick_values,

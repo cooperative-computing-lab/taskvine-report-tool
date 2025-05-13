@@ -1,19 +1,21 @@
 import { TaskExecutionDetailsModule } from './task_execution_details.js';
-import { WorkerStorageConsumptionModule } from './worker_storage_consumption.js';
 import { TaskConcurrencyModule } from './task_concurrency.js';
 import { TaskResponseTimeModule } from './task_response_time.js';
 import { TaskExecutionTimeModule } from './task_execution_time.js';
 import { TaskCompletionPercentilesModule } from './task_completion_percentiles.js';
+import { TaskDependenciesModule } from './task_dependencies.js';
+import { TaskDependentsModule } from './task_dependents.js';
+import { TaskRetrievalTimeModule } from './task_retrieval_time.js';
 import { WorkerIncomingTransfersModule } from './worker_incoming_transfers.js';
 import { WorkerOutgoingTransfersModule } from './worker_outgoing_transfers.js';
-import { FileSizesModule } from './file_sizes.js';
-import { FileReplicasModule } from './file_replicas.js';
-import { TaskRetrievalTimeModule } from './task_retrieval_time.js';
+import { WorkerStorageConsumptionModule } from './worker_storage_consumption.js';
 import { WorkerConcurrencyModule } from './worker_concurrency.js';
 import { WorkerExecutinigTasksModule } from './worker_executing_tasks.js';
 import { WorkerWaitingRetrievalTasksModule } from './worker_waiting_retrieval_tasks.js';
 import { FileTransferredSizeModule } from './file_transferred_size.js';
 import { FileCreatedSizeModule } from './file_created_size.js';
+import { FileSizesModule } from './file_sizes.js';
+import { FileReplicasModule } from './file_replicas.js';
 
 export const moduleClasses = {
     'task-execution-details': TaskExecutionDetailsModule,
@@ -22,6 +24,8 @@ export const moduleClasses = {
     'task-execution-time': TaskExecutionTimeModule,
     'task-retrieval-time': TaskRetrievalTimeModule,
     'task-completion-percentiles': TaskCompletionPercentilesModule,
+    'task-dependencies': TaskDependenciesModule,
+    'task-dependents': TaskDependentsModule,
     'worker-storage-consumption': WorkerStorageConsumptionModule,
     'worker-concurrency': WorkerConcurrencyModule,
     'worker-incoming-transfers': WorkerIncomingTransfersModule,
@@ -41,6 +45,8 @@ export const moduleConfigs = [
     { id: 'task-execution-time', title: 'Task Execution Time', api_url: '/api/task-execution-time' },
     { id: 'task-retrieval-time', title: 'Task Retrieval Time', api_url: '/api/task-retrieval-time' },
     { id: 'task-completion-percentiles', title: 'Task Completion Percentiles', api_url: '/api/task-completion-percentiles' },
+    { id: 'task-dependencies', title: 'Task Dependencies', api_url: '/api/task-dependencies' },
+    { id: 'task-dependents', title: 'Task Dependents', api_url: '/api/task-dependents' },
     { id: 'worker-storage-consumption', title: 'Worker Storage Consumption', api_url: '/api/worker-storage-consumption' },
     { id: 'worker-concurrency', title: 'Worker Concurrency', api_url: '/api/worker-concurrency' },
     { id: 'worker-incoming-transfers', title: 'Worker Incoming Transfers', api_url: '/api/worker-incoming-transfers' },

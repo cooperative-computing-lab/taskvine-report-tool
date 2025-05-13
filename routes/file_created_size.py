@@ -1,6 +1,6 @@
 from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
 from .utils import (
-    compute_tick_values,
+    compute_linear_tick_values,
     d3_time_formatter,
     d3_size_formatter,
     downsample_points,
@@ -30,8 +30,8 @@ def get_file_created_size():
                 events.append((first_stage_in, file.size_mb))
         if not events:
             return jsonify({'points': [], 'x_domain': [0, 1], 'y_domain': [0, 0],
-                            'x_tick_values': compute_tick_values([0, 1]),
-                            'y_tick_values': compute_tick_values([0, 0]),
+                            'x_tick_values': compute_linear_tick_values([0, 1]),
+                            'y_tick_values': compute_linear_tick_values([0, 0]),
                             'x_tick_formatter': d3_time_formatter(),
                             'y_tick_formatter': d3_size_formatter('MB')})
         events.sort()
@@ -50,8 +50,8 @@ def get_file_created_size():
             'points': points,
             'x_domain': x_domain,
             'y_domain': y_domain,
-            'x_tick_values': compute_tick_values(x_domain),
-            'y_tick_values': compute_tick_values(y_domain),
+            'x_tick_values': compute_linear_tick_values(x_domain),
+            'y_tick_values': compute_linear_tick_values(y_domain),
             'x_tick_formatter': d3_time_formatter(),
             'y_tick_formatter': d3_size_formatter(unit)
         })

@@ -2,10 +2,10 @@ from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
 from .utils import (
     get_unit_and_scale_by_max_file_size_mb,
     d3_size_formatter,
-    compute_tick_values,
+    compute_linear_tick_values,
     d3_int_formatter,
     downsample_points,
-    compute_discrete_tick_values
+    compute_points_domain
 )
 from flask import Blueprint, jsonify
 import pandas as pd
@@ -37,8 +37,8 @@ def get_file_sizes():
                 'file_idx_to_names': {},
                 'x_domain': [1, 1],
                 'y_domain': [0, 0],
-                'x_tick_values': compute_tick_values([1, 1]),
-                'y_tick_values': compute_tick_values([0, 0]),
+                'x_tick_values': compute_linear_tick_values([1, 1]),
+                'y_tick_values': compute_linear_tick_values([0, 0]),
                 'x_tick_formatter': d3_int_formatter(),
                 'y_tick_formatter': d3_size_formatter('MB'),
             })
@@ -49,18 +49,19 @@ def get_file_sizes():
 
         unit, scale = get_unit_and_scale_by_max_file_size_mb(max_size)
         df['file_size'] *= scale
-        scaled_max = max_size * scale
 
-        y_domain = sorted(df['file_size'].unique().tolist())
-        downsampled = downsample_points(df.values.tolist(), SAMPLING_POINTS)
+        points = [[d[0], d[2]] for d in df.values.tolist()]
+        file_idx_to_names = {d[0]: d[1] for d in points}
+        x_domain, y_domain = compute_points_domain(points)
+        downsampled_points = downsample_points(points, SAMPLING_POINTS)
 
         data = {
-            'points': [[d[0], d[2]] for d in downsampled],
-            'file_idx_to_names': {d[0]: d[1] for d in downsampled},
-            'x_domain': [1, len(df)],
+            'points': downsampled_points,
+            'file_idx_to_names': file_idx_to_names,
+            'x_domain': x_domain,
             'y_domain': y_domain,
-            'x_tick_values': compute_tick_values([1, len(df)]),
-            'y_tick_values': compute_discrete_tick_values(y_domain),
+            'x_tick_values': compute_linear_tick_values(x_domain),
+            'y_tick_values': compute_linear_tick_values(y_domain),
             'x_tick_formatter': d3_int_formatter(),
             'y_tick_formatter': d3_size_formatter(unit),
         }

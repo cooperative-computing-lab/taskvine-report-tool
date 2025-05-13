@@ -1,9 +1,9 @@
 from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
 from .utils import (
-    compute_tick_values,
+    compute_linear_tick_values,
     d3_int_formatter,
     downsample_points,
-    compute_discrete_tick_values
+    compute_points_domain
 )
 from flask import Blueprint, jsonify
 import pandas as pd
@@ -50,8 +50,8 @@ def get_file_replicas():
                 'file_idx_to_names': {},
                 'x_domain': [1, 1],
                 'y_domain': [0, 0],
-                'x_tick_values': compute_tick_values([1, 1]),
-                'y_tick_values': compute_tick_values([0, 0]),
+                'x_tick_values': compute_linear_tick_values([1, 1]),
+                'y_tick_values': compute_linear_tick_values([0, 0]),
                 'x_tick_formatter': d3_int_formatter(),
                 'y_tick_formatter': d3_int_formatter()
             })
@@ -60,16 +60,18 @@ def get_file_replicas():
         df = df.sort_values(by='created_time')
         df['file_idx'] = range(1, len(df) + 1)
 
-        y_domain = sorted(df['max_simul_replicas'].unique().tolist())
-        downsampled = downsample_points(df.values.tolist(), SAMPLING_POINTS)
+        points = [[d[0], d[2]] for d in df.values.tolist()]
+        x_domain, y_domain = compute_points_domain(points)
+
+        downsampled_points = downsample_points(points, SAMPLING_POINTS)
 
         data = {
-            'points': [[d[0], d[2]] for d in downsampled],
-            'file_idx_to_names': {d[0]: d[1] for d in downsampled},
-            'x_domain': [1, len(df)],
+            'points': downsampled_points,
+            'file_idx_to_names': {d[0]: d[1] for d in downsampled_points},
+            'x_domain': x_domain,
             'y_domain': y_domain,
-            'x_tick_values': compute_tick_values([1, len(df)]),
-            'y_tick_values': compute_discrete_tick_values(y_domain),
+            'x_tick_values': compute_linear_tick_values(x_domain),
+            'y_tick_values': compute_linear_tick_values(y_domain, round_digits=0, num_ticks=10),
             'x_tick_formatter': d3_int_formatter(),
             'y_tick_formatter': d3_int_formatter()
         }

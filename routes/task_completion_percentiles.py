@@ -1,6 +1,6 @@
 from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
 from .utils import (
-    compute_tick_values,
+    compute_linear_tick_values,
     d3_time_formatter,
     d3_int_formatter,
     d3_percentage_formatter,
@@ -43,7 +43,7 @@ def get_task_completion_percentiles():
             'x_domain': x_domain,
             'y_domain': y_domain,
             'x_tick_values': compute_discrete_tick_values(x_domain),
-            'y_tick_values': compute_tick_values(y_domain),
+            'y_tick_values': compute_linear_tick_values(y_domain),
             'x_tick_formatter': d3_percentage_formatter(digits=0),
             'y_tick_formatter': d3_time_formatter()
         })
