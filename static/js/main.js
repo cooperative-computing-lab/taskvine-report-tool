@@ -2,6 +2,28 @@ import { moduleClasses, moduleConfigs } from './modules/configs.js';
 import { LogManager } from './modules/log_manager.js';
 import { updateSidebarButtons } from './modules/utils.js';
 
+const moduleObjects = {};
+
+async function fetchAllModulesData(folder) {
+    try {
+        const tasks = moduleConfigs.map(({ id }) => {
+            const module = moduleObjects[id];
+            return (async () => {
+                await module.fetchData(folder);
+                module.initLegend();
+                module.initResetButton();
+                module.initDownloadButton();
+                module.initResizeHandler();
+                module.plot();
+            })();
+        });
+
+        /* wait for all tasks to finish */
+        await Promise.all(tasks);
+    } catch (err) {
+        console.error('Error during module data fetch:', err);
+    }
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     const root = document.getElementById('content');
@@ -14,25 +36,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const logManager = new LogManager();
     logManager.init();
 
-    /* initialize modules */
-    const moduleObjects = {};
+    /* init modules */
     moduleConfigs.forEach(({ id, title, api_url }) => {
-        /* create dom elements for the module */
         const module = new moduleClasses[id](id, title, api_url);
         moduleObjects[id] = module;
         root.appendChild(module.renderSkeleton());
         module.init();
-    
-        /* monitor log changes */
-        logManager.onChange((folder) => {
-            module.fetchData(folder).then(() => {
-                module.initLegend();
-                module.initResetButton();
-                module.initDownloadButton();
-                module.initResizeHandler();
-                module.plot();
-            });
-        });
+    });
+
+    /* on log change -> fetch all modules */
+    logManager.registerLogChangeCallback((folder) => {
+        return fetchAllModulesData(folder);
     });
 
     /* update sidebar buttons */

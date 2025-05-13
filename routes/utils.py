@@ -1,3 +1,7 @@
+import threading
+import time
+
+
 def get_unit_and_scale_by_max_file_size_mb(max_file_size_mb) -> tuple[str, float]:
     if max_file_size_mb >= 1024 * 1024:
         return 'TB', 1 / (1024 * 1024)
@@ -169,3 +173,43 @@ def get_task_produced_files(files, min_time):
         rows.append((0, fname, created_time))
     
     return rows
+
+
+class LeaseLock:
+    def __init__(self, lease_duration_sec=60):
+        self._lock = threading.Lock()
+        self._expiry_time = 0
+        self._lease_duration = lease_duration_sec
+
+    def acquire(self):
+        now = time.time()
+        if self._lock.locked() and now > self._expiry_time:
+            try:
+                self._lock.release()
+            except RuntimeError:
+                pass
+
+        if not self._lock.acquire(blocking=False):
+            return False
+
+        self._expiry_time = time.time() + self._lease_duration
+        return True
+
+    def release(self):
+        if self._lock.locked():
+            try:
+                self._lock.release()
+                self._expiry_time = 0
+                return True
+            except RuntimeError:
+                return False
+        return False
+    
+    def renew(self):
+        if self._lock.locked():
+            self._expiry_time = time.time() + self._lease_duration
+            return True
+        return False
+
+    def is_locked(self):
+        return self._lock.locked() and time.time() <= self._expiry_time

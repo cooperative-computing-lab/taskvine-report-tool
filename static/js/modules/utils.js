@@ -1,4 +1,3 @@
-
 export function getTaskInnerHTML(task) {
     const precision = 3;
 
