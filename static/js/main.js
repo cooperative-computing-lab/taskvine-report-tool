@@ -12,7 +12,7 @@ function addFootnote() {
     footnote.innerHTML = `
     <p>
         TaskVine Report Tool available on GitHub: 
-        <a href="https://github.com/cooperative-computing-lab/taskvine-report-tool.git" target="_blank">https://github.com/cooperative-computing-lab/taskvine-report-tool.git</a>.
+        <i><a href="https://github.com/cooperative-computing-lab/taskvine-report-tool.git" target="_blank">https://github.com/cooperative-computing-lab/taskvine-report-tool.git</a></i>.
     </p>
     `;
 

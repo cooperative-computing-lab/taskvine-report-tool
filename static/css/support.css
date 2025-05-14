@@ -1,0 +1,19 @@
+
+
+
+/* Safari/Chrome overlay-style scrollbar */
+.plotting-container::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+}
+.plotting-container::-webkit-scrollbar-track {
+    background: transparent;
+}
+.plotting-container::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 10px;
+}
+/* Firefox */
+.plotting-container {
+    scrollbar-width: thin;
+}

@@ -1,0 +1,24 @@
+/* DataTables */
+table.dataTable td{
+    max-width: 400px !important;
+    overflow: auto !important;
+}
+table.dataTable thead th {
+    text-align: left !important;
+}
+.dt-container {
+    width: auto !important;
+    max-width: 90% !important;
+    height: auto !important;
+    position: relative !important;
+    font-size: 3.5rem !important;
+    white-space: nowrap !important;
+}
+.dt-layout-cell  {
+    white-space: nowrap !important;
+    height: auto !important;
+ }
+.dt-scroll-body {
+    height: auto !important;
+    max-height: 30vh !important;
+}
