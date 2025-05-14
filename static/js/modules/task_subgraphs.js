@@ -10,7 +10,9 @@ export class TaskSubgraphsModule extends BaseModule {
         if (!subgraph_id) return;
 
         const response = await fetch(
-            `${this.api_url}?subgraph_id=${subgraph_id}` +
+            `${this.api_url}?` +
+            `folder=${folder}` +
+            `&subgraph_id=${subgraph_id}` +
             `&plot_failed_task=${plot_failed_task}` +
             `&plot_recovery_task=${plot_recovery_task}`
         );
