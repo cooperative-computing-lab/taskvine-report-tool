@@ -1,3 +1,6 @@
+import { Toolbox, ToolboxItem } from './toolbox.js';
+
+
 export class BaseModule {
     constructor(id, title, api_url) {
         this.id = id;
@@ -7,11 +10,12 @@ export class BaseModule {
         this.svgContainer = null;
         this.svgElement = null;
         this.svgNode = null;
-        this.loadingSpinner = null;
         this.buttonsContainer = null;
         this.legendContainer = null;
         this.resetButton = null;
         this.downloadButton = null;
+
+        this.toolboxContainer = null;
         
         this.tooltip = null;
 
@@ -66,24 +70,30 @@ export class BaseModule {
         section.id = this.id;
 
         section.innerHTML = `
-            <div class="section-header" id="${this.id}-header">
-                <h2 class="section-title">${this.title}</h2>
-                <div class="section-buttons" id="${this.id}-buttons">
-                    <button id="${this.id}-reset-button" class="report-button">Reset</button>
-                    <button id="${this.id}-download-button" class="report-button">Download</button>
-                </div>
+        <div class="section-header" id="${this.id}-header">
+            <h2 class="section-title">${this.title}</h2>
+            <div class="section-buttons" id="${this.id}-buttons">
+                <button id="${this.id}-reset-button" class="report-button">Reset</button>
+                <button id="${this.id}-download-button" class="report-button">Download</button>
             </div>
-
-            <div class="section-legend" id="${this.id}-legend"></div>
-            <div class="section-controls" id="${this.id}-controls"></div>
-
-            <div class="section-content">
-                <div class="container-alpha" id="${this.id}-container">
-                    <div class="loading-spinner" id="${this.id}-loading"></div>
+        </div>
+      
+        <div class="section-content">
+            <div class="section-row top">
+                <div class="legend-container" id="${this.id}-legend"></div>
+                <div class="legend-placeholder"></div>
+            </div>
+      
+            <div class="section-row bottom">
+                <div class="plotting-container" id="${this.id}-container">
                     <svg id="${this.id}-d3-svg" xmlns="http://www.w3.org/2000/svg"></svg>
                 </div>
+                <div id="${this.id}-toolbox-container" class="toolbox-container"></div>
             </div>
-        `;
+        </div>
+      `;
+        
+
         return section;
     }
 
@@ -91,11 +101,6 @@ export class BaseModule {
         this.svgContainer = document.getElementById(`${this.id}-container`);
         if (!this.svgContainer) {
             console.error(`SVG container not found for ${this.id}`);
-            return;
-        }
-        this.loadingSpinner = document.getElementById(`${this.id}-loading`);
-        if (!this.loadingSpinner) {
-            console.error(`Loading spinner not found for ${this.id}`);
             return;
         }
         this.svgElement = d3.select(`#${this.id}-d3-svg`);
@@ -128,6 +133,51 @@ export class BaseModule {
             console.error(`Download button not found for ${this.id}`);
             return;
         }
+        this.toolboxContainer = document.getElementById(`${this.id}-toolbox-container`);
+        if (!this.toolboxContainer) {
+            console.error(`Toolbox container not found for ${this.id}`);
+            return;
+        }
+        const toolbox = new Toolbox({
+            title: 'Toolbox',
+            items: [
+                { 
+                    label: 'Update X', 
+                    key: 'updateX', 
+                    defaultInputBoxText: 'Enter X value',
+                    handler: (key, val) => console.log(`${key} => ${val}`)
+                },
+                { 
+                    label: 'Refresh', 
+                    key: 'refresh', 
+                    isButtonOnly: true,
+                    handler: (key) => console.log(`${key} clicked`)
+                },
+                { 
+                    label: 'Extract', 
+                    key: 'extract', 
+                    options: [
+                        { 
+                            value: 'mode1', 
+                            label: 'Mode 1',
+                            handler: (value) => console.log(`Mode 1 handler: ${value}`)
+                        },
+                        { 
+                            value: 'mode2', 
+                            label: 'Mode 2',
+                            handler: (value) => console.log(`Mode 2 handler: ${value}`)
+                        },
+                        { 
+                            value: 'mode3', 
+                            label: 'Mode 3',
+                            handler: (value) => console.log(`Mode 3 handler: ${value}`)
+                        }
+                    ]
+                }
+            ]
+        });
+          
+        toolbox.mount(this.toolboxContainer);
     }
 
     clearSVG() {
@@ -840,21 +890,10 @@ export class BaseModule {
                 });
         });
 
-        const legend = this.legendContainer
-            .append('div')
-            .attr('class', 'legend-container')
-            .style('display', 'flex')
-            .style('flex-direction', 'column')
-            .style('max-width', '1200px')
-            .style('margin', '0 auto')
-            .style('max-height', '90px')
-            .style('overflow-y', 'auto')
-            .style('overflow-x', 'auto');
-
         const actualColumns = Math.min(columnsPerRow, items.length);
         for (let i = 0; i < items.length; i += actualColumns) {
             const rowItems = items.slice(i, i + actualColumns);
-            const row = legend.append('div')
+            const row = this.legendContainer.append('div')
                 .attr('class', 'legend-row')
                 .style('display', 'grid')
                 .style('grid-template-columns', `repeat(${actualColumns}, 1fr)`)
@@ -910,12 +949,8 @@ export class BaseModule {
                 /* color line is optional */
                 if (item.color && item.color.trim() !== '') {
                     legendItem.append('div')
-                        .attr('class', 'legend-line')
-                        .style('width', '20px')
                         .style('height', `${lineWidth}px`)
-                        .style('background-color', item.color)
-                        .style('margin-right', '5px')
-                        .style('flex-shrink', 0);
+                        .style('background-color', item.color);
                 }
 
                 legendItem.append('label')
@@ -929,7 +964,7 @@ export class BaseModule {
             });
         }
         setTimeout(() => {
-            const legendNode = legend.node();
+            const legendNode = this.legendContainer.node();
             const items = legendNode.querySelectorAll('.legend-item');
             let maxItemWidth = 0;
             items.forEach(item => {
@@ -937,7 +972,7 @@ export class BaseModule {
             });
             const cellWidth = maxItemWidth + 20;
             const minWidth = actualColumns * cellWidth;
-            legend.selectAll('.legend-row').style('min-width', `${minWidth}px`);
+            this.legendContainer.selectAll('.legend-row').style('min-width', `${minWidth}px`);
         }, 0);
     }
 

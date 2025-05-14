@@ -1,0 +1,113 @@
+/* toolbox.css */
+
+.toolbox-panel {
+    background-color: white;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    position: fixed;
+    min-width: 180px;
+    max-width: 220px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    z-index: 9999;
+}
+
+.toolbox-panel::after {
+    content: '';
+    position: absolute;
+    right: -1px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background-color: #d1d5db;
+}
+
+.toolbox-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    width: 100%;
+}
+
+.toolbox-group::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 1px;
+    background-color: #d1d5db;
+}
+
+.toolbox-row-full {
+width: 100%;
+display: flex;
+}
+
+.toolbox-row-split {
+display: flex;
+gap: 0.4rem;
+width: 100%;
+}
+
+.toolbox-input {
+    flex: 1;
+    padding: 0.2rem 0.4rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.25rem;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+/* Remove spinner buttons from number inputs */
+.toolbox-input[type="number"]::-webkit-inner-spin-button,
+.toolbox-input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.toolbox-input[type="number"] {
+    -moz-appearance: textfield;
+}
+
+.toolbox-button {
+    flex: 1;
+    background-color: #e5e7eb;
+    color: #1f2937;
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.25rem;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    text-align: center;
+    transition: background-color 0.2s;
+    min-width: 0;
+}
+
+.toolbox-button:hover {
+    background-color: #d1d5db;
+}
+
+.toolbox-toggle-button {
+    width: 100%;
+    height: auto;
+    writing-mode: vertical-lr;
+    transform-origin: bottom left;
+    font-weight: 600;
+    background-color: #f0f0f0;
+    color: black;
+    border: 1px solid #d1d5db;
+    padding: 0.5rem 0.25rem;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    margin: 0;
+}
+
+.show {
+    display: block !important;
+    opacity: 1;
+}
+
+.hide {
+    display: none;
+}
