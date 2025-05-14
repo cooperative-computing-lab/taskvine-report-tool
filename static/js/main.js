@@ -9,6 +9,7 @@ async function fetchAllModulesData(folder) {
         const tasks = moduleConfigs.map(({ id }) => {
             const module = moduleObjects[id];
             return (async () => {
+                module.reset();
                 await module.fetchData(folder);
                 module.initLegend();
                 module.initResetButton();

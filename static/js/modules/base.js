@@ -26,6 +26,8 @@ export class BaseModule {
 
         this.margin = null;
 
+        this.legendCheckboxName = null;
+
         this.topDomain = null;
         this.topTickValues = null;
         this.topFormatter = null;
@@ -111,8 +113,8 @@ export class BaseModule {
             console.error(`Buttons container not found for ${this.id}`);
             return;
         }
-        this.legendContainer = document.getElementById(`${this.id}-legend`);
-        if (!this.legendContainer) {
+        this.legendContainer = d3.select(document.getElementById(`${this.id}-legend`));
+        if (!this.legendContainer.node()) {
             console.error(`Legend container not found for ${this.id}`);
             return;
         }
@@ -683,18 +685,18 @@ export class BaseModule {
     }
 
     resetLegend() {
-        if (this.legendContainer) {
+        if (this.legendContainer.node()) {
             /* handle both createLegendRow and createLegendGroup created legends */
-            const checkboxes = this.legendContainer.querySelectorAll('input[type="checkbox"]');
-            checkboxes.forEach(cb => {
-                cb.checked = true;
+            const checkboxes = this.legendContainer.selectAll('input[type="checkbox"]');
+            checkboxes.each(function() {
+                this.checked = true;
                 /* add checked class to parent legend-item for createLegendGroup */
-                const legendItem = cb.closest('.legend-item');
+                const legendItem = this.closest('.legend-item');
                 if (legendItem) {
                     legendItem.classList.add('checked');
                 }
                 /* trigger change event */
-                cb.dispatchEvent(new Event('change', { bubbles: true }));
+                this.dispatchEvent(new Event('change', { bubbles: true }));
             });
         }
     }
@@ -781,18 +783,29 @@ export class BaseModule {
             });
     }
 
+    _queryAllLegendCheckboxes() {
+        return this.legendContainer.selectAll(`input[name="${this.legendCheckboxName}"]`)
+
+    }
+
+    reset() {
+        this.clearSVG();
+        this.legendContainer.html('');
+    }
+
     createLegendRow(items, options = {}) {
         const {
+            singleSelect = false,
             lineWidth = 4,
             onToggle = () => {},
             columnsPerRow = 6,
-            checkboxName = 'legend-checkbox'
+            checkboxName = 'legend-checkbox',
         } = options;
 
-        const legendContainer = d3.select(this.legendContainer);
-        legendContainer.html('');
+        this.legendContainer.html('');
+        this.legendCheckboxName = checkboxName;
 
-        const buttonGroup = legendContainer
+        const buttonGroup = this.legendContainer
             .append('div')
             .attr('class', 'legend-button-group')
             .style('display', 'flex')
@@ -811,7 +824,7 @@ export class BaseModule {
         }
 
         addButton(buttonGroup, 'Select All', () => {
-            legendContainer.selectAll(`input[name="${checkboxName}"]`)
+            this._queryAllLegendCheckboxes()
                 .property('checked', true)
                 .each(function() {
                     const id = this.getAttribute('data-id');
@@ -819,7 +832,7 @@ export class BaseModule {
                 });
         });
         addButton(buttonGroup, 'Clear All', () => {
-            legendContainer.selectAll(`input[name="${checkboxName}"]`)
+            this._queryAllLegendCheckboxes()
                 .property('checked', false)
                 .each(function() {
                     const id = this.getAttribute('data-id');
@@ -827,7 +840,7 @@ export class BaseModule {
                 });
         });
 
-        const legend = legendContainer
+        const legend = this.legendContainer
             .append('div')
             .attr('class', 'legend-container')
             .style('display', 'flex')
@@ -850,7 +863,7 @@ export class BaseModule {
                 .style('width', '100%');
 
             rowItems.forEach(item => {
-                const uniquePrefix = (legendContainer && legendContainer.id) ? legendContainer.id : (this.id || 'legend');
+                const uniquePrefix = (this.legendContainer && this.legendContainer.id) ? this.legendContainer.id : (this.id || 'legend');
                 const safeCheckboxId = `legend-checkbox-${uniquePrefix}-${item.id}`;
                 const legendItem = row.append('div')
                     .attr('class', 'legend-item')
@@ -872,25 +885,38 @@ export class BaseModule {
 
                 legendItem.append('input')
                     .attr('type', 'checkbox')
-                    .attr('name', checkboxName)
+                    .attr('name', this.legendCheckboxName)
                     .attr('data-id', item.id)
                     .attr('id', safeCheckboxId)
-                    .attr('checked', true)
+                    .property('checked', item.checked !== false)    /* default checked unless this field is specified as false */
                     .style('margin-right', '5px')
                     .style('flex-shrink', 0)
                     .on('click', function(e) { e.stopPropagation(); })
-                    .on('change', function() {
-                        const visible = this.checked;
+                    .on('change', (event) => {
+                        const checkbox = event.currentTarget;
+                        const visible = checkbox.checked;
                         onToggle(item.id, visible);
-                    });
+                    
+                        if (singleSelect && visible) {
+                            this._queryAllLegendCheckboxes()
+                                .each(function () {
+                                    if (this !== checkbox) {
+                                        this.checked = false;
+                                    }
+                                });
+                        }
+                    });                                      
 
-                legendItem.append('div')
-                    .attr('class', 'legend-line')
-                    .style('width', '20px')
-                    .style('height', `${lineWidth}px`)
-                    .style('background-color', item.color)
-                    .style('margin-right', '5px')
-                    .style('flex-shrink', 0);
+                /* color line is optional */
+                if (item.color && item.color.trim() !== '') {
+                    legendItem.append('div')
+                        .attr('class', 'legend-line')
+                        .style('width', '20px')
+                        .style('height', `${lineWidth}px`)
+                        .style('background-color', item.color)
+                        .style('margin-right', '5px')
+                        .style('flex-shrink', 0);
+                }
 
                 legendItem.append('label')
                     .attr('for', safeCheckboxId)
@@ -920,11 +946,12 @@ export class BaseModule {
             checkboxName = 'legend-checkbox',
             onToggle = () => {}
         } = options;
+
+        this.legendCheckboxName = checkboxName;
     
-        const legendContainer = d3.select(this.legendContainer);
-        legendContainer.html('');
+        this.legendContainer.html('');
     
-        const flexContainer = legendContainer.append('div')
+        const flexContainer = this.legendContainer.append('div')
             .attr('class', 'legend-flex-container');
     
         groups.forEach(group => {
@@ -946,7 +973,7 @@ export class BaseModule {
                 const checkbox = legendItem.append('input')
                     .attr('type', 'checkbox')
                     .attr('id', `${item.id}-checkbox`)
-                    .attr('name', checkboxName)
+                    .attr('name', this.legendCheckboxName)
                     .property('checked', item.checked)
                     .style('display', 'none')
                     .node();

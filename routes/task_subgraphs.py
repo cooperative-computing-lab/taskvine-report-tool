@@ -113,6 +113,22 @@ def get_task_subgraphs():
         data['num_task_tries'] = len(task_tries)
         data['subgraph_svg_content'] = open(svg_file_path, 'r').read()
 
+        # legend: list of {'id': str(idx), 'label': ..., 'color': ..., 'checked': bool}, sorted by idx
+        data['legend'] = [
+            {
+                'id': str(idx),
+                'label': f"Subgraph {idx} ({count} task{'s' if count != 1 else ''})",
+                'color': '',
+                'checked': False
+            }
+            for idx, count in sorted(
+                [(k, len(v)) for k, v in runtime_state.subgraphs.items()],
+                key=lambda x: x[0]
+            )
+        ]
+        # check the current subgraph (subgraph_id is 1-based)
+        data['legend'][subgraph_id - 1]['checked'] = True
+
         return jsonify(data)
     except Exception as e:
         runtime_state.logger.error(f'Error in get_task_subgraphs: {e}')

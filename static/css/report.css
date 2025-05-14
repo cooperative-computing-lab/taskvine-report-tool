@@ -394,6 +394,8 @@ table.dataTable thead th {
     cursor: pointer;
     user-select: none;
     transition: opacity 0.2s;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     color: #333;
 }
 
