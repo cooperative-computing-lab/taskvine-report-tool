@@ -21,11 +21,23 @@ body {
     padding: 20px;
     width: 86%;
     height: 100vh;
+    min-height: 100vh;
     box-sizing: border-box;
     overflow-x: hidden;         
     transition: top 0.5s ease;
     flex: 1;
     overflow-y: auto;
+}
+
+#content > .footnote {
+    font-size: 14px;
+    color: #777;
+    background-color: #f9f9f9;
+}
+
+.footnote a {
+    color: #0056b3;
+    text-decoration: none;
 }
 
 .iframe-style {
