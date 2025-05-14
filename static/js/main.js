@@ -4,6 +4,21 @@ import { updateSidebarButtons } from './modules/utils.js';
 
 const moduleObjects = {};
 
+function addFootnote() {
+    const content = document.getElementById('content');
+
+    const footnote = document.createElement('div');
+    footnote.className = 'footnote';
+    footnote.innerHTML = `
+    <p>
+        TaskVine Report Tool available on GitHub: 
+        <a href="https://github.com/cooperative-computing-lab/taskvine-report-tool.git" target="_blank">https://github.com/cooperative-computing-lab/taskvine-report-tool.git</a>.
+    </p>
+    `;
+
+    content.appendChild(footnote);
+}
+
 async function fetchAllModulesData(folder) {
     try {
         const tasks = moduleConfigs.map(({ id }) => {
@@ -52,4 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     /* update sidebar buttons */
     updateSidebarButtons();
+
+    /* add footnote */
+    addFootnote();
 });
