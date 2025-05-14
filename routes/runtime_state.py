@@ -143,12 +143,10 @@ class RuntimeState:
         self.logger.warning(f"{self.log_prefix} {message}")
 
     def log_request(self, request):
-        self.logger.info(
-            f"{self.log_prefix} {build_request_info_string(request)}")
+        self.logger.info(f"{self.log_prefix} {build_request_info_string(request)}")
 
     def log_response(self, response, request, duration=None):
-        self.logger.info(
-            f"{self.log_prefix} {build_response_info_string(response, request, duration)}")
+        self.logger.info(f"{self.log_prefix} {build_response_info_string(response, request, duration)}")
 
     def reload_data_if_needed(self):
         if not self.data_parser:
@@ -170,6 +168,17 @@ class RuntimeState:
 
         return get_files_fingerprint(self.data_parser.pkl_files)
     
+    def ensure_runtime_template(self, runtime_template):
+        if not runtime_template:
+            return
+
+        if self.template_lock.is_locked():
+            return
+
+        if runtime_template == os.path.basename(self.runtime_template):
+            return
+
+        self.reload_template(runtime_template)
 
     def reload_template(self, runtime_template):
         # init template and data parser

@@ -142,10 +142,13 @@ export class BaseModule {
         this.svg = null;
     }
     
-    async fetchData() {
+    async fetchData(folder) {
         this.clearSVG();
 
-        const response = await fetch(this.api_url);
+        const response = await fetch(
+            `${this.api_url}?` +
+            `folder=${folder}`
+        );
         const data = await response.json();
         
         if (!data) {
