@@ -85,18 +85,20 @@ class FileInfo:
         self.consumers = set()
         self.producers = set()
 
-        self.worker_retentions = {}      # key: worker_entry, value: list of (time_retention_start, time_retention_end)
+        self.worker_retentions = {}      # key: worker_entry, value: list of [time_retention_start, time_retention_end]
  
-    def file_needs_to_be_pruned_one_worker(self, worker_entry):
+    def prune_file_on_worker_entry(self, worker_entry, time_stage_out):
         if worker_entry not in self.worker_retentions:
-            return False
+            return
         
-        for worker_retention_records in self.worker_retentions.values():
-            for time_start, time_end in worker_retention_records:
-                assert time_start is not None
-                if time_end is None:
-                    return True
-        return False
+        records = self.worker_retentions[worker_entry]
+        for i, (time_start, time_end) in enumerate(records):
+            assert time_start is not None
+            if time_end is None:
+                records[i] = (time_start, time_stage_out)
+
+        self.end_all_transfers_on_worker_entry(worker_entry, time_stage_out)
+
 
     def start_worker_retention(self, worker_entry, time_retention_start):
         if worker_entry not in self.worker_retentions:
@@ -189,7 +191,6 @@ class FileInfo:
 
     def unlink(self, worker_entry, time_stage_out):
         # a file is unlinked from the destination worker
-        print(f"unlink {self.filename} on {worker_entry} at {time_stage_out}")
         self.end_worker_retention(worker_entry, time_stage_out)
 
         # this affects the incoming transfers on the destination worker
@@ -213,7 +214,7 @@ class FileInfo:
                 continue
             transfer.stage_out(time_stage_out, "cache_invalid")
 
-    def worker_removed(self, worker_entry, time_stage_out):
+    def end_all_transfers_on_worker_entry(self, worker_entry, time_stage_out):
         # this affects incoming transfers on the destination worker
         for transfer in self.transfers:
             dest = transfer.destination
