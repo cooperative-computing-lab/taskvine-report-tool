@@ -27,6 +27,7 @@ async function fetchAllModulesData(folder) {
                 module.reset();
                 await module.fetchData(folder);
                 module.initLegend();
+                module.initToolbox();
                 module.initResetButton();
                 module.initDownloadButton();
                 module.initResizeHandler();
