@@ -16,7 +16,7 @@ def get_worker_lifetime():
         entries = []
 
         for worker in runtime_state.workers.values():
-            ip_port = worker.get_worker_ip_port()
+            worker_key = worker.get_worker_key()
             worker_id = worker.id
             for i, t_start in enumerate(worker.time_connected):
                 t_end = (
@@ -28,13 +28,13 @@ def get_worker_lifetime():
                 t1 = max(0, t_end - runtime_state.MIN_TIME)
                 duration = round(max(0, t1 - t0), 2)
 
-                entries.append((t0, duration, worker_id, ip_port))
+                entries.append((t0, duration, worker_id, worker_key))
 
         entries.sort(key=lambda x: x[0])
 
         points = [[worker_id, duration] for _, duration, worker_id, _ in entries]
-        idx_to_worker_ip_port = {
-            worker_id: ip_port for _, _, worker_id, ip_port in entries
+        idx_to_worker_key = {
+            worker_id: worker_key for _, _, worker_id, worker_key in entries
         }
 
         x_domain = [p[0] for p in points]
@@ -42,7 +42,7 @@ def get_worker_lifetime():
 
         return jsonify({
             'points': points,
-            'idx_to_worker_ip_port': idx_to_worker_ip_port,
+            'idx_to_worker_key': idx_to_worker_key,
             'x_domain': x_domain,
             'y_domain': y_domain,
             'x_tick_values': compute_discrete_tick_values(x_domain),

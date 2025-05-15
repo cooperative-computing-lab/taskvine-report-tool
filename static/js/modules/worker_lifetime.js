@@ -25,7 +25,7 @@ export class WorkerLifetimeModule extends BaseModule {
                 height,
                 'steelblue',
                 1,
-                `Worker: ${this.data['idx_to_worker_ip_port'][worker_idx]}<br>Lifetime: ${lifetime} s`
+                `Worker: ${this.data['idx_to_worker_key'][worker_idx]}<br>Lifetime: ${lifetime} s`
             );
         });
     }

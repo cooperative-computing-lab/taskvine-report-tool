@@ -72,17 +72,15 @@ class DataParser:
         self.current_try_id = {}   # key: task_id, value: task_try_id
 
         # workers
-        self.workers = {}      # key: (ip, port), value: WorkerInfo
-        # key: (ip, transfer_port), value: WorkerInfo
-        self.ip_transfer_port_to_worker = {}
-        self.max_id = 0             # starting from 1
+        self.workers = {}      # key: (ip, port, connect_id), value: WorkerInfo
+        self.current_worker_connect_id = defaultdict(int)  # key: (ip, port), value: connect_id
+        self.ip_transfer_port_to_worker = {}  # key: (ip, transfer_port), value: WorkerInfo
 
         # files
         self.files = {}      # key: file_name, value: FileInfo
         # key: (source_ip, source_port), value: TransferInfo
-        self.sending_back_transfers = {}
-        # key: (dest_ip, dest_port), value: TransferInfo
-        self.putting_transfers = {}
+        self.sending_back_transfers = {}  # key: (dest_ip, dest_port), value: TransferInfo
+        self.putting_transfers = {}  # key: (worker_ip, worker_port), value: TransferInfo
 
         # subgraphs
         self.subgraphs = {}   # key: subgraph_id, value: set()
@@ -92,6 +90,18 @@ class DataParser:
         self.sending_task = None
         self.mini_task_transferring = None
         self.sending_back = None
+
+    def get_current_worker_by_ip_port(self, worker_ip: str, worker_port: int):
+        connect_id = self.current_worker_connect_id[(worker_ip, worker_port)]
+        if connect_id == 0:
+            return None
+        return self.workers[(worker_ip, worker_port, connect_id)]
+
+    def get_current_worker_entry_by_ip_port(self, worker_ip: str, worker_port: int):
+        connect_id = self.current_worker_connect_id[(worker_ip, worker_port)]
+        if connect_id == 0:
+            return None
+        return (worker_ip, worker_port, connect_id)
 
     def worker_ip_port_to_hash(self, worker_ip: str, worker_port: int):
         return f"{worker_ip}:{worker_port}"
@@ -154,12 +164,6 @@ class DataParser:
         unix_timestamp = float(equivalent_datestring.timestamp())
         return unix_timestamp
 
-    def ensure_worker_entry(self, worker_ip: str, worker_port: int):
-        worker_entry = (worker_ip, worker_port)
-        if worker_entry not in self.workers:
-            self.workers[worker_entry] = WorkerInfo(worker_ip, worker_port, self)
-        return self.workers[worker_entry]
-
     def ensure_file_info_entry(self, file_name: str, size_mb: float):
         if file_name not in self.files:
             self.files[file_name] = FileInfo(file_name, size_mb)
@@ -175,28 +179,28 @@ class DataParser:
             raise ValueError(f"task {task.task_id} already exists")
         self.tasks[task_entry] = task
 
-    def add_worker(self, worker: WorkerInfo):
-        # note that this worker may already exist in the workers dict
-        assert isinstance(worker, WorkerInfo)
-        worker_entry = (worker.ip, worker.port)
-        if worker_entry in self.workers:
-            raise ValueError(f"worker {worker.ip}:{worker.port} already exists")
-        self.max_id += 1
-        worker.id = self.max_id
-        self.workers[worker_entry] = worker
-
-    def add_ip_transfer_port_to_worker(self, ip: str, transfer_port: int, worker: WorkerInfo):
-        # if there is an existing worker, it must had disconnected
-        existing_worker = self.find_worker_by_ip_transfer_port(
-            ip, transfer_port)
-        if existing_worker:
-            assert len(existing_worker.time_connected) == len(
-                existing_worker.time_disconnected)
-        self.ip_transfer_port_to_worker[(ip, transfer_port)] = worker
+    def add_new_worker(self, ip, port, time_connected):
+        self.current_worker_connect_id[(ip, port)] += 1
+        connect_id = self.current_worker_connect_id[(ip, port)]
+        worker = WorkerInfo(ip, port, connect_id)
+        self.workers[(ip, port, connect_id)] = worker
+        worker.add_connection(time_connected)
+        worker.id = len(self.workers)
+        return worker
 
     def find_worker_by_ip_transfer_port(self, ip: str, transfer_port: int):
-        if (ip, transfer_port) in self.ip_transfer_port_to_worker:
-            return self.ip_transfer_port_to_worker[(ip, transfer_port)]
+        results = []
+        for worker in self.workers.values():
+            # skip workers that have disconnected
+            if len(worker.time_connected) == len(worker.time_disconnected):
+                continue
+            if worker.ip == ip and worker.transfer_port == transfer_port:
+                results.append(worker)
+        assert len(results) <= 1
+        
+        if len(results) == 1:
+            return results[0]
+        return None
 
     def parse_debug_line(self, line):
         parts = line.strip().split(" ")
@@ -220,52 +224,47 @@ class DataParser:
 
         if "worker" in parts and "connected" in parts:
             worker_idx = parts.index("worker")
-            worker_entry = WorkerInfo.extract_ip_port_from_string(parts[worker_idx + 1])
-            if worker_entry not in self.workers:
-                worker = WorkerInfo(worker_entry[0], worker_entry[1])
-                self.add_worker(worker)
-            else:
-                worker = self.workers[worker_entry]
-            worker.add_connection(timestamp)
+            ip, port = WorkerInfo.extract_ip_port_from_string(parts[worker_idx + 1])
+            self.add_new_worker(ip, port, timestamp)
             self.manager.set_when_first_worker_connect(timestamp)
             return
 
         if "info" in parts and "worker-id" in parts:
             info_idx = parts.index("info")
-            ip, port = WorkerInfo.extract_ip_port_from_string(
-                parts[info_idx - 1])
-            worker = self.workers[(ip, port)]
+            ip, port = WorkerInfo.extract_ip_port_from_string(parts[info_idx - 1])
+            worker = self.get_current_worker_by_ip_port(ip, port)
             worker.set_hash(parts[info_idx + 2])
             worker.set_machine_name(parts[info_idx - 2])
             return
 
         if "removed" in parts and "worker" in parts:
             release_idx = parts.index("removed")
-            ip, port = WorkerInfo.extract_ip_port_from_string(
-                parts[release_idx - 1])
-            worker = self.workers[(ip, port)]
+            ip, port = WorkerInfo.extract_ip_port_from_string(parts[release_idx - 1])
+            worker = self.get_current_worker_by_ip_port(ip, port)
+            assert worker is not None
+            
             worker.add_disconnection(timestamp)
             self.manager.update_when_last_worker_disconnect(timestamp)
+            
+            worker_entry = (worker.ip, worker.port, worker.connect_id)
             # files on the worker are removed
             for file in self.files.values():
-                file.worker_removed((ip, port), timestamp)
+                if file.file_needs_to_be_pruned_one_worker(worker_entry):
+                    file.worker_removed(worker_entry, timestamp)
             return
 
         if "transfer-port" in parts:
             transfer_port_idx = parts.index("transfer-port")
             transfer_port = int(parts[transfer_port_idx + 1])
-            ip, port = WorkerInfo.extract_ip_port_from_string(
-                parts[transfer_port_idx - 1])
-            worker = self.workers[(ip, port)]
+            ip, port = WorkerInfo.extract_ip_port_from_string(parts[transfer_port_idx - 1])
+            worker = self.get_current_worker_by_ip_port(ip, port)
             worker.set_transfer_port(transfer_port)
-            self.add_ip_transfer_port_to_worker(ip, transfer_port, worker)
             return
 
         if "put" in parts:
             put_idx = parts.index("put")
-            ip, port = WorkerInfo.extract_ip_port_from_string(
-                parts[put_idx - 1])
-            worker = self.workers[(ip, port)]
+            ip, port = WorkerInfo.extract_ip_port_from_string(parts[put_idx - 1])
+            worker_entry = self.get_current_worker_entry_by_ip_port(ip, port)
             file_name = parts[put_idx + 1]
 
             file_cache_level = parts[put_idx + 2]
@@ -279,20 +278,23 @@ class DataParser:
                 raise ValueError(f"pending file type: {file_name}")
 
             file = self.ensure_file_info_entry(file_name, file_size_mb)
-            transfer = file.add_transfer(
-                'manager', (worker.ip, worker.port), 'manager_put', file_type, file_cache_level)
+            file.start_worker_retention(worker_entry, timestamp)
+            transfer = file.add_transfer('manager', worker_entry, 'manager_put', file_type, file_cache_level)
             transfer.start_stage_in(timestamp, "pending")
-            assert (worker.ip, worker.port) not in self.putting_transfers
-            self.putting_transfers[(worker.ip, worker.port)] = transfer
+            assert worker_entry not in self.putting_transfers
+
+            self.putting_transfers[worker_entry] = transfer
             return
 
         if "received" in parts:
-            dest_ip, dest_port = WorkerInfo.extract_ip_port_from_string(
-                parts[parts.index("received") - 1])
-            assert (dest_ip, dest_port) in self.putting_transfers
-            transfer = self.putting_transfers[(dest_ip, dest_port)]
+            dest_ip, dest_port = WorkerInfo.extract_ip_port_from_string(parts[parts.index("received") - 1])
+            dest_worker_entry = self.get_current_worker_entry_by_ip_port(dest_ip, dest_port)
+            # the worker must be in the putting_transfers
+            assert dest_worker_entry is not None and dest_worker_entry in self.putting_transfers
+            
+            transfer = self.putting_transfers[dest_worker_entry]
             transfer.stage_in(timestamp, "worker_received")
-            del self.putting_transfers[(dest_ip, dest_port)]
+            del self.putting_transfers[dest_worker_entry]
             return
 
         if "Failed to send task" in line:
@@ -306,17 +308,14 @@ class DataParser:
         if "exhausted resources on" in line:
             exhausted_idx = parts.index("exhausted")
             task_id = int(parts[exhausted_idx - 1])
-            worker_ip, worker_port = WorkerInfo.extract_ip_port_from_string(
-                parts[exhausted_idx + 4])
+            worker_ip, worker_port = WorkerInfo.extract_ip_port_from_string(parts[exhausted_idx + 4])
             task = self.tasks[(task_id, self.current_try_id[task_id])]
             return
 
         if parts[-1] == "resources":
             resources_idx = parts.index("resources")
-            worker_ip, worker_port = WorkerInfo.extract_ip_port_from_string(
-                parts[resources_idx - 1])
-            self.receiving_resources_from_worker = self.workers[(
-                worker_ip, worker_port)]
+            ip, port = WorkerInfo.extract_ip_port_from_string(parts[resources_idx - 1])
+            self.receiving_resources_from_worker = self.get_current_worker_by_ip_port(ip, port)
             return
         if self.receiving_resources_from_worker and "cores" in parts:
             self.receiving_resources_from_worker.set_cores(
@@ -354,22 +353,23 @@ class DataParser:
             file = self.ensure_file_info_entry(file_name, size_in_mb)
 
             # the destination is definitely an ip:port worker
-            dest_ip, dest_port = WorkerInfo.extract_ip_port_from_string(
-                parts[puturl_id - 1])
-            dest_worker = self.workers[(dest_ip, dest_port)]
+            dest_ip, dest_port = WorkerInfo.extract_ip_port_from_string(parts[puturl_id - 1])
+            dest_worker = self.get_current_worker_by_ip_port(dest_ip, dest_port)
+            assert dest_worker is not None
+            
+            dest_worker_entry = (dest_worker.ip, dest_worker.port, dest_worker.connect_id)
 
             # the source can be a url or an ip:port
             source = parts[puturl_id + 1]
             if source.startswith('https://'):
-                transfer = file.add_transfer(
-                    source, (dest_worker.ip, dest_worker.port), transfer_event, 2, file_cache_level)
+                transfer = file.add_transfer(source, dest_worker_entry, transfer_event, 2, file_cache_level)
             elif source.startswith('workerip://'):
-                source_ip, source_transfer_port = WorkerInfo.extract_ip_port_from_string(
-                    source)
-                source_worker = self.find_worker_by_ip_transfer_port(
-                    source_ip, source_transfer_port)
-                transfer = file.add_transfer((source_worker.ip, source_worker.port), (
-                    dest_worker.ip, dest_worker.port), transfer_event, 2, file_cache_level)
+                source_ip, source_transfer_port = WorkerInfo.extract_ip_port_from_string(source)
+                source_worker = self.find_worker_by_ip_transfer_port(source_ip, source_transfer_port)
+                assert source_worker is not None
+                
+                source_worker_entry = (source_worker.ip, source_worker.port, source_worker.connect_id)
+                transfer = file.add_transfer(source_worker_entry, dest_worker_entry, transfer_event, 2, file_cache_level)
             else:
                 raise ValueError(
                     f"unrecognized source: {source}, line: {line}")
@@ -383,12 +383,13 @@ class DataParser:
             file_name = parts[mini_task_idx + 2]
             cache_level = int(parts[mini_task_idx + 3])
             file_size = int(parts[mini_task_idx + 4]) / 2**20
-            dest_worker_ip, dest_worker_port = WorkerInfo.extract_ip_port_from_string(
-                parts[mini_task_idx - 1])
-
+            dest_worker_ip, dest_worker_port = WorkerInfo.extract_ip_port_from_string(parts[mini_task_idx - 1])
+            
+            dest_worker_entry = self.get_current_worker_entry_by_ip_port(dest_worker_ip, dest_worker_port)
+            assert dest_worker_entry is not None
+            
             file = self.ensure_file_info_entry(file_name, file_size)
-            transfer = file.add_transfer(
-                source, (dest_worker_ip, dest_worker_port), 'mini_task', 2, cache_level)
+            transfer = file.add_transfer(source, dest_worker_entry, 'mini_task', 2, cache_level)
             transfer.start_stage_in(timestamp, "pending")
             return
 
@@ -408,11 +409,9 @@ class DataParser:
                 task_id, self.current_try_id[task_id])]
 
             try:
-                worker_ip, worker_port = WorkerInfo.extract_ip_port_from_string(
-                    parts[task_idx - 1])
+                worker_ip, worker_port = WorkerInfo.extract_ip_port_from_string(parts[task_idx - 1])
                 if not self.sending_task.worker_ip:
-                    self.sending_task.set_worker_ip_port(
-                        worker_ip, worker_port)
+                    self.sending_task.set_worker_ip_port(worker_ip, worker_port)
             except Exception:
                 raise
             return
@@ -451,10 +450,6 @@ class DataParser:
             elif "function_slots" in parts:
                 function_slots = int(parts[parts.index("function_slots") + 1])
                 self.sending_task.set_function_slots(function_slots)
-                # sending_to_worker = self.workers[(
-                #    self.sending_task.worker_ip, self.sending_task.worker_port)]
-                # if sending_to_worker.cores < function_slots:
-                # sending_to_worker.set_cores(function_slots)
             elif "cmd" in parts:
                 pass
             elif "python3" in parts:
@@ -499,8 +494,7 @@ class DataParser:
                     return
                 else:
                     # update the coremap
-                    worker_entry = (task.worker_ip, task.worker_port)
-                    worker = self.workers[worker_entry]
+                    worker = self.get_current_worker_by_ip_port(task.worker_ip, task.worker_port)
                     task.committed_worker_hash = worker.hash
                     task.worker_id = worker.id
                     worker.run_task(task)
@@ -525,16 +519,14 @@ class DataParser:
             elif "RUNNING (2) to WAITING_RETRIEVAL (3)" in line:    # as expected
                 task.set_when_waiting_retrieval(timestamp)
                 # update the coremap
-                worker_entry = (task.worker_ip, task.worker_port)
-                worker = self.workers[worker_entry]
+                worker = self.get_current_worker_by_ip_port(task.worker_ip, task.worker_port)
                 worker.reap_task(task)
             elif "WAITING_RETRIEVAL (3) to RETRIEVED (4)" in line:  # as expected
                 task.set_when_retrieved(timestamp)
             elif "RETRIEVED (4) to DONE (5)" in line:               # as expected
                 task.set_when_done(timestamp)
                 if task.worker_ip:
-                    worker_entry = (task.worker_ip, task.worker_port)
-                    worker = self.workers[worker_entry]
+                    worker = self.get_current_worker_by_ip_port(task.worker_ip, task.worker_port)
                     self.manager.set_when_last_task_done(timestamp)
                     worker.tasks_completed.append(task)
             elif "WAITING_RETRIEVAL (3) to READY (1)" in line or \
@@ -546,8 +538,7 @@ class DataParser:
                     # if it was committed to a worker
                     if task.worker_ip:
                         # update the worker's tasks_failed, if the task was successfully committed
-                        worker_entry = (task.worker_ip, task.worker_port)
-                        worker = self.workers[worker_entry]
+                        worker = self.get_current_worker_by_ip_port(task.worker_ip, task.worker_port)
                         worker.tasks_failed.append(task)
                         worker.reap_task(task)
                         # it could be that the worker disconnected
@@ -559,7 +550,7 @@ class DataParser:
                             for input_file in task.input_files:
                                 this_input_ready = False
                                 for transfer in self.files[input_file].transfers:
-                                    if transfer.destination == worker_entry and transfer.stage_in is not None:
+                                    if transfer.destination == (task.worker_ip, task.worker_port) and transfer.stage_in is not None:
                                         this_input_ready = True
                                         break
                                 if not this_input_ready:
@@ -591,9 +582,8 @@ class DataParser:
 
         if "complete" in parts:
             complete_idx = parts.index("complete")
-            worker_ip, worker_port = WorkerInfo.extract_ip_port_from_string(
-                parts[complete_idx - 1])
-            worker = self.workers[(worker_ip, worker_port)]
+            ip, port = WorkerInfo.extract_ip_port_from_string(parts[complete_idx - 1])
+            worker = self.get_current_worker_by_ip_port(ip, port)
             task_status = int(parts[complete_idx + 1])
             exit_status = int(parts[complete_idx + 2])
             output_length = int(parts[complete_idx + 3])
@@ -654,12 +644,12 @@ class DataParser:
                 # special case: this file was created by a previous manager
                 return
 
-            ip, port = WorkerInfo.extract_ip_port_from_string(
-                parts[cache_update_id - 1])
-            worker = self.workers[(ip, port)]
+            ip, port = WorkerInfo.extract_ip_port_from_string(parts[cache_update_id - 1])
+            worker_entry = self.get_current_worker_entry_by_ip_port(ip, port)
+            assert worker_entry is not None
+
             # let the file handle the cache update
-            file.cache_update((worker.ip, worker.port),
-                              timestamp, file_type, file_cache_level)
+            file.cache_update(worker_entry, timestamp, file_type, file_cache_level)
 
             return
 
@@ -669,9 +659,8 @@ class DataParser:
             if file_name not in self.files:
                 # special case: this file was created by a previous manager
                 return
-            ip, port = WorkerInfo.extract_ip_port_from_string(
-                parts[cache_invalid_id - 1])
-            worker = self.workers[(ip, port)]
+            ip, port = WorkerInfo.extract_ip_port_from_string(parts[cache_invalid_id - 1])
+            worker = self.get_current_worker_by_ip_port(ip, port)
             file = self.files[file_name]
             file.cache_invalid((ip, port), timestamp)
             return
@@ -679,9 +668,8 @@ class DataParser:
         if "unlink" in parts:
             unlink_id = parts.index("unlink")
             file_name = parts[unlink_id + 1]
-            ip, port = WorkerInfo.extract_ip_port_from_string(
-                parts[unlink_id - 1])
-            worker = self.workers[(ip, port)]
+            ip, port = WorkerInfo.extract_ip_port_from_string(parts[unlink_id - 1])
+            worker = self.get_current_worker_by_ip_port(ip, port)
 
             file = self.files[file_name]
             file.unlink((ip, port), timestamp)
@@ -706,36 +694,37 @@ class DataParser:
             self.sending_back = True
             back_idx = parts.index("back")
             file_name = parts[back_idx + 1]
-            source_ip, source_port = WorkerInfo.extract_ip_port_from_string(
-                parts[back_idx - 2])
-            assert (source_ip, source_port) not in self.sending_back_transfers
+            source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[back_idx - 2])
+            source_worker_entry = self.get_current_worker_entry_by_ip_port(source_ip, source_port)
+            assert source_worker_entry is not None
+            assert source_worker_entry not in self.sending_back_transfers
+
             file = self.files[file_name]
-            transfer = file.add_transfer(
-                (source_ip, source_port), 'manager', 'manager_get', 1, 1)
+            transfer = file.add_transfer(source_worker_entry, 'manager', 'manager_get', 1, 1)
             transfer.start_stage_in(timestamp, "pending")
-            self.sending_back_transfers[(source_ip, source_port)] = transfer
+            self.sending_back_transfers[source_worker_entry] = transfer
             return
         if self.sending_back and "rx from" in line and "file" in parts:
             file_idx = parts.index("file")
             file_name = parts[file_idx + 1]
-            source_ip, source_port = WorkerInfo.extract_ip_port_from_string(
-                parts[parts.index("file") - 1])
+            source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[parts.index("file") - 1])
+            source_worker_entry = self.get_current_worker_entry_by_ip_port(source_ip, source_port)
+            assert source_worker_entry is not None
             if file_name not in self.files:
-                raise ValueError(
-                    f"file {file_name} not found in self.files, line: {line}")
-            assert (source_ip, source_port) in self.workers
-            assert (source_ip, source_port) in self.sending_back_transfers
+                raise ValueError(f"file {file_name} not found in self.files, line: {line}")
+            assert source_worker_entry in self.sending_back_transfers
             return
         if self.sending_back and "Receiving file" in line:
             pass
         if self.sending_back and "sent" in parts:
             send_idx = parts.index("sent")
-            source_ip, source_port = WorkerInfo.extract_ip_port_from_string(
-                parts[send_idx - 1])
-            assert (source_ip, source_port) in self.sending_back_transfers
-            transfer = self.sending_back_transfers[(source_ip, source_port)]
+            source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[send_idx - 1])
+            source_worker_entry = self.get_current_worker_entry_by_ip_port(source_ip, source_port)
+            assert source_worker_entry is not None
+            assert source_worker_entry in self.sending_back_transfers
+            transfer = self.sending_back_transfers[source_worker_entry]
             transfer.stage_in(timestamp, "manager_received")
-            del self.sending_back_transfers[(source_ip, source_port)]
+            del self.sending_back_transfers[source_worker_entry]
             self.sending_back = False
 
         if "manager end" in line:
@@ -762,7 +751,8 @@ class DataParser:
             designated_idx = parts.index("designated")
             ip, port = WorkerInfo.extract_ip_port_from_string(
                 parts[designated_idx - 1])
-            self.workers[(ip, port)].enable_pbb()
+            worker = self.get_current_worker_by_ip_port(ip, port)
+            worker.set_checkpoint_worker()
             return
 
         if "Removing instances of worker" in line:

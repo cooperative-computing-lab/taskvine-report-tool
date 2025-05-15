@@ -30,6 +30,11 @@ export class ToolboxItem {
                 break;
             case "selector":
                 row.className = "toolbox-row-split";
+                const label = document.createElement("label");
+                label.setAttribute("for", `selector-${this._id}`);
+                label.textContent = this._buttonLabel;
+                label.className = "toolbox-label";
+                row.appendChild(label);
                 row.appendChild(this._selector);
                 break;
             case "button":

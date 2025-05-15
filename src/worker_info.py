@@ -3,11 +3,13 @@ from bitarray import bitarray
 
 
 class WorkerInfo:
-    def __init__(self, ip: str, port: int):
+    def __init__(self, ip: str, port: int, connect_id: int):
         # basic info
-        self.id = None
         self.ip = ip
         self.port = port
+        self.connect_id = connect_id
+        
+        self.id = None
         self.hash = None
         self.machine_name = None
         self.transfer_port = None
@@ -18,11 +20,14 @@ class WorkerInfo:
         self.time_connected = []
         self.time_disconnected = []
         self.coremap = None
-        self.is_pbb = False
+        self.is_checkpoint_worker = False
 
         # task info
         self.tasks_completed = []
         self.tasks_failed = []
+
+    def set_checkpoint_worker(self):
+        self.is_checkpoint_worker = True
 
     def add_connection(self, timestamp: float):
         self.time_connected.append(float(timestamp))
@@ -32,15 +37,11 @@ class WorkerInfo:
         assert len(self.time_connected) == len(self.time_disconnected)
 
     def set_hash(self, hash: str):
+        # note that the hash can be different for the same worker
+        # because the worker can be restarted with the same ip and port
         if self.hash and hash != self.hash:
             raise ValueError(f"hash mismatch for worker {self.ip}:{self.port}")
         self.hash = hash
-
-    def enable_pbb(self):
-        self.is_pbb = True
-
-    def disable_pbb(self):
-        self.is_pbb = False
 
     def set_machine_name(self, machine_name: str):
         if self.machine_name and machine_name != self.machine_name:
@@ -78,6 +79,9 @@ class WorkerInfo:
 
     def get_worker_ip_port(self):
         return f"{self.ip}:{self.port}"
+    
+    def get_worker_key(self):
+        return f"{self.ip}:{self.port}:{self.connect_id}"
 
     def set_cores(self, cores: int):
         if self.cores and cores != self.cores:
