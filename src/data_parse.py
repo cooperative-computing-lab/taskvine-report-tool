@@ -669,10 +669,11 @@ class DataParser:
             unlink_id = parts.index("unlink")
             file_name = parts[unlink_id + 1]
             ip, port = WorkerInfo.extract_ip_port_from_string(parts[unlink_id - 1])
-            worker = self.get_current_worker_by_ip_port(ip, port)
+            worker_entry = self.get_current_worker_entry_by_ip_port(ip, port)
+            assert worker_entry is not None
 
             file = self.files[file_name]
-            file.unlink((ip, port), timestamp)
+            file.unlink(worker_entry, timestamp)
             return
 
         if "Submitted recovery task" in line:

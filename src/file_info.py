@@ -85,7 +85,7 @@ class FileInfo:
         self.consumers = set()
         self.producers = set()
 
-        self.worker_retentions = []    #  (worker_entry, time_retention_start, time_retention_end)
+        self.worker_retentions = {}      # key: worker_entry, value: list of (time_retention_start, time_retention_end)
  
     def file_needs_to_be_pruned_one_worker(self, worker_entry):
         for w, t1, t2 in self.worker_retentions:
@@ -95,14 +95,22 @@ class FileInfo:
         return False
 
     def start_worker_retention(self, worker_entry, time_retention_start):
-        self.worker_retentions.append((worker_entry, time_retention_start, None))
+        if worker_entry not in self.worker_retentions:
+            self.worker_retentions[worker_entry] = [(time_retention_start, None)]
+        else:
+            self.worker_retentions[worker_entry].append((time_retention_start, None))
 
     def end_worker_retention(self, worker_entry, time_retention_end):
-        for i, (worker_entry, time_retention_start, time_retention_end) in enumerate(self.worker_retentions):
-            if worker_entry == worker_entry and time_retention_end is None:
-                self.worker_retentions[i] = (worker_entry, time_retention_start, time_retention_end)
+        # a worker entry not not in the worker_retentions because we set the time_retention_start only if the file
+        # is successfully staged in, but chances are that the file can be unlinked when it is pending, if it is in 
+        # this case, we simply avoid setting the time_retention_end
+        if worker_entry not in self.worker_retentions:
+            return
+        worker_retention_records = self.worker_retentions[worker_entry]
+        for i, (time_retention_start, time_retention_end) in enumerate(worker_retention_records):
+            if time_retention_end is None:
+                worker_retention_records[i] = (time_retention_start, time_retention_end)
                 return
-        raise ValueError(f"File {self.filename} has no worker retention on {worker_entry}")
 
     def add_consumer(self, consumer_task):
         self.consumers.add((consumer_task.task_id, consumer_task.task_try_id))
@@ -177,6 +185,7 @@ class FileInfo:
 
     def unlink(self, worker_entry, time_stage_out):
         # a file is unlinked from the destination worker
+        print(f"unlink {self.filename} on {worker_entry} at {time_stage_out}")
         self.end_worker_retention(worker_entry, time_stage_out)
 
         # this affects the incoming transfers on the destination worker
