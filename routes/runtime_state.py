@@ -14,7 +14,7 @@ import threading
 
 
 LOGS_DIR = 'logs'
-SAMPLING_POINTS = 10000  # at lease 3: the beginning, the end, and the global peak
+SAMPLING_POINTS = 100000  # at lease 3: the beginning, the end, and the global peak
 SAMPLING_TASK_BARS = 100000   # how many task bars to show
 
 

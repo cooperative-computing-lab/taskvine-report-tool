@@ -69,14 +69,18 @@ def d3_percentage_formatter(digits=2):
 def d3_worker_core_formatter():
     return '(d) => d.split("-")[0]'
 
-def downsample_points(points, sampling_points=10000):
-    if len(points) <= sampling_points:
+def downsample_points(points, target_point_count=10000):
+    if len(points) <= target_point_count:
         return points
+
+    MIN_POINT_COUNT = 1000
+    if len(points) > MIN_POINT_COUNT and target_point_count < MIN_POINT_COUNT:
+        target_point_count = MIN_POINT_COUNT
 
     y_max_idx = max(range(len(points)), key=lambda i: points[i][1])
     keep_indices = {0, len(points) - 1, y_max_idx}
 
-    remaining = sampling_points - len(keep_indices)
+    remaining = target_point_count - len(keep_indices)
     if remaining <= 0:
         return [points[0], points[y_max_idx], points[-1]]
 
@@ -103,16 +107,15 @@ def downsample_points(points, sampling_points=10000):
 
     return [points[i] for i in sorted(keep_indices)]
 
-def downsample_points_array(points_array, sampling_points=10000):
+def downsample_points_array(points_array, target_point_count=10000):
     total_points = sum(len(points) for points in points_array)
-    if total_points <= sampling_points:
+    if total_points <= target_point_count:
         return points_array
 
     downsampled_array = []
     for points in points_array:
-        proportion = len(points) / total_points
-        allocated = max(3, int(proportion * sampling_points))
-        downsampled = downsample_points(points, allocated)
+        proportional_point_count = (len(points) / total_points) * target_point_count
+        downsampled = downsample_points(points, proportional_point_count)
         downsampled_array.append(downsampled)
 
     return downsampled_array
