@@ -114,7 +114,7 @@ def downsample_points_array(points_array, target_point_count=10000):
 
     downsampled_array = []
     for points in points_array:
-        proportional_point_count = (len(points) / total_points) * target_point_count
+        proportional_point_count = int((len(points) / total_points) * target_point_count)
         downsampled = downsample_points(points, proportional_point_count)
         downsampled_array.append(downsampled)
 
