@@ -249,8 +249,7 @@ class DataParser:
             worker_entry = (worker.ip, worker.port, worker.connect_id)
             # files on the worker are removed
             for file in self.files.values():
-                if file.file_needs_to_be_pruned_one_worker(worker_entry):
-                    file.worker_removed(worker_entry, timestamp)
+                file.prune_file_on_worker_entry(worker_entry, timestamp)
             return
 
         if "transfer-port" in parts:
