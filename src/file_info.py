@@ -88,10 +88,14 @@ class FileInfo:
         self.worker_retentions = {}      # key: worker_entry, value: list of (time_retention_start, time_retention_end)
  
     def file_needs_to_be_pruned_one_worker(self, worker_entry):
-        for w, t1, t2 in self.worker_retentions:
-            assert t1 is not None
-            if w == worker_entry and t2 is None:
-                return True
+        if worker_entry not in self.worker_retentions:
+            return False
+        
+        for worker_retention_records in self.worker_retentions.values():
+            for time_start, time_end in worker_retention_records:
+                assert time_start is not None
+                if time_end is None:
+                    return True
         return False
 
     def start_worker_retention(self, worker_entry, time_retention_start):
