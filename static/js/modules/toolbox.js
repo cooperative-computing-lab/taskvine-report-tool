@@ -30,11 +30,6 @@ export class ToolboxItem {
                 break;
             case "selector":
                 row.className = "toolbox-row-split";
-                const label = document.createElement("label");
-                label.setAttribute("for", `selector-${this._id}`);
-                label.textContent = this._buttonLabel;
-                label.className = "toolbox-label";
-                row.appendChild(label);
                 row.appendChild(this._selector);
                 break;
             case "button":
@@ -76,7 +71,7 @@ export class ToolboxItem {
     _createButton() {
         this._button = document.createElement("button");
         this._button.textContent = this._buttonLabel;
-        this._button.className = "toolbox-button";
+        this._button.className = "report-button";
     }
 
     _bindButtonHandler() {
@@ -95,7 +90,7 @@ export class ToolboxItem {
 }
 
 export class Toolbox {
-    constructor({ id, title, items = [] }) {
+    constructor({ id, title = 'Toolbox', items = [] }) {
         this.id = id;
         this.title = title;
         this.items = items.map((item) => new ToolboxItem(item));

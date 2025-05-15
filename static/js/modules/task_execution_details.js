@@ -1,6 +1,6 @@
 import { BaseModule } from './base.js';
 import { getTaskInnerHTML, getWorkerInnerHTML } from './utils.js';
-
+import { Toolbox } from './toolbox.js';
 
 export class TaskExecutionDetailsModule extends BaseModule {
     constructor(id, title, api_url) {
@@ -89,6 +89,23 @@ export class TaskExecutionDetailsModule extends BaseModule {
             const innerHTML = getWorkerInnerHTML(worker);
             this.plotRect(x, y, width, height, fill, opacity, innerHTML);
         }
+    }
+
+    initToolbox() {
+        const config = {
+            id: `${this.id}-toolbox`,
+            items: [
+                {
+                    buttonLabel: 'Download SVG',
+                    id: `${this.id}-download-svg`,
+                    type: 'button',
+                    handler: () => this.toolboxDownloadSVGHandler()
+                }
+            ]
+        }
+
+        this.toolbox = new Toolbox(config);
+        this.toolbox.mount(this.toolboxContainer);
     }
 
     plot() {
