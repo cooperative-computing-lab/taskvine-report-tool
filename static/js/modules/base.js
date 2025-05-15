@@ -1,4 +1,4 @@
-import { Toolbox, ToolboxItem } from './toolbox.js';
+import { Toolbox, createToolbox } from './toolbox.js';
 
 
 export class BaseModule {
@@ -92,7 +92,6 @@ export class BaseModule {
             </div>
         </div>
       `;
-        
 
         return section;
     }
@@ -138,46 +137,14 @@ export class BaseModule {
             console.error(`Toolbox container not found for ${this.id}`);
             return;
         }
-        const toolbox = new Toolbox({
-            title: 'Toolbox',
-            items: [
-                { 
-                    label: 'Update X', 
-                    key: 'updateX', 
-                    defaultInputBoxText: 'Enter X value',
-                    handler: (key, val) => console.log(`${key} => ${val}`)
-                },
-                { 
-                    label: 'Refresh', 
-                    key: 'refresh', 
-                    isButtonOnly: true,
-                    handler: (key) => console.log(`${key} clicked`)
-                },
-                { 
-                    label: 'Extract', 
-                    key: 'extract', 
-                    options: [
-                        { 
-                            value: 'mode1', 
-                            label: 'Mode 1',
-                            handler: (value) => console.log(`Mode 1 handler: ${value}`)
-                        },
-                        { 
-                            value: 'mode2', 
-                            label: 'Mode 2',
-                            handler: (value) => console.log(`Mode 2 handler: ${value}`)
-                        },
-                        { 
-                            value: 'mode3', 
-                            label: 'Mode 3',
-                            handler: (value) => console.log(`Mode 3 handler: ${value}`)
-                        }
-                    ]
-                }
-            ]
-        });
-          
-        toolbox.mount(this.toolboxContainer);
+
+        // temp hack
+        this.initToolbox();
+    }
+
+    initToolbox() {
+        this.toolbox = createToolbox(this.id);
+        this.toolbox.mount(this.toolboxContainer);
     }
 
     clearSVG() {
