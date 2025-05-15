@@ -44,6 +44,7 @@ def get_worker_storage_consumption():
 
         # step 2: build time-series for each worker
         for worker, events in all_worker_storage.items():
+
             df = pd.DataFrame(events, columns=['time', 'size']).sort_values('time')
             df['storage'] = df['size'].cumsum().clip(lower=0)
 
@@ -106,6 +107,20 @@ def get_worker_storage_consumption():
 
         x_domain = [0, float(runtime_state.MAX_TIME - base_time)]
         y_domain = [0, max(1.0, max_storage)]
+
+        # write into a file
+        import json
+        with open('worker_storage_consumption.json', 'w') as f:
+            json.dump({
+                'storage_data': storage_data,
+                'worker_resources': worker_resources,
+                'x_domain': x_domain,
+                'y_domain': y_domain,
+                'x_tick_values': compute_linear_tick_values(x_domain),
+                'y_tick_values': compute_linear_tick_values(y_domain),
+                'x_tick_formatter': d3_time_formatter(),
+                'y_tick_formatter': y_tick_formatter,
+            }, f)
 
         return jsonify({
             'storage_data': storage_data,

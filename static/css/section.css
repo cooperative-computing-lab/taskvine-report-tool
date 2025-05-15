@@ -41,25 +41,21 @@
     margin: 10px 0;
 }
 
-.section-row.top {
-    height: 20%;
-    display: none;
-}
-
-.section-row.bottom {
-    height: 100%;
-}
-
 .section-row {
     display: flex;
     width: 100%;
 }
 
 .section-row.top {
+    display: flex;
     height: 20%;
+    max-height: 15vh;
+    overflow-x: auto;
+    overflow-y: auto;
 }
 
 .section-row.bottom {
+    display: flex;
     height: 80%;
 }
 

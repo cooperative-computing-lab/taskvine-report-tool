@@ -57,7 +57,8 @@ class TransferEvent:
         self.set_eventual_state(eventual_state)
 
     def stage_out(self, time_stage_out, eventual_state):
-        assert self.time_start_stage_in is not None and self.time_stage_out is None
+        assert self.time_start_stage_in is not None
+        assert self.time_stage_out is None
         self.time_stage_out = float(time_stage_out)
         self.set_eventual_state(eventual_state)
 
@@ -84,6 +85,25 @@ class FileInfo:
         self.consumers = set()
         self.producers = set()
 
+        self.worker_retentions = []    #  (worker_entry, time_retention_start, time_retention_end)
+ 
+    def file_needs_to_be_pruned_one_worker(self, worker_entry):
+        for w, t1, t2 in self.worker_retentions:
+            assert t1 is not None
+            if w == worker_entry and t2 is None:
+                return True
+        return False
+
+    def start_worker_retention(self, worker_entry, time_retention_start):
+        self.worker_retentions.append((worker_entry, time_retention_start, None))
+
+    def end_worker_retention(self, worker_entry, time_retention_end):
+        for i, (worker_entry, time_retention_start, time_retention_end) in enumerate(self.worker_retentions):
+            if worker_entry == worker_entry and time_retention_end is None:
+                self.worker_retentions[i] = (worker_entry, time_retention_start, time_retention_end)
+                return
+        raise ValueError(f"File {self.filename} has no worker retention on {worker_entry}")
+
     def add_consumer(self, consumer_task):
         self.consumers.add((consumer_task.task_id, consumer_task.task_try_id))
 
@@ -97,8 +117,7 @@ class FileInfo:
         self.producers.add((producer_task.task_id, producer_task.task_try_id))
 
     def add_transfer(self, source, destination, event, file_type, cache_level):
-        transfer_event = TransferEvent(
-            source, destination, event, file_type, cache_level)
+        transfer_event = TransferEvent(source, destination, event, file_type, cache_level)
         self.transfers.append(transfer_event)
         return transfer_event
 
@@ -129,13 +148,16 @@ class FileInfo:
             destinations.add(transfer.destination)
         return list(destinations)
 
-    def cache_update(self, destination, time_stage_in, file_type, file_cache_level):
+    def cache_update(self, worker_entry, time_stage_in, file_type, file_cache_level):
         # check if the file was started staging in before the cache update
         has_started_staging_in = False
         time_stage_in = float(time_stage_in)
 
+        # a file is newly retained by the destination worker
+        self.start_worker_retention(worker_entry, time_stage_in)
+
         for transfer in self.transfers:
-            if transfer.destination != destination:
+            if transfer.destination != worker_entry:
                 continue
             if transfer.time_stage_in:
                 continue
@@ -149,15 +171,17 @@ class FileInfo:
         # this means a task-created file
         if not has_started_staging_in:
             producer_task_name = f"{list(self.producers)[-1]}"
-            transfer = self.add_transfer(
-                producer_task_name, destination, "task_created", file_type, file_cache_level)
+            transfer = self.add_transfer(producer_task_name, worker_entry, "task_created", file_type, file_cache_level)
             transfer.start_stage_in(time_stage_in, "pending")
             transfer.stage_in(time_stage_in, "cache_update")
 
-    def unlink(self, worker, time_stage_out):
+    def unlink(self, worker_entry, time_stage_out):
+        # a file is unlinked from the destination worker
+        self.end_worker_retention(worker_entry, time_stage_out)
+
         # this affects the incoming transfers on the destination worker
         for transfer in self.transfers:
-            if transfer.destination != worker:
+            if transfer.destination != worker_entry:
                 continue
             if transfer.time_stage_out:
                 continue
@@ -176,16 +200,16 @@ class FileInfo:
                 continue
             transfer.stage_out(time_stage_out, "cache_invalid")
 
-    def worker_removed(self, worker, time_stage_out):
+    def worker_removed(self, worker_entry, time_stage_out):
         # this affects incoming transfers on the destination worker
         for transfer in self.transfers:
-            if transfer.destination != worker:
-                continue
-            if transfer.time_stage_out:
-                continue
-            if transfer.time_start_stage_in > time_stage_out:
-                continue
-            transfer.stage_out(time_stage_out, "worker_removed")
+            dest = transfer.destination
+            if isinstance(dest, tuple) and dest == worker_entry:
+                if transfer.time_stage_out:
+                    continue
+                if transfer.time_start_stage_in > time_stage_out:
+                    continue
+                transfer.stage_out(time_stage_out, "worker_removed")
 
     def set_size_mb(self, size_mb):
         size_mb = float(size_mb)

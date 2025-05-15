@@ -897,6 +897,7 @@ export class BaseModule {
                     .property('checked', item.checked !== false)    /* default checked unless this field is specified as false */
                     .style('margin-right', '5px')
                     .style('flex-shrink', 0)
+                    .style('accent-color', item.color || '#666')
                     .on('click', function(e) { e.stopPropagation(); })
                     .on('change', (event) => {
                         const checkbox = event.currentTarget;
@@ -911,14 +912,7 @@ export class BaseModule {
                                     }
                                 });
                         }
-                    });                                      
-
-                /* color line is optional */
-                if (item.color && item.color.trim() !== '') {
-                    legendItem.append('div')
-                        .style('height', `${lineWidth}px`)
-                        .style('background-color', item.color);
-                }
+                    });   
 
                 legendItem.append('label')
                     .attr('for', safeCheckboxId)
