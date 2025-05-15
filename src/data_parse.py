@@ -157,8 +157,7 @@ class DataParser:
     def ensure_worker_entry(self, worker_ip: str, worker_port: int):
         worker_entry = (worker_ip, worker_port)
         if worker_entry not in self.workers:
-            self.workers[worker_entry] = WorkerInfo(
-                worker_ip, worker_port, self)
+            self.workers[worker_entry] = WorkerInfo(worker_ip, worker_port, self)
         return self.workers[worker_entry]
 
     def ensure_file_info_entry(self, file_name: str, size_mb: float):
@@ -177,11 +176,11 @@ class DataParser:
         self.tasks[task_entry] = task
 
     def add_worker(self, worker: WorkerInfo):
+        # note that this worker may already exist in the workers dict
         assert isinstance(worker, WorkerInfo)
         worker_entry = (worker.ip, worker.port)
         if worker_entry in self.workers:
-            raise ValueError(
-                f"worker {worker.ip}:{worker.port} already exists")
+            raise ValueError(f"worker {worker.ip}:{worker.port} already exists")
         self.max_id += 1
         worker.id = self.max_id
         self.workers[worker_entry] = worker
@@ -220,13 +219,14 @@ class DataParser:
             return
 
         if "worker" in parts and "connected" in parts:
-            # this is the first time a worker is connected to the manager
             worker_idx = parts.index("worker")
-            ip, port = WorkerInfo.extract_ip_port_from_string(
-                parts[worker_idx + 1])
-            worker = WorkerInfo(ip, port)
+            worker_entry = WorkerInfo.extract_ip_port_from_string(parts[worker_idx + 1])
+            if worker_entry not in self.workers:
+                worker = WorkerInfo(worker_entry[0], worker_entry[1])
+                self.add_worker(worker)
+            else:
+                worker = self.workers[worker_entry]
             worker.add_connection(timestamp)
-            self.add_worker(worker)
             self.manager.set_when_first_worker_connect(timestamp)
             return
 
