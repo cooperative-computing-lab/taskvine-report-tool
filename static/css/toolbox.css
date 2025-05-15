@@ -11,12 +11,12 @@
 
 .toolbox-panel {
     background-color: white;
-    border: 1px solid #d1d5db;
+    border: 2px solid #cccccc;
     border-radius: 1rem;
-    padding: 0.75rem;
+    padding: 2rem;
     position: absolute;
-    min-width: 220px;
-    max-width: 260px;
+    min-width: 70px;
+    max-width: 180px;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
     z-index: 9999;
     right: 100%;
@@ -54,17 +54,23 @@
     background-color: #d1d5db;
 }
 
-.toolbox-row-full {
-    width: 100%;
-    display: flex;
-    margin-bottom: 0.4rem;
+.toolbox-row-split {
+    gap: 2rem;
+    justify-content: space-between;
+    box-sizing: border-box;
 }
 
+.toolbox-row-split > * {
+    flex: 1;
+}
+
+.toolbox-row-full,
 .toolbox-row-split {
     display: flex;
-    gap: 0.4rem;
-    width: 100%;
-    margin-bottom: 0.4rem;
+    height: 5rem;
+    max-width: 100%;
+    margin: 1.2rem 0;
+    padding: 0 2rem;
 }
 
 .toolbox-input {
