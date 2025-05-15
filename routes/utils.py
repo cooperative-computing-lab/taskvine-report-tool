@@ -73,7 +73,7 @@ def downsample_points(points, target_point_count=10000):
     if len(points) <= target_point_count:
         return points
 
-    MIN_POINT_COUNT = 300
+    MIN_POINT_COUNT = 100
     if len(points) > MIN_POINT_COUNT and target_point_count < MIN_POINT_COUNT:
         target_point_count = MIN_POINT_COUNT
 
