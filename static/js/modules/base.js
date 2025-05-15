@@ -137,15 +137,9 @@ export class BaseModule {
             console.error(`Toolbox container not found for ${this.id}`);
             return;
         }
-
-        // temp hack
-        this.initToolbox();
     }
 
-    initToolbox() {
-        this.toolbox = createToolbox(this.id);
-        this.toolbox.mount(this.toolboxContainer);
-    }
+    initToolbox() {}
 
     clearSVG() {
         while (this.svgNode.firstChild) {
@@ -738,6 +732,10 @@ export class BaseModule {
 
         this._boundDownload = () => this.downloadSVG();
         this.downloadButton.addEventListener('click', this._boundDownload);
+    }
+
+    toolboxDownloadSVGHandler() {
+        this.downloadSVG();
     }
 
     initSVG() {

@@ -366,7 +366,7 @@ class DataParser:
                 source_ip, source_transfer_port = WorkerInfo.extract_ip_port_from_string(source)
                 source_worker = self.find_worker_by_ip_transfer_port(source_ip, source_transfer_port)
                 assert source_worker is not None
-                
+
                 source_worker_entry = (source_worker.ip, source_worker.port, source_worker.connect_id)
                 transfer = file.add_transfer(source_worker_entry, dest_worker_entry, transfer_event, 2, file_cache_level)
             else:
