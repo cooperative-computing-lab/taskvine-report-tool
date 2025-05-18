@@ -15,8 +15,7 @@
     border-radius: 3rem;
     padding: 2rem;
     position: absolute;
-    min-width: 70px;
-    max-width: 180px;
+    width: 180px;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
     z-index: 9999;
     right: 100%;
@@ -54,40 +53,35 @@
     background-color: #d1d5db;
 }
 
-.toolbox-row-split {
-    gap: 2rem;
-    justify-content: space-between;
-    box-sizing: border-box;
-}
-
-.toolbox-row-split > * {
-    flex: 1;
-}
 
 .toolbox-row-full,
 .toolbox-row-split {
     display: flex;
-    max-width: 100%;
-    margin: 1.2rem 0;
-    padding: 1px 4px;
-}
-
-.toolbox-input {
-    flex: 1;
-    padding: 0.4rem 0.6rem;
-    border-radius: 1rem;
-    font-size: 12px;
-    border: 1px solid #d1d5db;
-    background-color: white;
-    white-space: nowrap;
-    min-width: 0;
-}
-
-/* Remove spinner buttons from number inputs */
-.toolbox-input[type="number"]::-webkit-inner-spin-button,
-.toolbox-input[type="number"]::-webkit-outer-spin-button {
-    -webkit-appearance: none;
+    width: 100%;
+    padding: 3px 0px;
     margin: 0;
+    gap: 10px;
+    box-sizing: border-box;
+    align-items: center;
+}
+
+.toolbox-row-split > * {
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.toolbox-row-full > * {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.toolbox-row-split .report-button,
+.toolbox-row-split .toolbox-input,
+.toolbox-row-split .toolbox-selector  {
+    width: 100%;
+    min-width: 0;
 }
 
 .toolbox-toggle-button {
@@ -119,17 +113,60 @@
     display: none;
 }
 
-select.toolbox-input {
-    height: 100%;
 
+/* buttons and selectors in the toolbox */
+.report-button,
+.toolbox-selector {
+    padding: 6px 12px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    cursor: pointer;
+    outline: none;
+    transition: all 0.3s ease;
+    font-size: 13px;
+    font-family: Arial, sans-serif;
+    background-color: #ffffff;
+    font-weight: normal;
+    height: 28px;
+    line-height: 1;
+    white-space: nowrap;
+    box-sizing: border-box;
+    min-width: 0;
+}
+
+.report-button:hover {
+    background-color: #e6e6e6;
+    box-shadow: 0 0 5px rgba(102, 175, 233, 0.6);
+}
+
+.report-button-active {
+    background: linear-gradient(to right, #cccccc, #d4d4d4);
+}
+
+.toolbox-selector {
     background-color: white;
-    background-image: url("data:image/svg+xml,%3Csvg fill='none' stroke='gray' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7' /%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg fill='black' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 0.75rem center;
     background-size: 1rem 1rem;
+    padding-right: 2rem;
+}
 
+
+.toolbox-input {
+    flex: 1;
+    padding: 0.4rem 0.6rem;
     border-radius: 1rem;
-    border: 1px solid #ccc;
-    padding: 0.5rem 0.75rem;
-    font-size: 14px;
+    font-size: 12px;
+    border: 1px solid #d1d5db;
+    background-color: white;
+    white-space: nowrap;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.toolbox-input[type="number"]::-webkit-inner-spin-button,
+.toolbox-input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
 }

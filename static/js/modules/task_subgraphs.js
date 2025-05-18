@@ -21,8 +21,8 @@ export class TaskSubgraphsModule extends BaseModule {
         this._current_subgraph_id = subgraph_id;
     }
 
-    reset() {
-        super.reset();
+    resetSVG() {
+        super.resetSVG();
 
         this.data = null;
         this._current_subgraph_id = 1;

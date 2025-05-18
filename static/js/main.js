@@ -24,14 +24,19 @@ async function fetchAllModulesData(folder) {
         const tasks = moduleConfigs.map(({ id }) => {
             const module = moduleObjects[id];
             return (async () => {
-                module.reset();
+                /* fetch data */
                 await module.fetchData(folder);
+                
+                /* legend should be initialized before plot */
+                module.clearLegend();
                 module.initLegend();
-                module.initToolbox();
-                module.initResetButton();
-                module.initDownloadButton();
-                module.initResizeHandler();
+                
+                /* plot */
                 module.plot();
+
+                /* avoid multiple toolbox initialization */
+                module.clearToolbox();
+                module.initToolbox();
             })();
         });
 

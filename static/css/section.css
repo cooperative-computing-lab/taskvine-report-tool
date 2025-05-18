@@ -27,12 +27,6 @@
     line-height: 6rem;
 }
 
-.section-buttons {
-    display: flex;
-    gap: 8px;
-    margin-left: 50px;
-}
-
 .section-content {
     display: flex;
     flex-direction: column;
@@ -84,7 +78,7 @@
 }
 
 .toolbox-container {
-    width: 4%;
+    width: 30px;
     height: 100%;
     position: relative;
     display: flex;

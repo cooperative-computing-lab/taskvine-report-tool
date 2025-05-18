@@ -35,9 +35,10 @@ def setup_request_logging(app, runtime_state):
     def log_request_info():
         runtime_state.template_lock.renew()
         request_folder = request.args.get('folder')
-        runtime_state.ensure_runtime_template(request_folder)
         runtime_state.log_request(request)
         request._start_time = time.time()
+        
+        runtime_state.ensure_runtime_template(request_folder)
 
     @app.after_request
     def log_response_info(response):

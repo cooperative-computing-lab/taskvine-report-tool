@@ -1,4 +1,5 @@
-import { Toolbox, createToolbox } from './toolbox.js';
+import { Toolbox } from './toolbox.js';
+import { jsPDF } from 'https://cdn.skypack.dev/jspdf';
 
 
 export class BaseModule {
@@ -10,11 +11,9 @@ export class BaseModule {
         this.svgContainer = null;
         this.svgElement = null;
         this.svgNode = null;
-        this.buttonsContainer = null;
         this.legendContainer = null;
-        this.resetButton = null;
-        this.downloadButton = null;
 
+        this.toolbox = null;
         this.toolboxContainer = null;
         
         this.tooltip = null;
@@ -72,10 +71,6 @@ export class BaseModule {
         section.innerHTML = `
         <div class="section-header" id="${this.id}-header">
             <h2 class="section-title">${this.title}</h2>
-            <div class="section-buttons" id="${this.id}-buttons">
-                <button id="${this.id}-reset-button" class="report-button">Reset</button>
-                <button id="${this.id}-download-button" class="report-button">Download</button>
-            </div>
         </div>
       
         <div class="section-content">
@@ -112,24 +107,9 @@ export class BaseModule {
             console.error(`SVG node not found for ${this.id}`);
             return;
         }
-        this.buttonsContainer = document.getElementById(`${this.id}-buttons`);
-        if (!this.buttonsContainer) {
-            console.error(`Buttons container not found for ${this.id}`);
-            return;
-        }
         this.legendContainer = d3.select(document.getElementById(`${this.id}-legend`));
         if (!this.legendContainer.node()) {
             console.error(`Legend container not found for ${this.id}`);
-            return;
-        }
-        this.resetButton = document.getElementById(`${this.id}-reset-button`);
-        if (!this.resetButton) {
-            console.error(`Reset button not found for ${this.id}`);
-            return;
-        }
-        this.downloadButton = document.getElementById(`${this.id}-download-button`);
-        if (!this.downloadButton) {
-            console.error(`Download button not found for ${this.id}`);
             return;
         }
         this.toolboxContainer = document.getElementById(`${this.id}-toolbox-container`);
@@ -137,15 +117,57 @@ export class BaseModule {
             console.error(`Toolbox container not found for ${this.id}`);
             return;
         }
+        this.toolbox = new Toolbox({ id: `${this.id}-toolbox` });
     }
 
-    initToolbox() {}
+    createToolboxItemDownloadSVG() {
+        return this.toolbox.createButtonItem('download-svg', 'Download SVG', () => this.downloadSVG());
+    }
+
+    createToolboxItemReset() {
+        return this.toolbox.createButtonItem('reset', 'Reset', () => this.resetSVG());
+    }
+
+    createToolboxItemExport() {
+        return this.toolbox.createSelectorItem(
+            'export',
+            'Export',
+            [
+                { value: 'svg', label: 'SVG' },
+                { value: 'png', label: 'PNG' },
+                { value: 'pdf', label: 'PDF' }
+            ],
+            (id, value) => {
+                if (value === 'svg') {
+                    this.downloadSVG();
+                } else if (value === 'png') {
+                    this.downloadPNG();
+                } else if (value === 'pdf') {
+                    this.downloadPDF();
+                }
+            }
+        );
+    }    
+
+    setToolboxItems(items) {
+        this.toolbox.setItems(items);
+        this.toolbox.mount(this.toolboxContainer);
+    }
+
+    initToolbox() {
+        const items = [
+            this.createToolboxItemReset(),
+            this.createToolboxItemExport(),
+        ];
+
+        this.setToolboxItems(items);
+    }
 
     clearSVG() {
         while (this.svgNode.firstChild) {
             this.svgNode.removeChild(this.svgNode.firstChild);
         }
-    
+
         this.svgNode.removeAttribute('width');
         this.svgNode.removeAttribute('height');
     
@@ -154,10 +176,19 @@ export class BaseModule {
 
         this.svg = null;
     }
+
+    clearToolbox() {
+        if (this.toolbox) {
+            this.toolbox.destroy();
+            this.toolbox = new Toolbox({ id: `${this.id}-toolbox` });
+        }
+    
+        if (this.toolboxContainer) {
+            this.toolboxContainer.innerHTML = '';
+        }
+    }
     
     async fetchData(folder) {
-        this.clearSVG();
-
         const response = await fetch(
             `${this.api_url}?` +
             `folder=${folder}`
@@ -438,8 +469,6 @@ export class BaseModule {
 
     /* plot all axes */
     plotAxes() {
-        this.clearSVG();
-
         /* create the scales */
         this.createScales();
 
@@ -584,7 +613,8 @@ export class BaseModule {
     }
     
     /* calculate the margin for each axis */
-    calculateAxesMargin() {        
+    calculateAxesMargin() {  
+        this.clearSVG();      
         
         const margin = { top: 0, right: 0, bottom: 0, left: 0 };
         const marginProbeGroup = this.svgElement.append('g').attr('class', 'margin-probe');
@@ -643,6 +673,87 @@ export class BaseModule {
         return margin;
     }
 
+    downloadPNG(filename = null) {
+        if (!this.svgNode) {
+            console.error('SVG node not found');
+            return;
+        }
+    
+        if (!filename) {
+            filename = this.id.replace(/-/g, '_') + '.png';
+        }
+    
+        const clonedSvg = this.svgNode.cloneNode(true);
+        const applyInlineStyles = (element) => {
+            const style = element.getAttribute('style');
+            if (style) {
+                style.split(';').forEach((prop) => {
+                    const [key, val] = prop.split(':');
+                    if (key && val) {
+                        element.setAttribute(key.trim(), val.trim());
+                    }
+                });
+                element.removeAttribute('style');
+            }
+            Array.from(element.children).forEach(applyInlineStyles);
+        };
+        applyInlineStyles(clonedSvg);
+    
+        const bbox = this.svgNode.getBoundingClientRect();
+        const width = Math.ceil(bbox.width);
+        const height = Math.ceil(bbox.height);
+        const dpr = window.devicePixelRatio || 2;
+    
+        clonedSvg.setAttribute('width', width);
+        clonedSvg.setAttribute('height', height);
+        clonedSvg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    
+        const svgString = new XMLSerializer().serializeToString(clonedSvg);
+        const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+        const svgUrl = URL.createObjectURL(svgBlob);
+    
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            canvas.style.width = `${width}px`;
+            canvas.style.height = `${height}px`;
+    
+            const ctx = canvas.getContext('2d');
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.drawImage(img, 0, 0);
+    
+            URL.revokeObjectURL(svgUrl);
+    
+            const pngUrl = canvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.href = pngUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        };
+        img.onerror = (e) => {
+            console.error('Error loading SVG image', e);
+            URL.revokeObjectURL(svgUrl);
+        };
+    
+        img.src = svgUrl;
+    }
+    
+    downloadPDF() {
+        const doc = new jsPDF({
+            orientation: 'landscape',
+            unit: 'pt',
+            format: [this.svgNode.clientWidth, this.svgNode.clientHeight],
+        });
+    
+        doc.svg(this.svgNode).then(() => {
+            doc.save(`${this.id.replace(/-/g, '_')}.pdf`);
+        });
+    }    
+
     downloadSVG(filename = null) {
         if (!this.svgElement) {
             console.error('SVG element not found');
@@ -695,49 +806,6 @@ export class BaseModule {
         window.addEventListener('resize', this._boundResize);
     }
 
-    resetLegend() {
-        if (this.legendContainer.node()) {
-            /* handle both createLegendRow and createLegendGroup created legends */
-            const checkboxes = this.legendContainer.selectAll('input[type="checkbox"]');
-            checkboxes.each(function() {
-                this.checked = true;
-                /* add checked class to parent legend-item for createLegendGroup */
-                const legendItem = this.closest('.legend-item');
-                if (legendItem) {
-                    legendItem.classList.add('checked');
-                }
-                /* trigger change event */
-                this.dispatchEvent(new Event('change', { bubbles: true }));
-            });
-        }
-    }
-
-    initResetButton() {
-        if (this._boundPlot) {
-            this.resetButton.removeEventListener('click', this._boundPlot);
-        }
-    
-        this._boundPlot = () => {
-            this.resetLegend();
-            this.plot();
-        }
-            
-        this.resetButton.addEventListener('click', this._boundPlot);
-    }
-
-    initDownloadButton() {
-        if (this._boundDownload) {
-            this.downloadButton.removeEventListener('click', this._boundDownload);
-        }
-
-        this._boundDownload = () => this.downloadSVG();
-        this.downloadButton.addEventListener('click', this._boundDownload);
-    }
-
-    toolboxDownloadSVGHandler() {
-        this.downloadSVG();
-    }
-
     initSVG() {
         if (!this.data) {
             return;
@@ -750,6 +818,8 @@ export class BaseModule {
         this.initZoomTrackingAfterRender();
 
         this.setupZoomAndScroll();
+
+        this.initResizeHandler();
     }
 
     initLegend() {}
@@ -800,12 +870,19 @@ export class BaseModule {
 
     _queryAllLegendCheckboxes() {
         return this.legendContainer.selectAll(`input[name="${this.legendCheckboxName}"]`)
-
     }
 
-    reset() {
-        this.clearSVG();
-        this.legendContainer.html('');
+    clearLegend() {
+        if (this.legendContainer && this.legendContainer.node()) {
+            this.legendContainer.html('');
+        }
+        this.legendCheckboxName = null;
+    }
+
+    resetSVG() {
+        this.clearLegend();
+        this.initLegend();
+        this.plot();
     }
 
     createLegendRow(items, options = {}) {

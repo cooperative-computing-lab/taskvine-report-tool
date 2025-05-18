@@ -50,33 +50,6 @@ svg {
     visibility: hidden;
 }
 
-/* Button */
-.report-button {
-    padding: 6px 12px;
-    margin-right: 8px;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    cursor: pointer;
-    outline: none;
-    transition: all 0.3s ease;
-    font-size: 13px;
-    font-family: Arial, sans-serif;
-    background-color: #ffffff;
-    font-weight: normal;
-    height: 28px;
-    line-height: 1;
-    white-space: nowrap;
-    min-width: fit-content;
-    width: auto;
-}
-.report-button:hover {
-    background-color: #e6e6e6;
-    box-shadow: 0 0 5px rgba(102, 175, 233, 0.6);
-}
-.report-button-active {
-    background: linear-gradient(to right, #cccccc, #d4d4d4);
-}
-
 
 /* Footnote */
 .footnote {

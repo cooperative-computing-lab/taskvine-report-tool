@@ -98,7 +98,16 @@ export class Toolbox {
         this.toggle = null;
     }
 
-    renderPanel() {
+    unbindGlobalListeners() {
+        if (this._boundDocClick) {
+            document.removeEventListener("click", this._boundDocClick);
+        }
+        if (this._boundEsc) {
+            document.removeEventListener("keydown", this._boundEsc);
+        }
+    }
+
+    _renderPanel() {
         this.panel = document.createElement("div");
         this.panel.className = "toolbox-panel hide";
         this.panel.id = this.id;
@@ -113,24 +122,35 @@ export class Toolbox {
         this.panel.appendChild(group);
     }
 
-    renderToggle() {
+    _renderToggle() {
         this.toggle = document.createElement("button");
         this.toggle.textContent = this.title;
         this.toggle.className = "toolbox-toggle-button";
+    
         this.toggle.addEventListener("click", (e) => {
             e.stopPropagation();
             this._showPanel();
         });
-
-        document.addEventListener("click", (e) => {
+    
+        this._boundDocClick = (e) => {
             if (!this.panel.contains(e.target) && !this.toggle.contains(e.target)) {
                 this._hidePanel();
             }
-        });
-
+        };
+        document.addEventListener("click", this._boundDocClick);
+    
         this._setupKeyboardShortcuts();
     }
-
+    
+    _setupKeyboardShortcuts() {
+        this._boundEsc = (e) => {
+            if (e.key === "Escape" && this.panel && this.panel.classList.contains("show")) {
+                this._hidePanel();
+            }
+        };
+        document.addEventListener("keydown", this._boundEsc);
+    }
+    
     _showPanel() {
         this.panel.classList.add("show");
         this.panel.classList.remove("hide");
@@ -145,14 +165,36 @@ export class Toolbox {
         });
     }
 
-    _setupKeyboardShortcuts() {
-        document.addEventListener("keydown", (e) => {
-            if (e.key === "Escape") {
-                if (this.panel && this.panel.classList.contains("show")) {
-                    this._hidePanel();
-                }
-            }
-        });
+    createButtonItem(id, label, handler) {
+        return {
+            id,
+            buttonLabel: label,
+            type: "button",
+            handler,
+        };
+    }
+
+    createInputItem(id, label, handler) {
+        return {
+            id,
+            buttonLabel: label,
+            type: "input",
+            handler,
+        };
+    }
+
+    createSelectorItem(id, label, options, handler) {
+        return {
+            id,
+            buttonLabel: label,
+            type: "selector",
+            selectorOptions: options,
+            handler,
+        };
+    } 
+
+    setItems(items) {
+        this.items = items.map((item) => new ToolboxItem(item));
     }
 
     mount(container) {
@@ -162,56 +204,26 @@ export class Toolbox {
         wrapper.style.width = "100%";
         wrapper.style.height = "100%";
 
-        this.renderPanel();
-        this.renderToggle();
+        this._renderPanel();
+        this._renderToggle();
 
         wrapper.appendChild(this.toggle);
         wrapper.appendChild(this.panel);
         container.appendChild(wrapper);
     }
-}
 
-
-
-export function createToolbox(id) {
-    const config = {
-        id: `${id}-toolbox`,
-        title: 'Toolbox',
-        items: [
-            {
-                buttonLabel: 'Update X', 
-                id: 'updateX',
-                type: 'input',
-                handler: (id, value) => console.log(`${id} => ${value}`)
-            },
-            { 
-                buttonLabel: 'Refresh', 
-                id: 'refresh', 
-                type: 'button',
-                handler: (id) => console.log(`${id} clicked`)
-            },
-            {
-                buttonLabel: 'Extract', 
-                id: 'extract', 
-                type: 'selector',
-                handler: (id, value) => console.log(`${id} => ${value}`),
-                selectorOptions: [
-                    { 
-                        value: 'mode1', 
-                        label: 'Mode 1',
-                    },
-                    { 
-                        value: 'mode2', 
-                        label: 'Mode 2',
-                    },
-                    { 
-                        value: 'mode3', 
-                        label: 'Mode 3',
-                    }
-                ]
-            }
-        ]
-    }
-
-    return new Toolbox(config);
+    destroy() {
+        this.unbindGlobalListeners();
+    
+        if (this.panel?.parentNode) {
+            this.panel.remove();
+            this.panel = null;
+        }
+        if (this.toggle?.parentNode) {
+            this.toggle.remove();
+            this.toggle = null;
+        }
+    
+        this.items = [];
+    }    
 }
