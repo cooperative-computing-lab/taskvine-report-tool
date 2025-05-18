@@ -170,15 +170,16 @@ class RuntimeState:
     
     def ensure_runtime_template(self, runtime_template):
         if not runtime_template:
-            return
+            return False
 
         if self.template_lock.is_locked():
-            return
+            return False
 
         if runtime_template == os.path.basename(self.runtime_template):
-            return
+            return True
 
         self.reload_template(runtime_template)
+        return True
 
     def reload_template(self, runtime_template):
         # init template and data parser
