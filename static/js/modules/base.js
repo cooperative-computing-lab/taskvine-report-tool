@@ -1,5 +1,6 @@
 import { Toolbox } from './toolbox.js';
 import { jsPDF } from 'https://cdn.skypack.dev/jspdf';
+import { svg2pdf } from 'https://cdn.skypack.dev/svg2pdf.js';
 
 
 export class BaseModule {
@@ -134,8 +135,10 @@ export class BaseModule {
             'Export',
             [
                 { value: 'svg', label: 'SVG' },
+                { value: 'pdf', label: 'PDF' },
                 { value: 'png', label: 'PNG' },
-                { value: 'pdf', label: 'PDF' }
+                { value: 'jpg', label: 'JPG' },
+                { value: 'jpeg', label: 'JPEG' }
             ],
             (id, value) => {
                 if (value === 'svg') {
@@ -144,6 +147,10 @@ export class BaseModule {
                     this.downloadPNG();
                 } else if (value === 'pdf') {
                     this.downloadPDF();
+                } else if (value === 'jpg') {
+                    this.downloadJPG();
+                } else if (value === 'jpeg') {
+                    this.downloadJPEG();
                 }
             }
         );
@@ -156,8 +163,8 @@ export class BaseModule {
 
     initToolbox() {
         const items = [
-            this.createToolboxItemReset(),
             this.createToolboxItemExport(),
+            this.createToolboxItemReset(),
         ];
 
         this.setToolboxItems(items);
@@ -673,29 +680,40 @@ export class BaseModule {
         return margin;
     }
 
-    downloadPNG(filename = null) {
+    _rasterizeAndDownload(type = 'png', filename = null, quality = 0.95) {
         if (!this.svgNode) {
             console.error('SVG node not found');
             return;
         }
     
+        const mimeMap = {
+            png: 'image/png',
+            jpg: 'image/jpeg',
+            jpeg: 'image/jpeg'
+        };
+    
+        const ext = type.toLowerCase();
+        const mime = mimeMap[ext];
+        if (!mime) {
+            console.error(`Unsupported image type: ${type}`);
+            return;
+        }
+    
         if (!filename) {
-            filename = this.id.replace(/-/g, '_') + '.png';
+            filename = this.id.replace(/-/g, '_') + '.' + ext;
         }
     
         const clonedSvg = this.svgNode.cloneNode(true);
-        const applyInlineStyles = (element) => {
-            const style = element.getAttribute('style');
+        const applyInlineStyles = (el) => {
+            const style = el.getAttribute('style');
             if (style) {
-                style.split(';').forEach((prop) => {
-                    const [key, val] = prop.split(':');
-                    if (key && val) {
-                        element.setAttribute(key.trim(), val.trim());
-                    }
+                style.split(';').forEach(prop => {
+                    const [k, v] = prop.split(':');
+                    if (k && v) el.setAttribute(k.trim(), v.trim());
                 });
-                element.removeAttribute('style');
+                el.removeAttribute('style');
             }
-            Array.from(element.children).forEach(applyInlineStyles);
+            Array.from(el.children).forEach(applyInlineStyles);
         };
         applyInlineStyles(clonedSvg);
     
@@ -722,13 +740,17 @@ export class BaseModule {
     
             const ctx = canvas.getContext('2d');
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.drawImage(img, 0, 0);
-    
             URL.revokeObjectURL(svgUrl);
     
-            const pngUrl = canvas.toDataURL('image/png');
+            const dataUrl = mime === 'image/jpeg'
+                ? canvas.toDataURL(mime, quality)
+                : canvas.toDataURL(mime);
+    
             const link = document.createElement('a');
-            link.href = pngUrl;
+            link.href = dataUrl;
             link.download = filename;
             document.body.appendChild(link);
             link.click();
@@ -738,21 +760,54 @@ export class BaseModule {
             console.error('Error loading SVG image', e);
             URL.revokeObjectURL(svgUrl);
         };
-    
         img.src = svgUrl;
     }
     
+    downloadPNG(filename = null) {
+        this._rasterizeAndDownload('png', filename);
+    }
+    
+    downloadJPG(filename = null, quality = 0.95) {
+        this._rasterizeAndDownload('jpg', filename, quality);
+    }
+    
+    downloadJPEG(filename = null, quality = 1.0) {
+        this._rasterizeAndDownload('jpeg', filename, quality);
+    }    
+    
     downloadPDF() {
+        const svgElement = this.svgNode;
+    
+        const width = svgElement.clientWidth;
+        const height = svgElement.clientHeight;
+        svgElement.setAttribute('width', width);
+        svgElement.setAttribute('height', height);
+        svgElement.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    
+        function applyInlineStyles(el) {
+            const style = el.getAttribute('style');
+            if (style) {
+                style.split(';').forEach(prop => {
+                    const [k, v] = prop.split(':');
+                    if (k && v) el.setAttribute(k.trim(), v.trim());
+                });
+                el.removeAttribute('style');
+            }
+            Array.from(el.children).forEach(applyInlineStyles);
+        }
+        applyInlineStyles(svgElement);
+    
         const doc = new jsPDF({
             orientation: 'landscape',
             unit: 'pt',
-            format: [this.svgNode.clientWidth, this.svgNode.clientHeight],
+            format: [width, height],
         });
     
-        doc.svg(this.svgNode).then(() => {
+        svg2pdf(svgElement, doc, { x: 0, y: 0, width, height }).then(() => {
             doc.save(`${this.id.replace(/-/g, '_')}.pdf`);
         });
-    }    
+    }
+    
 
     downloadSVG(filename = null) {
         if (!this.svgElement) {
