@@ -964,16 +964,14 @@ class DataParser:
             raise ValueError(
                 "The debug file has not been successfully parsed yet")
         time_end = time.time()
-        print(
-            f"Restored workers, files, tasks, manager from checkpoint in {round(time_end - time_start, 4)} seconds")
+        print(f"Restored workers, files, tasks, manager from checkpoint in {round(time_end - time_start, 4)} seconds")
 
     def checkpoint_subgraphs(self):
         time_start = time.time()
         with open(os.path.join(self.pkl_files_dir, 'subgraphs.pkl'), 'wb') as f:
             cloudpickle.dump(self.subgraphs, f)
         time_end = time.time()
-        print(
-            f"Checkpointing subgraphs.pkl took {round(time_end - time_start, 4)} seconds")
+        print(f"Checkpointing subgraphs.pkl took {round(time_end - time_start, 4)} seconds")
 
     def restore_from_checkpoint(self):
         try:
@@ -981,35 +979,29 @@ class DataParser:
             with open(os.path.join(self.pkl_files_dir, 'workers.pkl'), 'rb') as f:
                 self.workers = cloudpickle.load(f)
             time_end = time.time()
-            print(
-                f"Restoring workers.pkl took {round(time_end - time_start, 4)} seconds")
+            print(f"Restoring workers.pkl took {round(time_end - time_start, 4)} seconds")
             time_start = time.time()
             with open(os.path.join(self.pkl_files_dir, 'files.pkl'), 'rb') as f:
                 self.files = cloudpickle.load(f)
             time_end = time.time()
-            print(
-                f"Restoring files.pkl took {round(time_end - time_start, 4)} seconds")
+            print(f"Restoring files.pkl took {round(time_end - time_start, 4)} seconds")
             time_start = time.time()
             with open(os.path.join(self.pkl_files_dir, 'tasks.pkl'), 'rb') as f:
                 self.tasks = cloudpickle.load(f)
             time_end = time.time()
-            print(
-                f"Restoring tasks.pkl took {round(time_end - time_start, 4)} seconds")
+            print(f"Restoring tasks.pkl took {round(time_end - time_start, 4)} seconds")
             time_start = time.time()
             with open(os.path.join(self.pkl_files_dir, 'manager.pkl'), 'rb') as f:
                 self.manager = cloudpickle.load(f)
             time_end = time.time()
-            print(
-                f"Restoring manager.pkl took {round(time_end - time_start, 4)} seconds")
+            print(f"Restoring manager.pkl took {round(time_end - time_start, 4)} seconds")
         except Exception:
-            raise ValueError(
-                "The debug file has not been successfully parsed yet")
+            raise ValueError("The debug file has not been successfully parsed yet")
         try:
             time_start = time.time()
             with open(os.path.join(self.pkl_files_dir, 'subgraphs.pkl'), 'rb') as f:
                 self.subgraphs = cloudpickle.load(f)
             time_end = time.time()
-            print(
-                f"Restoring subgraphs.pkl took {round(time_end - time_start, 4)} seconds")
+            print(f"Restoring subgraphs.pkl took {round(time_end - time_start, 4)} seconds")
         except Exception:
             raise ValueError("The subgraphs have not been generated yet")
