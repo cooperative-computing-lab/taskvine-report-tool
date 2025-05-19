@@ -222,3 +222,6 @@ def select_best_try_per_task(task_stats):
         filtered_stats.append({k: v for k, v in best.items() if k != 'task_try_id'})
 
     return filtered_stats
+
+def get_worker_ip_port_from_key(key):
+    return ':'.join(key.split(':')[:-1])

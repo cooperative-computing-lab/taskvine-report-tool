@@ -6,9 +6,10 @@ from .utils import (
     file_list_formatter,
 )
 
-import traceback
+import pandas as pd
 from collections import defaultdict
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, make_response
+from io import StringIO
 from numpy import linspace
 
 task_execution_details_bp = Blueprint(
@@ -226,4 +227,79 @@ def get_task_execution_details():
 
     except Exception as e:
         runtime_state.log_error(f"Error in get_task_execution_details: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@task_execution_details_bp.route('/task-execution-details/export-csv')
+@check_and_reload_data()
+def export_task_execution_details_csv():
+    try:
+        rows = []
+
+        for task in runtime_state.tasks.values():
+            if not task.core_id:
+                continue
+
+            if task.task_status == 0:
+                if not task.when_retrieved or task.is_library_task:
+                    continue
+
+                rows.append({
+                    'type': 'Task Committing',
+                    'start_time(s)': round(task.when_running - runtime_state.MIN_TIME, 2),
+                    'end_time(s)': round(task.time_worker_start - runtime_state.MIN_TIME, 2),
+                    'task_id': task.task_id,
+                    'task_try_id': task.task_try_id
+                })
+                rows.append({
+                    'type': 'Task Executing',
+                    'start_time(s)': round(task.time_worker_start - runtime_state.MIN_TIME, 2),
+                    'end_time(s)': round(task.time_worker_end - runtime_state.MIN_TIME, 2),
+                    'task_id': task.task_id,
+                    'task_try_id': task.task_try_id
+                })
+                rows.append({
+                    'type': 'Task Retrieving',
+                    'start_time(s)': round(task.time_worker_end - runtime_state.MIN_TIME, 2),
+                    'end_time(s)': round(task.when_retrieved - runtime_state.MIN_TIME, 2),
+                    'task_id': task.task_id,
+                    'task_try_id': task.task_try_id
+                })
+            else:
+                rows.append({
+                    'type': 'Task Failed',
+                    'start_time(s)': round(task.when_running - runtime_state.MIN_TIME, 2),
+                    'end_time(s)': round(task.when_failure_happens - runtime_state.MIN_TIME, 2),
+                    'task_id': task.task_id,
+                    'task_try_id': task.task_try_id
+                })
+
+        for w in runtime_state.workers.values():
+            if not w.hash:
+                continue
+
+            if len(w.time_disconnected) != len(w.time_connected):
+                w.time_disconnected = [runtime_state.MAX_TIME] * (len(w.time_connected) - len(w.time_disconnected))
+
+            for idx, (t0, t1) in enumerate(zip(w.time_connected, w.time_disconnected)):
+                rows.append({
+                    'type': 'Worker',
+                    'start_time(s)': round(t0 - runtime_state.MIN_TIME, 2),
+                    'end_time(s)': round(t1 - runtime_state.MIN_TIME, 2),
+                    'worker_ip': w.ip,
+                    'worker_port': w.port,
+                    'worker_connect_id': idx
+                })
+
+        df = pd.DataFrame(rows)
+        buffer = StringIO()
+        df.to_csv(buffer, index=False)
+        buffer.seek(0)
+
+        response = make_response(buffer.getvalue())
+        response.headers["Content-Disposition"] = "attachment; filename=task_execution_details.csv"
+        response.headers["Content-Type"] = "text/csv"
+        return response
+
+    except Exception as e:
+        runtime_state.log_error(f"Error in export_task_execution_details_csv: {e}")
         return jsonify({'error': str(e)}), 500
