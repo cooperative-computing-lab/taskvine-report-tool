@@ -9,20 +9,16 @@ from .utils import (
 )
 
 import pandas as pd
-import numpy as np
-from collections import defaultdict
 from flask import Blueprint, jsonify, request, make_response
 from io import StringIO
+import numpy as np
+from collections import defaultdict
 
 worker_storage_consumption_bp = Blueprint(
     'worker_storage_consumption', __name__, url_prefix='/api'
 )
 
 def get_worker_storage_points(show_percentage=False):
-    from collections import defaultdict
-    import numpy as np
-    import pandas as pd
-
     base_time = runtime_state.MIN_TIME
     files = runtime_state.files
     workers = runtime_state.workers
@@ -36,8 +32,8 @@ def get_worker_storage_points(show_percentage=False):
             dest = transfer.destination
             if not isinstance(dest, tuple) or transfer.time_stage_in is None:
                 continue
-            time_in = float(transfer.time_start_stage_in - base_time)
-            time_out = float(transfer.time_stage_out - base_time)
+            time_in = round(float(transfer.time_start_stage_in - base_time), 2)
+            time_out = round(float(transfer.time_stage_out - base_time), 2)
             size = max(0, file.size_mb)
             all_worker_storage[dest].append((time_in, size))
             all_worker_storage[dest].append((time_out, -size))
@@ -58,15 +54,19 @@ def get_worker_storage_points(show_percentage=False):
             continue
 
         points = df[['time', 'storage']].values.tolist()
-        for t0, t1 in zip(workers[worker].time_connected, workers[worker].time_disconnected):
-            points.insert(0, [float(t0 - base_time), 0.0])
-            points.append([float(t1 - base_time), 0.0])
 
-        if not points or any(len(p) != 2 or np.isnan(p[0]) or np.isnan(p[1]) for p in points):
+        for t0, t1 in zip(workers[worker].time_connected, workers[worker].time_disconnected):
+            points.insert(0, [round(float(t0 - base_time), 2), 0.0])
+            points.append([round(float(t1 - base_time), 2), 0.0])
+
+        final_df = pd.DataFrame(points, columns=['time', 'storage']).sort_values('time')
+        final_df = final_df.drop_duplicates(subset='time', keep='last')
+
+        if final_df.empty or final_df['storage'].isna().all():
             continue
 
         worker_keys.append(worker)
-        raw_points_array.append(points)
+        raw_points_array.append(final_df[['time', 'storage']].values.tolist())
 
     return worker_keys, raw_points_array
 
