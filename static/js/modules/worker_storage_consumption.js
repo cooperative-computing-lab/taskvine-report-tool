@@ -29,7 +29,7 @@ export class WorkerStorageConsumptionModule extends BaseModule {
             }
         });
     }
-    
+
     plot() {
         if (!this.data) return;
         this.initSVG();

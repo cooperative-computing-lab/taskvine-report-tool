@@ -33,7 +33,7 @@ export class TaskExecutionDetailsModule extends BaseModule {
                 showLabel: true
             }))
         }));
-    
+   
         this.createLegendGroup(groups, {
             checkboxName: 'task-details',
             onToggle: (id, visible) => {
@@ -53,7 +53,7 @@ export class TaskExecutionDetailsModule extends BaseModule {
     }
 
     _isTaskTypeChecked(taskType) {
-        const checkbox = document.getElementById(`${taskType}-checkbox`);
+        const checkbox = document.getElementById(taskType);
         return checkbox && checkbox.checked;
     }
 
