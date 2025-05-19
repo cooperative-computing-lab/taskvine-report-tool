@@ -58,37 +58,77 @@ export class TaskExecutionDetailsModule extends BaseModule {
         timeStart = +timeStart;
         timeEnd = +timeEnd;
     
+        /** return if xmin is invalid */
+        const [xmin, xmax] = this.bottomDomain ?? [0, Infinity];
+        if (isNaN(xmin) || isNaN(xmax)) return;
+    
+        /** if timeEnd is before xmin, don't draw */
+        if (timeEnd < xmin) return;
+    
+        /** clip timeEnd to xmax if necessary */
+        if (timeEnd > xmax) {
+            timeEnd = xmax;
+        }
+    
+        /** if timeStart is after timeEnd, skip drawing (or set width to 0) */
+        if (timeStart >= timeEnd) return;
+    
         const isRecovery = task.is_recovery_task;
         const recoveryChecked = isRecovery && this._isTaskTypeChecked(recoveryName);
         const primaryChecked = this._isTaskTypeChecked(primaryName);
     
+        /** only draw if either recovery or primary task is checked */
         if (!recoveryChecked && !primaryChecked) return;
     
         const taskType = recoveryChecked ? recoveryName : primaryName;
         const fill = this._getLegendColor(taskType);
     
-        const x = this.bottomScale(timeStart);
+        const x = this.bottomScale(Math.max(timeStart, xmin));
         const y = this.leftScale(`${task.worker_id}-${task.core_id}`);
-        const width = this.bottomScale(timeEnd) - this.bottomScale(timeStart);
+
+        /** ensure width is non-negative and within valid range */
+        const width = Math.max(0, this.bottomScale(timeEnd) - this.bottomScale(Math.max(timeStart, xmin)));
         const height = this.getScaleBandWidth(this.leftScale);
         const innerHTML = getTaskInnerHTML(task);
-    
+   
+        
+
         this.plotRect(x, y, width, height, fill, 1, innerHTML);
     }
-
+    
     _plotWorker(worker) {
+        /** ensure valid time range */
+        const [xmin, xmax] = this.bottomDomain ?? [0, Infinity];
+        if (isNaN(xmin) || isNaN(xmax)) return;
+    
         for (let i = 0; i < worker["time_connected"].length; i++) {
+            const start = +worker["time_connected"][i];
+            let end = +worker["time_disconnected"][i];
+    
+            /** clip end to xmax */
+            if (end > xmax) {
+                end = xmax;
+            }
+    
+            /** if end is before xmin, skip drawing this worker */
+            if (end < xmin) continue;
+    
+            const x = this.bottomScale(Math.max(start, xmin));
+            const y = this.leftScale(worker.id + '-' + worker.cores);
+    
+            /** ensure width is non-negative */
+            const width = Math.max(0, this.bottomScale(end) - this.bottomScale(Math.max(start, xmin)));
             const height = Math.max(0, this.getScaleBandWidth(this.leftScale) * worker.cores +
                 (this.leftScale.step() - this.getScaleBandWidth(this.leftScale)) * (worker.cores - 1));
-            const x = this.bottomScale(worker["time_connected"][i]);
-            const y = this.leftScale(worker.id + '-' + worker.cores);
-            const width = Math.max(0, this.bottomScale(worker["time_disconnected"][i]) - this.bottomScale(worker["time_connected"][i]));
+    
             const fill = this._getLegendColor('workers');
             const opacity = 0.3;
             const innerHTML = getWorkerInnerHTML(worker);
+    
             this.plotRect(x, y, width, height, fill, opacity, innerHTML);
         }
-    }
+    }    
+
 
     async plot() {
         if (!this.data) return;

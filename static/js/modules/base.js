@@ -156,13 +156,126 @@ export class BaseModule {
         );
     }
 
+    setXLimits({ xmin = null, xmax = null }) {
+        if (!this.bottomScaleType || this.bottomScaleType !== 'linear') {
+            console.warn('setXLimits only applies to linear bottom scale');
+            return;
+        }
+    
+        if (!Array.isArray(this.bottomDomain) || this.bottomDomain.length !== 2) {
+            console.warn('Invalid bottom domain');
+            return;
+        }
+    
+        const [oldMin, oldMax] = this.bottomDomain;
+        const newMin = xmin !== null ? +xmin : oldMin;
+        const newMax = xmax !== null ? +xmax : oldMax;
+    
+        if (isNaN(newMin) || isNaN(newMax) || newMin < 0 || newMax <= newMin) {
+            console.warn(`Invalid new domain: [${newMin}, ${newMax}]`);
+            return;
+        }
+    
+        this.setBottomDomain([newMin, newMax]);
+    
+        const oldTicks = this.bottomTickValues;
+        const tickCount = oldTicks?.length || 5;
+    
+        const oldRange = oldMax - oldMin;
+        const newRange = newMax - newMin;
+        const scaleRatio = newRange / oldRange;
+    
+        const newTicks = oldTicks.map(v => {
+            if (v <= oldMin) return newMin;
+            if (v >= oldMax) return newMax;
+            const offset = v - oldMin;
+            return newMin + offset * scaleRatio;
+        });
+    
+        this.setBottomTickValues(newTicks);
+        this.plot();
+    }      
+
     createToolboxItemSetXMin() {
         return this.toolbox.createInputItem('x-min', 'Set X Min', (id, value) => {
             const parsed = parseFloat(value);
             if (!isNaN(parsed)) {
-                this.setXMin(parsed);
+                this.setXLimits({ xmin: parsed });
             } else {
                 console.warn('Invalid value for X Min');
+            }
+        });
+    }    
+
+    createToolboxItemSetXMax() {
+        return this.toolbox.createInputItem('x-max', 'Set X Max', (id, value) => {
+            const parsed = parseFloat(value);
+            if (!isNaN(parsed)) {
+                this.setXLimits({ xmax: parsed });
+            } else {
+                console.warn('Invalid value for X Max');
+            }
+        });
+    }
+
+    setYLimits({ ymin = null, ymax = null }) {
+        if (!this.leftScaleType || this.leftScaleType !== 'linear') {
+            console.warn('setYLimits only applies to linear left scale');
+            return;
+        }
+    
+        if (!Array.isArray(this.leftDomain) || this.leftDomain.length !== 2) {
+            console.warn('Invalid left domain');
+            return;
+        }
+    
+        const [oldMin, oldMax] = this.leftDomain;
+        const newMin = ymin !== null ? +ymin : oldMin;
+        const newMax = ymax !== null ? +ymax : oldMax;
+    
+        if (isNaN(newMin) || isNaN(newMax) || newMin < 0 || newMax <= newMin) {
+            console.warn(`Invalid new domain: [${newMin}, ${newMax}]`);
+            return;
+        }
+    
+        this.setLeftDomain([newMin, newMax]);
+    
+        const oldTicks = this.leftTickValues;
+        const tickCount = oldTicks?.length || 5;
+    
+        const oldRange = oldMax - oldMin;
+        const newRange = newMax - newMin;
+        const scaleRatio = newRange / oldRange;
+    
+        const newTicks = oldTicks.map(v => {
+            if (v <= oldMin) return newMin;
+            if (v >= oldMax) return newMax;
+            const offset = v - oldMin;
+            return newMin + offset * scaleRatio;
+        });
+    
+        this.setLeftTickValues(newTicks);
+        this.plot();
+    }    
+
+    createToolboxItemSetYMin() {
+        return this.toolbox.createInputItem('y-min', 'Set Y Min', (id, value) => {
+            const parsed = parseFloat(value);
+            if (!isNaN(parsed)) {
+                this.setYLimits({ ymin: parsed });
+            } else {
+                console.warn('Invalid value for Y Min');
+            }
+        });
+    }
+    
+    createToolboxItemSetYMax() {
+        return this.toolbox.createInputItem('y-max', 'Set Y Max', (id, value) => {
+            const parsed = parseFloat(value);
+            if (!isNaN(parsed)) {
+                this.setYLimits({ ymax: parsed });
+            } else {
+                console.warn('Invalid value for Y Max');
             }
         });
     }
@@ -176,6 +289,9 @@ export class BaseModule {
         const items = [
             this.createToolboxItemExport(),
             this.createToolboxItemSetXMin(),
+            this.createToolboxItemSetXMax(),
+            this.createToolboxItemSetYMin(),
+            this.createToolboxItemSetYMax(),
             this.createToolboxItemReset(),
         ];
 
@@ -220,29 +336,35 @@ export class BaseModule {
         }
 
         this.data = data;
+    }
 
-        /* set domains and tick values */
+    setDomainFromFetchedData() {
         if (this.bottomScaleType) {
-            this.setBottomDomain(data['x_domain']);
-            this.setBottomTickValues(data['x_tick_values']);
-            this.setBottomFormatter(eval(data['x_tick_formatter']));
+            this.setBottomDomain(this.data['x_domain']);
+            this.setBottomTickValues(this.data['x_tick_values']);
+            this.setBottomFormatter(eval(this.data['x_tick_formatter']));
         } else if (this.topScaleType) {
-            this.setTopDomain(data['x_domain']);
-            this.setTopTickValues(data['x_tick_values']);
-            this.setTopFormatter(eval(data['x_tick_formatter']));
+            this.setTopDomain(this.data['x_domain']);
+            this.setTopTickValues(this.data['x_tick_values']);
+            this.setTopFormatter(eval(this.data['x_tick_formatter']));
         } else {
-            console.error('Invalid scale type for fetchData');
+            /* some modules do not require setting domains */
+            return;
         }
+    }
+
+    setTickValuesFromFetchedData() {
         if (this.leftScaleType) {
-            this.setLeftDomain(data['y_domain']);
-            this.setLeftTickValues(data['y_tick_values']);
-            this.setLeftFormatter(eval(data['y_tick_formatter']));
+            this.setLeftDomain(this.data['y_domain']);
+            this.setLeftTickValues(this.data['y_tick_values']);
+            this.setLeftFormatter(eval(this.data['y_tick_formatter']));
         } else if (this.rightScaleType) {
-            this.setRightDomain(data['y_domain']);
-            this.setRightTickValues(data['y_tick_values']);
-            this.setRightFormatter(eval(data['y_tick_formatter']));
+            this.setRightDomain(this.data['y_domain']);
+            this.setRightTickValues(this.data['y_tick_values']);
+            this.setRightFormatter(eval(this.data['y_tick_formatter']));
         } else {
-            console.error('Invalid scale type for fetchData');
+            /* some modules do not require setting domains */
+            return;
         }
     }
 
@@ -421,8 +543,6 @@ export class BaseModule {
             return d3.scaleLinear();
         } else if (scaleType === 'band') {
             return d3.scaleBand();
-        } else if (scaleType === 'point') {
-            return d3.scalePoint();
         } else {
             /* silently reject */
             return null;
@@ -543,7 +663,18 @@ export class BaseModule {
     }
 
     plotPath(points, options = {}) {
-        points = points.filter(p => Array.isArray(p) && p.length >= 2 && !isNaN(p[0]) && !isNaN(p[1]) && p[0] >= 0 && p[1] >= 0);
+        const [xmin, xmax] = this.bottomDomain ?? [0, Infinity];
+        const [ymin, ymax] = this.leftDomain ?? [0, Infinity];
+
+        const filteredPoints = points.filter(p =>
+            Array.isArray(p) &&
+            p.length >= 2 &&
+            !isNaN(p[0]) &&
+            !isNaN(p[1]) &&
+            p[0] >= xmin && p[0] <= xmax &&
+            p[1] >= ymin && p[1] <= ymax
+        );
+        
         const {
             stroke = '#2077B4',
             strokeWidth = 1.5,
@@ -558,11 +689,15 @@ export class BaseModule {
         const line = d3.line()
             .x(d => this.bottomScale(d[0]))
             .y(d => this.leftScale(d[1]))
-            .defined(d => !isNaN(d[0]) && !isNaN(d[1]) && d[1] >= 0)
+            .defined(d => {
+                const x = d[0];
+                const y = d[1];
+                return x >= xmin && x <= xmax && y >= ymin && y <= ymax;
+            })
             .curve(d3.curveStepAfter);
 
         this.svg.append('path')
-            .datum(points)
+            .datum(filteredPoints)
             .attr('fill', 'none')
             .attr('stroke', stroke)
             .attr('stroke-width', strokeWidth)
@@ -607,6 +742,18 @@ export class BaseModule {
 
     plotRect(x, y, width, height, fill, opacity, tooltipInnerHTML) {
         const tooltip = document.getElementById('vine-tooltip');
+
+        const [xmin, xmax] = this.bottomDomain ?? [null, null];
+        const [ymin, ymax] = this.leftDomain ?? [null, null];
+
+        if (xmin === null || xmax === null || ymin === null || ymax === null) {
+            console.error('Domain values (xmin, xmax, ymin, ymax) not set, skipping rectangle plot');
+            return;
+        }
+        if (x < xmin) {
+            width = Math.max(0, width - (xmin - x));
+            x = xmin;
+        }
     
         this.svg.append('rect')
             .attr('x', x)
@@ -898,11 +1045,23 @@ export class BaseModule {
             tooltipFormatter = null,
             className = 'data-point'
         } = options;
-
+    
         const tooltip = document.getElementById('vine-tooltip');
+    
+        /** get xmin and xmax */
+        const [xmin, xmax] = this.bottomDomain ?? [null, null];
+        const [ymin, ymax] = this.leftDomain ?? [null, null];
+    
+        /** if xmin or xmax are not set, do not plot */
+        if (xmin === null || xmax === null || ymin === null || ymax === null) {
+            console.error('xmin or xmax not set, unable to plot data');
+            return;
+        }
 
+        const filteredPoints = points.filter(d => d[0] >= xmin && d[0] <= xmax && d[1] >= ymin && d[1] <= ymax);
+    
         this.svg.selectAll(`circle.${className}`)
-            .data(points)
+            .data(filteredPoints)
             .enter()
             .append('circle')
             .attr('class', className)
@@ -914,7 +1073,7 @@ export class BaseModule {
                 d3.select(event.currentTarget)
                     .attr('fill', this.highlightColor)
                     .attr('r', radius * 4);
-
+    
                 if (tooltipFormatter) {
                     tooltip.innerHTML = tooltipFormatter(d);
                     tooltip.style.visibility = 'visible';
@@ -930,11 +1089,11 @@ export class BaseModule {
                 d3.select(event.currentTarget)
                     .attr('fill', color)
                     .attr('r', radius);
-
+    
                 tooltip.style.visibility = 'hidden';
             });
-    }
-
+    }    
+    
     _queryAllLegendCheckboxes() {
         return this.legendContainer.selectAll(`input[name="${this.legendCheckboxName}"]`)
     }
@@ -947,6 +1106,9 @@ export class BaseModule {
     }
 
     resetSVG() {
+        this.setDomainFromFetchedData();
+        this.setTickValuesFromFetchedData();
+
         this.clearLegend();
         this.initLegend();
         this.plot();

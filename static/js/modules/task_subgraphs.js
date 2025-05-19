@@ -43,7 +43,7 @@ export class TaskSubgraphsModule extends BaseModule {
                 checkboxes.each(function () {
                     this.disabled = true;
                 });
-            
+
                 try {
                     await this.fetchData(this.folder, id);
                     this.plot();

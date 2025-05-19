@@ -26,6 +26,9 @@ async function fetchAllModulesData(folder) {
             return (async () => {
                 /* fetch data */
                 await module.fetchData(folder);
+                /* set domain and tick values from fetched data */
+                module.setDomainFromFetchedData();
+                module.setTickValuesFromFetchedData();
                 
                 /* legend should be initialized before plot */
                 module.clearLegend();
