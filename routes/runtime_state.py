@@ -6,7 +6,8 @@ from .logger import Logger
 from .utils import (
     build_response_info_string,
     build_request_info_string,
-    get_files_fingerprint
+    get_files_fingerprint,
+    select_best_try_per_task
 )
 import json
 import time
@@ -113,6 +114,7 @@ class RuntimeState:
 
         self.MIN_TIME = None
         self.MAX_TIME = None
+        self.task_stats = None
 
         self.tick_size = 12
 
@@ -180,6 +182,59 @@ class RuntimeState:
 
         self.reload_template(runtime_template)
         return True
+    
+    def get_task_stats(self):
+        # for calculating task dependents and dependencies
+        output_file_to_task = {}
+        for task in self.tasks.values():
+            for f in task.output_files:
+                output_file_to_task[f] = task.task_id
+        dependency_map = {task.task_id: set() for task in self.tasks.values()}
+        dependent_map = {task.task_id: set() for task in self.tasks.values()}
+
+        for task in self.tasks.values():
+            task_id = task.task_id
+            for f in task.input_files:
+                parent_id = output_file_to_task.get(f)
+                if parent_id and parent_id != task_id:
+                    dependency_map[task_id].add(parent_id)
+                    dependent_map[parent_id].add(task_id)
+
+        task_stats = []
+        for task in self.tasks.values():
+            task_id = task.task_id
+            task_try_id = task.task_try_id
+
+            # calculate task response time
+            if task.when_running:
+                task_response_time = max(round(task.when_running - task.when_ready, 2), 0.01)
+            else:
+                task_response_time = None
+
+            # calculate task execution time
+            if task.task_status == 0:
+                task_execution_time = max(round(task.time_worker_end - task.time_worker_start, 2), 0.01)
+            else:
+                task_execution_time = None
+
+            # calculate task waiting retrieval time
+            if task.when_retrieved and task.when_waiting_retrieval:
+                task_waiting_retrieval_time = max(round(task.when_retrieved - task.when_waiting_retrieval, 2), 0.01)
+            else:
+                task_waiting_retrieval_time = None
+
+            row = {
+                'task_id': task_id,
+                'task_try_id': task_try_id,
+                'task_response_time': task_response_time,
+                'task_execution_time': task_execution_time,
+                'task_waiting_retrieval_time': task_waiting_retrieval_time,
+                'dependency_count': len(dependency_map[task_id]),
+                'dependent_count': len(dependent_map[task_id])
+            }
+            task_stats.append(row)
+
+        self.task_stats = select_best_try_per_task(task_stats)
 
     def reload_template(self, runtime_template):
         # init template and data parser
@@ -197,6 +252,9 @@ class RuntimeState:
         # init time range
         self.MIN_TIME = self.manager.when_first_task_start_commit
         self.MAX_TIME = self.manager.time_end
+
+        # init task stats
+        self.get_task_stats()
 
         # init pkl files fingerprint
         self._pkl_files_fingerprint = self._get_current_pkl_files_fingerprint()

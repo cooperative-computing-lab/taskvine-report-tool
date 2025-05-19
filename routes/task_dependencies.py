@@ -1,18 +1,35 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, make_response
+import pandas as pd
+from io import StringIO
+
 from .runtime_state import runtime_state
 from .utils import (
     compute_linear_tick_values,
     d3_int_formatter,
     compute_points_domain,
-    compute_task_dependency_metrics
 )
 
 task_dependencies_bp = Blueprint('task_dependencies', __name__, url_prefix='/api')
 
+def get_dependency_points():
+    if not runtime_state.task_stats:
+        return []
+
+    return [
+        [row['task_id'], row['dependency_count']]
+        for row in runtime_state.task_stats
+        if row['dependency_count'] is not None
+    ]
+
+
 @task_dependencies_bp.route('/task-dependencies')
 def get_task_dependencies():
     try:
-        points = compute_task_dependency_metrics(runtime_state.tasks, mode='dependencies')
+        points = get_dependency_points()
+
+        if not points:
+            return jsonify({'error': 'No dependency data available'}), 404
+
         x_domain, y_domain = compute_points_domain(points)
 
         return jsonify({
@@ -24,7 +41,29 @@ def get_task_dependencies():
             'x_tick_formatter': d3_int_formatter(),
             'y_tick_formatter': d3_int_formatter()
         })
-
     except Exception as e:
         runtime_state.log_error(f"Error in get_task_dependencies: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@task_dependencies_bp.route('/task-dependencies/export-csv')
+def export_task_dependencies_csv():
+    try:
+        points = get_dependency_points()
+
+        if not points:
+            return jsonify({'error': 'No dependency data available'}), 404
+
+        df = pd.DataFrame(points, columns=["Task ID", "Dependency Count"])
+
+        buffer = StringIO()
+        df.to_csv(buffer, index=False)
+        buffer.seek(0)
+
+        response = make_response(buffer.getvalue())
+        response.headers["Content-Disposition"] = "attachment; filename=task_dependency_count.csv"
+        response.headers["Content-Type"] = "text/csv"
+        return response
+    except Exception as e:
+        runtime_state.log_error(f"Error in export_task_dependencies_csv: {e}")
         return jsonify({'error': str(e)}), 500

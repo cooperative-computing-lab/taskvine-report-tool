@@ -139,7 +139,8 @@ export class BaseModule {
                 { value: 'pdf', label: 'PDF' },
                 { value: 'png', label: 'PNG' },
                 { value: 'jpg', label: 'JPG' },
-                { value: 'jpeg', label: 'JPEG' }
+                { value: 'jpeg', label: 'JPEG' },
+                { value: 'csv', label: 'CSV' }
             ],
             (id, value) => {
                 if (value === 'svg') {
@@ -152,6 +153,8 @@ export class BaseModule {
                     this.downloadJPG();
                 } else if (value === 'jpeg') {
                     this.downloadJPEG();
+                } else if (value === 'csv') {
+                    this.downloadCSV();
                 }
             }
         );
@@ -715,15 +718,8 @@ export class BaseModule {
         const [xmin, xmax] = this.bottomDomain ?? [0, Infinity];
         const [ymin, ymax] = this.leftDomain ?? [0, Infinity];
 
-        const filteredPoints = points.filter(p =>
-            Array.isArray(p) &&
-            p.length >= 2 &&
-            !isNaN(p[0]) &&
-            !isNaN(p[1]) &&
-            p[0] >= xmin && p[0] <= xmax &&
-            p[1] >= ymin && p[1] <= ymax
-        );
-        
+        const filteredPoints = this._filterPoints(points);
+
         const {
             stroke = '#2077B4',
             strokeWidth = 1.5,
@@ -1070,7 +1066,6 @@ export class BaseModule {
             doc.save(`${this.id.replace(/-/g, '_')}.pdf`);
         });
     }
-    
 
     downloadSVG(filename = null) {
         if (!this.svgElement) {
@@ -1116,6 +1111,19 @@ export class BaseModule {
         URL.revokeObjectURL(url);
     }
 
+    downloadCSV(filename = null) {
+        if (!filename) {
+            filename = this.id.replace(/-/g, '_') + '.csv';
+        }
+    
+        const link = document.createElement('a');
+        link.href = `${this.api_url}/export-csv`;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+    
     initResizeHandler() {
         if (this._boundResize) {
             window.removeEventListener('resize', this._boundResize);
@@ -1142,6 +1150,22 @@ export class BaseModule {
 
     initLegend() {}
 
+    _filterPoints(points) {
+        const [xmin, xmax] = this.bottomDomain ?? [null, null];
+        const [ymin, ymax] = this.leftDomain ?? [null, null];
+
+        return points.filter(p =>
+            Array.isArray(p) &&
+            p.length >= 2 &&
+            typeof p[0] === 'number' &&
+            typeof p[1] === 'number' &&
+            !Number.isNaN(p[0]) &&
+            !Number.isNaN(p[1]) &&
+            p[0] >= xmin && p[0] <= xmax &&
+            p[1] >= ymin && p[1] <= ymax
+        )
+    }
+
     plotPoints(points, options = {}) {
         const {
             radius = 1.5,
@@ -1162,7 +1186,7 @@ export class BaseModule {
             return;
         }
 
-        const filteredPoints = points.filter(d => d[0] >= xmin && d[0] <= xmax && d[1] >= ymin && d[1] <= ymax);
+        const filteredPoints = this._filterPoints(points);
     
         this.svg.selectAll(`circle.${className}`)
             .data(filteredPoints)

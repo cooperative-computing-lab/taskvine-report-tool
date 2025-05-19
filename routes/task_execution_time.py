@@ -7,34 +7,37 @@ from .utils import (
     compute_points_domain
 )
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, make_response
+import pandas as pd
+from io import StringIO
 
 task_execution_time_bp = Blueprint(
     'task_execution_time', __name__, url_prefix='/api'
 )
 
+def get_execution_points():
+    if not runtime_state.task_stats:
+        return []
+
+    return [
+        [row['task_id'], row['task_execution_time']]
+        for row in runtime_state.task_stats
+        if row['task_execution_time'] is not None
+    ]
+
 @task_execution_time_bp.route('/task-execution-time')
 @check_and_reload_data()
 def get_task_execution_time():
     try:
-        raw_points = []
-
-        for idx, task in enumerate(runtime_state.tasks.values()):
-            if task.task_status != 0:
-                continue
-            exec_time = round(task.time_worker_end - task.time_worker_start, 2)
-            exec_time = max(exec_time, 0.01)
-            raw_points.append([idx, exec_time])
+        raw_points = get_execution_points()
 
         if not raw_points:
             return jsonify({'error': 'No completed tasks available'}), 404
 
         x_domain, y_domain = compute_points_domain(raw_points)
 
-        points = downsample_points(raw_points, SAMPLING_POINTS)
-
         return jsonify({
-            'points': points,
+            'points': downsample_points(raw_points, SAMPLING_POINTS),
             'x_domain': x_domain,
             'y_domain': y_domain,
             'x_tick_values': compute_linear_tick_values(x_domain),
@@ -45,4 +48,29 @@ def get_task_execution_time():
 
     except Exception as e:
         runtime_state.log_error(f"Error in get_task_execution_time: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@task_execution_time_bp.route('/task-execution-time/export-csv')
+@check_and_reload_data()
+def export_task_execution_time_csv():
+    try:
+        raw_points = get_execution_points()
+
+        if not raw_points:
+            return jsonify({'error': 'No completed tasks available'}), 404
+
+        df = pd.DataFrame(raw_points, columns=["Task ID", "Execution Time"])
+
+        buffer = StringIO()
+        df.to_csv(buffer, index=False)
+        buffer.seek(0)
+
+        response = make_response(buffer.getvalue())
+        response.headers["Content-Disposition"] = "attachment; filename=task_execution_time.csv"
+        response.headers["Content-Type"] = "text/csv"
+        return response
+
+    except Exception as e:
+        runtime_state.log_error(f"Error in export_task_execution_time_csv: {e}")
         return jsonify({'error': str(e)}), 500

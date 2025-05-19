@@ -22,7 +22,6 @@ def floor_decimal(number, decimal_places):
     quantizer = Decimal(f"1e-{decimal_places}")
     return float(num.quantize(quantizer, rounding=ROUND_FLOOR))
 
-
 def count_lines(file_name):
     if platform.system() in ["Linux", "Darwin"]:  # Linux or macOS
         try:

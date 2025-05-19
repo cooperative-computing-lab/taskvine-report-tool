@@ -126,43 +126,6 @@ def compute_points_domain(points):
 
     return x_domain, y_domain
 
-def compute_task_dependency_metrics(tasks, mode='dependencies'):
-    output_file_to_task = {}
-    for task in tasks.values():
-        for f in task.output_files:
-            output_file_to_task[f] = task.task_id
-
-    count = {}
-    for task in tasks.values():
-        if task.is_library_task:
-            continue
-        count.setdefault(task.task_id, 0)
-
-    if mode == 'dependencies':
-        for task in tasks.values():
-            if task.is_library_task:
-                continue
-            parent_tasks = set()
-            for f in task.input_files:
-                parent_id = output_file_to_task.get(f)
-                if parent_id and parent_id != task.task_id:
-                    parent_tasks.add(parent_id)
-            count[task.task_id] = len(parent_tasks)
-
-    elif mode == 'dependents':
-        for task in tasks.values():
-            if task.is_library_task:
-                continue
-            for f in task.input_files:
-                producer_id = output_file_to_task.get(f)
-                if producer_id and producer_id != task.task_id and producer_id in count:
-                    count[producer_id] += 1
-
-    else:
-        raise ValueError(f"Unknown mode: {mode}")
-
-    return [[task_id, count[task_id]] for task_id in sorted(count.keys())]
-
 def get_task_produced_files(files, min_time):
     rows = []
     for file in files.values():
@@ -233,3 +196,29 @@ def get_files_fingerprint(files):
         parts.append(f"{file}:{stat['mtime']}:{stat['size']}")
 
     return hashlib.md5(";".join(parts).encode()).hexdigest()
+
+def select_best_try_per_task(task_stats):
+    from collections import defaultdict
+
+    grouped = defaultdict(list)
+    for row in task_stats:
+        grouped[row['task_id']].append(row)
+
+    filtered_stats = []
+
+    for task_id, rows in grouped.items():
+        candidates = [r for r in rows if r['task_response_time'] is not None]
+        if not candidates:
+            candidates = rows
+        sub = [r for r in candidates if r['task_execution_time'] is not None]
+        if sub:
+            candidates = sub
+        sub = [r for r in candidates if r['task_waiting_retrieval_time'] is not None]
+        if sub:
+            candidates = sub
+
+        best = max(candidates, key=lambda r: r['task_try_id'])
+
+        filtered_stats.append({k: v for k, v in best.items() if k != 'task_try_id'})
+
+    return filtered_stats
