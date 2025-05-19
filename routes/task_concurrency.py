@@ -31,29 +31,40 @@ def compute_task_concurrency_points():
         'tasks_done': [],
     }
 
+    base_time = runtime_state.MIN_TIME
+
     for task in runtime_state.tasks.values():
         if task.when_ready:
-            task_phases['tasks_waiting'].append((max(task.when_ready - runtime_state.MIN_TIME, 0), 1))
+            t0 = round(max(task.when_ready - base_time, 0), 2)
+            task_phases['tasks_waiting'].append((t0, 1))
             if task.when_running:
-                task_phases['tasks_waiting'].append((task.when_running - runtime_state.MIN_TIME, -1))
+                t1 = round(task.when_running - base_time, 2)
+                task_phases['tasks_waiting'].append((t1, -1))
 
         if task.when_running:
-            task_phases['tasks_committing'].append((task.when_running - runtime_state.MIN_TIME, 1))
+            t0 = round(task.when_running - base_time, 2)
+            task_phases['tasks_committing'].append((t0, 1))
             if task.time_worker_start:
-                task_phases['tasks_committing'].append((task.time_worker_start - runtime_state.MIN_TIME, -1))
+                t1 = round(task.time_worker_start - base_time, 2)
+                task_phases['tasks_committing'].append((t1, -1))
 
         if task.time_worker_start:
-            task_phases['tasks_executing'].append((task.time_worker_start - runtime_state.MIN_TIME, 1))
+            t0 = round(task.time_worker_start - base_time, 2)
+            task_phases['tasks_executing'].append((t0, 1))
             if task.time_worker_end:
-                task_phases['tasks_executing'].append((task.time_worker_end - runtime_state.MIN_TIME, -1))
+                t1 = round(task.time_worker_end - base_time, 2)
+                task_phases['tasks_executing'].append((t1, -1))
 
         if task.time_worker_end:
-            task_phases['tasks_retrieving'].append((task.time_worker_end - runtime_state.MIN_TIME, 1))
+            t0 = round(task.time_worker_end - base_time, 2)
+            task_phases['tasks_retrieving'].append((t0, 1))
             if task.when_retrieved:
-                task_phases['tasks_retrieving'].append((task.when_retrieved - runtime_state.MIN_TIME, -1))
+                t1 = round(task.when_retrieved - base_time, 2)
+                task_phases['tasks_retrieving'].append((t1, -1))
 
         if task.when_done:
-            task_phases['tasks_done'].append((task.when_done - runtime_state.MIN_TIME, 1))
+            t0 = round(task.when_done - base_time, 2)
+            task_phases['tasks_done'].append((t0, 1))
 
     raw_points_array = []
     phase_keys = list(task_phases.keys())
@@ -63,13 +74,11 @@ def compute_task_concurrency_points():
             raw_points_array.append([])
             continue
         df = pd.DataFrame(events, columns=['time', 'event']).sort_values('time')
-        df['time'] = df['time'].round(2)
+        df = df.groupby('time')['event'].sum().reset_index()  # 合并相同时刻的事件
         df['cumulative'] = df['event'].cumsum()
-        df = df.drop_duplicates('time', keep='last')
         raw_points_array.append(df[['time', 'cumulative']].values.tolist())
 
     return dict(zip(phase_keys, raw_points_array))
-
 
 @task_concurrency_bp.route('/task-concurrency')
 @check_and_reload_data()
@@ -110,21 +119,20 @@ def export_task_concurrency_csv():
         if not phase_points or all(not points for points in phase_points.values()):
             return jsonify({'error': 'No task concurrency data available'}), 404
 
-        merged_df = None
+        df_list = []
         for phase_key, points in phase_points.items():
             if not points:
                 continue
             column_title = PHASE_COLUMN_TITLES.get(phase_key, phase_key)
             df = pd.DataFrame(points, columns=["time", column_title])
-            if merged_df is None:
-                merged_df = df
-            else:
-                merged_df = pd.merge(merged_df, df, on="time", how="outer")
+            df = df.groupby("time")[column_title].max().reset_index()
+            df = df.set_index("time")
+            df_list.append(df)
 
-        if merged_df is None or merged_df.empty:
+        if not df_list:
             return jsonify({'error': 'No concurrency data available'}), 404
 
-        merged_df = merged_df.sort_values("time").fillna(0)
+        merged_df = pd.concat(df_list, axis=1).fillna(0).reset_index()
         merged_df["time"] = merged_df["time"].round(2)
 
         buffer = StringIO()

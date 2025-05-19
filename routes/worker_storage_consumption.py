@@ -9,9 +9,8 @@ from .utils import (
 )
 
 import pandas as pd
-from flask import Blueprint, jsonify, request, make_response
+from flask import Blueprint, jsonify, request, Response
 from io import StringIO
-import numpy as np
 from collections import defaultdict
 
 worker_storage_consumption_bp = Blueprint(
@@ -137,30 +136,40 @@ def export_worker_storage_consumption_csv():
         if not raw_points_array:
             return jsonify({'error': 'No valid storage consumption data available'}), 404
 
-        df_list = []
+        # build time -> value map per worker
+        time_set = set()
+        column_data = {}
         for worker, points in zip(worker_keys, raw_points_array):
             wid = f"{worker[0]}:{worker[1]}"
-            df = pd.DataFrame(points, columns=['time', wid]).set_index('time')
-            df_list.append(df)
+            col_map = {}
+            for t, v in points:
+                t = round(t, 2)
+                col_map[t] = v
+                time_set.add(t)
+            column_data[wid] = col_map
 
-        merged_df = pd.concat(df_list, axis=1).fillna(0).reset_index()
+        sorted_times = sorted(time_set)
+        column_names = list(column_data.keys())
 
+        # optional unit label
         if show_percentage:
             unit_label = "(%)"
         else:
-            max_val = merged_df.drop(columns="time").to_numpy().max()
+            max_val = max((max(col.values(), default=0) for col in column_data.values()), default=0)
             unit_label = f"({get_unit_and_scale_by_max_file_size_mb(max_val)[0]})"
 
-        merged_df.columns = ["time (s)"] + [f"{col} {unit_label}" for col in merged_df.columns[1:]]
+        # stream csv
+        def generate_csv():
+            yield "time (s)," + ",".join(f"{name} {unit_label}" for name in column_names) + "\n"
+            for t in sorted_times:
+                row = [f"{t:.2f}"] + [f"{column_data[name].get(t, 0):.6f}" for name in column_names]
+                yield ",".join(row) + "\n"
 
-        buffer = StringIO()
-        merged_df.to_csv(buffer, index=False)
-        buffer.seek(0)
-
-        response = make_response(buffer.getvalue())
-        response.headers['Content-Disposition'] = 'attachment; filename=worker_storage_consumption.csv'
-        response.headers['Content-Type'] = 'text/csv'
-        return response
+        return Response(generate_csv(),
+                        headers={
+                            "Content-Disposition": "attachment; filename=worker_storage_consumption.csv",
+                            "Content-Type": "text/csv"
+                        })
 
     except Exception as e:
         runtime_state.log_error(f"Error in export_worker_storage_consumption_csv: {e}")
