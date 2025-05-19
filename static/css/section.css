@@ -54,16 +54,15 @@
 }
 
 .legend-container {
-    width: 100%;
+    flex: 9;
     display: flex;
     flex-direction: column;
-    max-width: 1200px;
     overflow-y: auto;
     overflow-x: auto;
 }
 
 .legend-placeholder {
-    width: 10%;
+    flex: 1;
 }
 
 .plotting-container {
