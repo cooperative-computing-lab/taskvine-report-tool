@@ -288,12 +288,16 @@ export class BaseModule {
     initToolbox() {
         const items = [
             this.createToolboxItemExport(),
-            this.createToolboxItemSetXMin(),
-            this.createToolboxItemSetXMax(),
-            this.createToolboxItemSetYMin(),
-            this.createToolboxItemSetYMax(),
-            this.createToolboxItemReset(),
         ];
+        if (this.bottomScaleType === 'linear') {
+            items.push(this.createToolboxItemSetXMin());
+            items.push(this.createToolboxItemSetXMax());
+        }
+        if (this.leftScaleType === 'linear') {
+            items.push(this.createToolboxItemSetYMin());
+            items.push(this.createToolboxItemSetYMax());
+        }
+        items.push(this.createToolboxItemReset());
 
         this.setToolboxItems(items);
     }
@@ -740,21 +744,76 @@ export class BaseModule {
             });
     }
 
-    plotRect(x, y, width, height, fill, opacity, tooltipInnerHTML) {
+    plotHorizontalRect(x_start, x_width, y_start, y_height, fill, opacity, tooltipInnerHTML) {
         const tooltip = document.getElementById('vine-tooltip');
-
+    
         const [xmin, xmax] = this.bottomDomain ?? [null, null];
         const [ymin, ymax] = this.leftDomain ?? [null, null];
-
+    
         if (xmin === null || xmax === null || ymin === null || ymax === null) {
             console.error('Domain values (xmin, xmax, ymin, ymax) not set, skipping rectangle plot');
             return;
         }
-        if (x < xmin) {
-            width = Math.max(0, width - (xmin - x));
-            x = xmin;
+
+        if (x_start < xmin) {
+            x_width = Math.max(0, x_width - (xmin - x_start));
+            x_start = xmin;
+        }
+        if (x_start + x_width > xmax) {
+            x_width = Math.max(0, x_width - (x_start + x_width - xmax));
         }
     
+        const x = this.bottomScale(x_start);
+        const width = this.bottomScale(x_start + x_width) - this.bottomScale(x_start);
+        const y = this.leftScale(y_start);
+        const height = y_height;
+    
+        this.svg.append('rect')
+            .attr('x', x)
+            .attr('y', y)
+            .attr('width', width)
+            .attr('height', height)
+            .attr('fill', fill)
+            .attr('opacity', opacity)
+            .on('mouseover', (event) => {
+                d3.select(event.currentTarget)
+                    .attr('fill', this.highlightColor);
+                tooltip.innerHTML = tooltipInnerHTML;
+                tooltip.style.visibility = 'visible';
+                tooltip.style.top = (event.pageY + 10) + 'px';
+                tooltip.style.left = (event.pageX + 10) + 'px';
+            })
+            .on('mouseout', (event) => {
+                d3.select(event.currentTarget)
+                    .attr('fill', fill)
+                    .attr('opacity', opacity);
+                tooltip.style.visibility = 'hidden';
+            });
+    }
+
+    plotVerticalRect(xStart, xWidth, yHeight, fill = 'steelblue', opacity = 1, tooltipInnerHTML = null) {
+        const tooltip = document.getElementById('vine-tooltip');
+    
+        const [ymin, ymax] = this.leftDomain ?? [null, null];
+        if (ymin === null || ymax === null) {
+            console.error('Domain values (ymin, ymax) not set, skipping rectangle plot');
+            return;
+        }
+    
+        const x = this.bottomScale(xStart);
+        const width = xWidth;
+    
+        let y = this.leftScale(yHeight);
+        let height = -(this.leftScale(yHeight) - this.leftScale(ymin));
+    
+        if (yHeight < ymin || yHeight > ymax) return;
+    
+        if (yHeight > ymax) {
+            height = this.leftScale(ymax) - this.leftScale(ymin);
+        } else if (yHeight < ymin) {
+            height = this.leftScale(yHeight) - this.leftScale(ymin);
+        }
+
         this.svg.append('rect')
             .attr('x', x)
             .attr('y', y)
