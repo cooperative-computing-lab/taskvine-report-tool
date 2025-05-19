@@ -10,6 +10,11 @@ export class WorkerStorageConsumptionModule extends BaseModule {
         this.setLeftScaleType('linear');
     }
 
+    legendOnToggle(id, visible) {
+        const path = this.svg.selectAll(`#storage-${id}`);
+        path.style('display', visible ? null : 'none');
+    }
+
     initLegend() {
         const legendItems = Object.keys(this.data.storage_data).map((worker, idx) => ({
             id: escapeWorkerId(worker),
@@ -19,9 +24,8 @@ export class WorkerStorageConsumptionModule extends BaseModule {
         this.createLegendRow(legendItems, {
             lineWidth: 4,
             checkboxName: 'storage-consumption',
-            onToggle: async (id, visible) => {
-                const path = this.svg.selectAll(`#storage-${id}`);
-                path.style('display', visible ? null : 'none');
+            onToggle: (id, visible) => {
+                this.legendOnToggle(id, visible);
             }
         });
     }

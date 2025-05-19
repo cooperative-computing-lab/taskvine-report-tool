@@ -31,6 +31,7 @@ export class BaseModule {
         this.margin = null;
 
         this.legendCheckboxName = null;
+        this.legendSingleSelect = false;
 
         this.topDomain = null;
         this.topTickValues = null;
@@ -280,7 +281,45 @@ export class BaseModule {
         });
     }
 
-    setToolboxItems(items) {
+    _selectAllLegendCheckboxes() {
+        this._queryAllLegendCheckboxes()
+            .property('checked', true)
+            .each((d, i, nodes) => {
+                const element = d3.select(nodes[i]).node();
+                if (element) {
+                    const id = element.getAttribute('data-id');
+                    const visible = true;
+                    this.legendOnToggle(id, visible);
+                } else {
+                    console.warn('Invalid element in each()');
+                }
+            });
+    }
+        
+    _unselectAllLegendCheckboxes() {
+        this._queryAllLegendCheckboxes()
+            .property('checked', false)
+            .each((d, i, nodes) => {
+                const element = d3.select(nodes[i]).node();
+                if (element) {
+                    const id = element.getAttribute('data-id');
+                    const visible = false;
+                    this.legendOnToggle(id, visible);
+                } else {
+                    console.warn('Invalid element in each()');
+                }
+            });
+    }
+
+    createToolboxItemSelectAll() {
+        return this.toolbox.createButtonItem('select-all', 'Select All Legend', () => this._selectAllLegendCheckboxes());
+    }
+
+    createToolboxItemClearAll() {
+        return this.toolbox.createButtonItem('clear-all', 'Clear All Legend', () => this._unselectAllLegendCheckboxes());
+    }
+    
+    _setToolboxItems(items) {
         this.toolbox.setItems(items);
         this.toolbox.mount(this.toolboxContainer);
     }
@@ -297,9 +336,13 @@ export class BaseModule {
             items.push(this.createToolboxItemSetYMin());
             items.push(this.createToolboxItemSetYMax());
         }
+        if (this._queryAllLegendCheckboxes().size() > 0 && !this.legendSingleSelect) {
+            items.push(this.createToolboxItemSelectAll());
+            items.push(this.createToolboxItemClearAll());
+        }
         items.push(this.createToolboxItemReset());
 
-        this.setToolboxItems(items);
+        this._setToolboxItems(items);
     }
 
     clearSVG() {
@@ -326,6 +369,8 @@ export class BaseModule {
             this.toolboxContainer.innerHTML = '';
         }
     }
+
+    legendOnToggle(id, visible) {}
     
     async fetchData(folder) {
         const response = await fetch(
@@ -1184,41 +1229,7 @@ export class BaseModule {
 
         this.legendContainer.html('');
         this.legendCheckboxName = checkboxName;
-
-        const buttonGroup = this.legendContainer
-            .append('div')
-            .attr('class', 'legend-button-group')
-            .style('display', 'flex')
-            .style('align-items', 'center')
-            .style('gap', '12px')
-            .style('margin-bottom', '8px')
-            .style('justify-content', 'flex-start');
-
-        function addButton(row, text, onClick) {
-            const btn = row.append('button')
-                .attr('class', 'report-button')
-                .attr('type', 'button')
-                .text(text)
-                .on('click', onClick);
-            return btn;
-        }
-
-        addButton(buttonGroup, 'Select All', () => {
-            this._queryAllLegendCheckboxes()
-                .property('checked', true)
-                .each(function() {
-                    const id = this.getAttribute('data-id');
-                    onToggle(id, true);
-                });
-        });
-        addButton(buttonGroup, 'Clear All', () => {
-            this._queryAllLegendCheckboxes()
-                .property('checked', false)
-                .each(function() {
-                    const id = this.getAttribute('data-id');
-                    onToggle(id, false);
-                });
-        });
+        this.legendSingleSelect = singleSelect;
 
         const actualColumns = Math.min(columnsPerRow, items.length);
         for (let i = 0; i < items.length; i += actualColumns) {
@@ -1267,7 +1278,7 @@ export class BaseModule {
                         const visible = checkbox.checked;
                         onToggle(item.id, visible);
                     
-                        if (singleSelect && visible) {
+                        if (this.legendSingleSelect && visible) {
                             this._queryAllLegendCheckboxes()
                                 .each(function () {
                                     if (this !== checkbox) {

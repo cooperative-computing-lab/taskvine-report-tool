@@ -13,6 +13,11 @@ export class TaskExecutionDetailsModule extends BaseModule {
         return this.legendMap[taskType]?.color;
     }   
 
+    legendOnToggle(id, visible) {
+        this.checkboxStates[id] = visible;
+        this.plot();
+    }
+
     initLegend() {
         if (!this.legendContainer) return;
     
@@ -32,8 +37,7 @@ export class TaskExecutionDetailsModule extends BaseModule {
         this.createLegendGroup(groups, {
             checkboxName: 'task-details',
             onToggle: (id, visible) => {
-                this.checkboxStates[id] = visible;
-                this.plot();
+                this.legendOnToggle(id, visible);
             }
         });
 
