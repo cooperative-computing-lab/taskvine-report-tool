@@ -35,7 +35,7 @@ export class TaskSubgraphsModule extends BaseModule {
         /* if there are other checkboxes, uncheck them */
         checkboxes.each(function () {
             const checkbox = d3.select(this);
-            if (checkbox.attr('data-id') !== id) {
+            if (checkbox.attr('id') !== id) {
                 checkbox.property('checked', false);
             }
         });

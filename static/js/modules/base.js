@@ -287,7 +287,7 @@ export class BaseModule {
             .each((d, i, nodes) => {
                 const element = d3.select(nodes[i]).node();
                 if (element) {
-                    const id = element.getAttribute('data-id');
+                    const id = element.getAttribute('id');
                     const visible = true;
                     this.legendOnToggle(id, visible);
                 } else {
@@ -302,7 +302,7 @@ export class BaseModule {
             .each((d, i, nodes) => {
                 const element = d3.select(nodes[i]).node();
                 if (element) {
-                    const id = element.getAttribute('data-id');
+                    const id = element.getAttribute('id');
                     const visible = false;
                     this.legendOnToggle(id, visible);
                 } else {
@@ -1218,6 +1218,11 @@ export class BaseModule {
         this.plot();
     }
 
+    _getUniqueLegendCheckboxId(id) {
+        const uniquePrefix = (this.legendContainer && this.legendContainer.id) ? this.legendContainer.id : (this.id || 'legend');
+        return `legend-checkbox-${uniquePrefix}-${id}`;
+    }
+
     createLegendRow(items, options = {}) {
         const {
             singleSelect = false,
@@ -1266,11 +1271,8 @@ export class BaseModule {
                 legendItem.append('input')
                     .attr('type', 'checkbox')
                     .attr('name', this.legendCheckboxName)
-                    .attr('data-id', item.id)
-                    .attr('id', safeCheckboxId)
+                    .attr('id', item.id)
                     .property('checked', item.checked !== false)    /* default checked unless this field is specified as false */
-                    .style('margin-right', '5px')
-                    .style('flex-shrink', 0)
                     .style('accent-color', item.color || '#666')
                     .on('click', function(e) { e.stopPropagation(); })
                     .on('change', (event) => {
@@ -1289,12 +1291,9 @@ export class BaseModule {
                     });   
 
                 legendItem.append('label')
-                    .attr('for', safeCheckboxId)
+                    .attr('for', item.id)
                     .attr('class', 'legend-label')
                     .text(item.label)
-                    .style('font-size', '12px')
-                    .style('flex', '1')
-                    .style('padding-right', '2px')
                     .on('click', function(e) { e.stopPropagation(); });
             });
         }
@@ -1321,13 +1320,13 @@ export class BaseModule {
     
         this.legendContainer.html('');
     
-        const flexContainer = this.legendContainer.append('div')
+        const legendGroupContainer = this.legendContainer.append('div')
             .attr('class', 'legend-flex-container');
-    
+
         groups.forEach(group => {
-            const groupDiv = flexContainer.append('div')
+            const groupDiv = legendGroupContainer.append('div')
                 .attr('class', 'legend-group');
-    
+
             if (group.showGroupLabel) {
                 groupDiv.append('div')
                     .attr('class', 'legend-group-title-container')
@@ -1335,33 +1334,31 @@ export class BaseModule {
                     .attr('class', 'legend-group-title')
                     .text(group.groupLabel);
             }
-    
+
             group.items.forEach(item => {
                 const legendItem = groupDiv.append('div')
                     .attr('class', 'legend-item' + (item.checked ? ' checked' : ''));
-    
-                const checkbox = legendItem.append('input')
+
+                legendItem.append('input')
                     .attr('type', 'checkbox')
-                    .attr('id', `${item.id}-checkbox`)
                     .attr('name', this.legendCheckboxName)
-                    .property('checked', item.checked)
-                    .style('display', 'none')
-                    .node();
-    
-                legendItem.append('div')
-                    .attr('class', 'legend-color')
-                    .style('--color', item.color);
-    
+                    .attr('id', item.id)
+                    .property('checked', item.checked !== false)   /* default checked unless this field is specified as false */
+                    .style('accent-color', item.color || '#666')
+                    .on('click', function(e) { e.stopPropagation(); })
+                    .on('change', (event) => {
+                        const checkbox = event.currentTarget;
+                        const visible = checkbox.checked;
+                        onToggle(item.id, visible);
+                    });
+
                 if (item.showLabel) {
-                    legendItem.append('span')
-                        .text(item.label);
+                    legendItem.append('label')
+                        .attr('for', item.id)
+                        .attr('class', 'legend-label')
+                        .text(item.label)
+                        .on('click', function(e) { e.stopPropagation(); });
                 }
-    
-                legendItem.on('click', () => {
-                    checkbox.checked = !checkbox.checked;
-                    legendItem.classed('checked', checkbox.checked);
-                    onToggle(item.id, checkbox.checked);
-                });
             });
         });
     }

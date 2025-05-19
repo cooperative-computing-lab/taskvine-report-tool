@@ -176,6 +176,7 @@
 
 .legend-checkbox {
     margin-right: 5px;
+    flex-shrink: 0;
     cursor: pointer;
 }
 
@@ -186,6 +187,9 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     color: #333;
+    font-size: 12px;
+    flex: 1;
+    padding-right: 2px;
 }
 
 .legend-checkbox:not(:checked) + .legend-label {
