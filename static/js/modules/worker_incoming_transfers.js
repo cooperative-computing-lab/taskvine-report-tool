@@ -10,6 +10,11 @@ export class WorkerIncomingTransfersModule extends BaseModule {
         this.setLeftScaleType('linear');
     }
 
+    legendOnToggle(id, visible) {
+        const path = this.svg.selectAll(`#transfer-${id}`);
+        path.style('display', visible ? null : 'none');
+    }
+
     initLegend() {
         const legendItems = Object.keys(this.data.transfers)
             .map((worker, idx) => ({
@@ -20,9 +25,8 @@ export class WorkerIncomingTransfersModule extends BaseModule {
             .sort((a, b) => a.label.localeCompare(b.label));
         this.createLegendRow(legendItems, {
             checkboxName: 'incoming-transfers',
-            onToggle: async (id, visible) => {
-                const path = this.svg.selectAll(`#transfer-${id}`);
-                path.style('display', visible ? null : 'none');
+            onToggle: (id, visible) => {
+                this.legendOnToggle(id, visible);
             }
         });
     }

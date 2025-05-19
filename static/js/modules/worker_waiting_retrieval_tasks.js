@@ -8,6 +8,11 @@ export class WorkerWaitingRetrievalTasksModule extends BaseModule {
         this.setLeftScaleType('linear');
     }
 
+    legendOnToggle(id, visible) {
+        const path = this.svg.selectAll(`#waiting-retrieval-${id}`);
+        path.style('display', visible ? null : 'none');
+    }
+
     initLegend() {
         const legendItems = Object.keys(this.data.waiting_retrieval_tasks_data).map((worker, idx) => ({
             id: escapeWorkerId(worker),
@@ -17,9 +22,8 @@ export class WorkerWaitingRetrievalTasksModule extends BaseModule {
         this.createLegendRow(legendItems, {
             lineWidth: 4,
             checkboxName: 'worker-waiting-retrieval-tasks',
-            onToggle: async (id, visible) => {
-                const path = this.svg.selectAll(`#waiting-retrieval-${id}`);
-                path.style('display', visible ? null : 'none');
+            onToggle: (id, visible) => {
+                this.legendOnToggle(id, visible);
             }
         });
     }

@@ -29,31 +29,33 @@ export class TaskSubgraphsModule extends BaseModule {
         this.folder = null;
     }
 
+    legendOnToggle(id, visible) {
+        const checkboxes = this._queryAllLegendCheckboxes();
+        
+        /* if there are other checkboxes, uncheck them */
+        checkboxes.each(function () {
+            const checkbox = d3.select(this);
+            if (checkbox.attr('data-id') !== id) {
+                checkbox.property('checked', false);
+            }
+        });
+
+        /* if the current checkbox is checked, fetch data and plot */
+        if (visible) {
+            this.fetchData(this.folder, id);
+            this.plot();
+        }
+    }
+
     initLegend() {
         if (!this.data || !this.data.legend) return;
 
         this.createLegendRow(this.data.legend, {
             checkboxName: 'task-subgraph-legend',
             singleSelect: true,
-            onToggle: async (id, checked) => {
-                if (!checked) return;
-            
-                const checkboxes = this._queryAllLegendCheckboxes();
-            
-                checkboxes.each(function () {
-                    this.disabled = true;
-                });
-
-                try {
-                    await this.fetchData(this.folder, id);
-                    this.plot();
-                } finally {
-                    checkboxes.each(function () {
-                        this.disabled = false;
-                    });
-                }
+            onToggle: (id, visible) => {
+                this.legendOnToggle(id, visible);
             }
-            
         });
     }
 

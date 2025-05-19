@@ -24,6 +24,11 @@ export class TaskConcurrencyModule extends BaseModule {
         };
     }
 
+    legendOnToggle(id, visible) {
+        const path = this.svg.selectAll(`#${id}`);
+        path.style('display', visible ? null : 'none');
+    }
+
     initLegend() {
         const legendItems = this.taskTypes.map(type => ({
             id: type,
@@ -33,9 +38,8 @@ export class TaskConcurrencyModule extends BaseModule {
         this.createLegendRow(legendItems, {
             lineWidth: 3,
             checkboxName: 'task-concurrency',
-            onToggle: async (id, visible) => {
-                const path = this.svg.selectAll(`#${id}`);
-                path.style('display', visible ? null : 'none');
+            onToggle: (id, visible) => {
+                this.legendOnToggle(id, visible);
             }
         });
     }
