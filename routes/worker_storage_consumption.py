@@ -135,22 +135,20 @@ def export_worker_storage_consumption_csv():
         if not raw_points_array:
             return jsonify({'error': 'No valid storage consumption data available'}), 404
 
-        merged_df = None
+        df_list = []
         for worker, points in zip(worker_keys, raw_points_array):
             wid = f"{worker[0]}:{worker[1]}"
-            df = pd.DataFrame(points, columns=['time', wid])
-            if merged_df is None:
-                merged_df = df
-            else:
-                merged_df = pd.merge(merged_df, df, on='time', how='outer')
+            df = pd.DataFrame(points, columns=['time', wid]).set_index('time')
+            df_list.append(df)
 
-        merged_df = merged_df.sort_values('time').fillna(0)
+        merged_df = pd.concat(df_list, axis=1).fillna(0).reset_index()
 
         if show_percentage:
             unit_label = "(%)"
         else:
             max_val = merged_df.drop(columns="time").to_numpy().max()
             unit_label = f"({get_unit_and_scale_by_max_file_size_mb(max_val)[0]})"
+
         merged_df.columns = ["time (s)"] + [f"{col} {unit_label}" for col in merged_df.columns[1:]]
 
         buffer = StringIO()
