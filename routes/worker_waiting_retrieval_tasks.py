@@ -8,65 +8,73 @@ from .utils import (
 from flask import Blueprint, jsonify
 from collections import defaultdict
 import pandas as pd
+from io import StringIO
+from flask import make_response
 
 worker_waiting_retrieval_tasks_bp = Blueprint('worker_waiting_retrieval_tasks', __name__, url_prefix='/api')
+
+def get_worker_waiting_retrieval_task_points():
+    base_time = runtime_state.MIN_TIME
+    workers = runtime_state.workers
+    tasks = runtime_state.tasks
+
+    all_worker_events = defaultdict(list)
+
+    for task in tasks.values():
+        if not task.worker_id or not task.when_waiting_retrieval or not task.when_retrieved:
+            continue
+        worker = (task.worker_ip, task.worker_port)
+        start = round(task.when_waiting_retrieval - base_time, 2)
+        end = round(task.when_retrieved - base_time, 2)
+        all_worker_events[worker].append((start, 1))
+        all_worker_events[worker].append((end, -1))
+
+    worker_keys = []
+    raw_points_array = []
+
+    for worker, events in all_worker_events.items():
+        df = pd.DataFrame(events, columns=['time', 'event']).sort_values('time')
+        df['cumulative'] = df['event'].cumsum()
+        df = df.drop_duplicates('time', keep='last')
+        points = df[['time', 'cumulative']].values.tolist()
+
+        w = workers.get(worker)
+        if w:
+            for t0, t1 in zip(w.time_connected, w.time_disconnected):
+                points.insert(0, [round(t0 - base_time, 2), 0])
+                points.append([round(t1 - base_time, 2), 0])
+
+        if not points:
+            continue
+
+        worker_keys.append(worker)
+        raw_points_array.append(points)
+
+    return worker_keys, raw_points_array
 
 @worker_waiting_retrieval_tasks_bp.route('/worker-waiting-retrieval-tasks')
 @check_and_reload_data()
 def get_worker_waiting_retrieval_tasks():
     try:
-        base_time = runtime_state.MIN_TIME
-        workers = runtime_state.workers
-        tasks = runtime_state.tasks
+        worker_keys, raw_points_array = get_worker_waiting_retrieval_task_points()
 
-        all_worker_events = defaultdict(list)
-        for task in tasks.values():
-            if not task.worker_id or not task.when_waiting_retrieval or not task.when_retrieved:
-                continue
-            worker = (task.worker_ip, task.worker_port)
-            start = float(task.when_waiting_retrieval - base_time)
-            end = float(task.when_retrieved - base_time)
-            all_worker_events[worker].append((start, 1))
-            all_worker_events[worker].append((end, -1))
-
-        raw_points_array = []
-        worker_keys = []
-        max_waiting_retrieval_tasks = 0
-
-        for worker, events in all_worker_events.items():
-            df = pd.DataFrame(events, columns=['time', 'event']).sort_values('time')
-            df['cumulative'] = df['event'].cumsum()
-            df = df.drop_duplicates('time', keep='last')
-            points = df[['time', 'cumulative']].values.tolist()
-
-            # insert connection intervals for completeness
-            w = workers.get(worker)
-            if w:
-                for t0, t1 in zip(w.time_connected, w.time_disconnected):
-                    points.insert(0, [float(t0 - base_time), 0])
-                    points.append([float(t1 - base_time), 0])
-
-            if not points:
-                continue
-            worker_keys.append(worker)
-            raw_points_array.append(points)
-            max_waiting_retrieval_tasks = max(max_waiting_retrieval_tasks, max(p[1] for p in points))
+        if not raw_points_array:
+            return jsonify({'error': 'No valid worker waiting retrieval tasks data available'}), 404
 
         downsampled_array = downsample_points_array(raw_points_array, SAMPLING_POINTS)
 
-        waiting_retrieval_tasks_data = {}
+        data = {}
+        max_y = 0
         for worker, points in zip(worker_keys, downsampled_array):
             wid = f"{worker[0]}:{worker[1]}"
-            waiting_retrieval_tasks_data[wid] = points
+            data[wid] = points
+            max_y = max(max_y, max(p[1] for p in points))
 
-        if not waiting_retrieval_tasks_data:
-            return jsonify({'error': 'No valid worker waiting retrieval tasks data available'}), 404
-
-        x_domain = [0, float(runtime_state.MAX_TIME - base_time)]
-        y_domain = [0, max(1.0, max_waiting_retrieval_tasks)]
+        x_domain = [0, float(runtime_state.MAX_TIME - runtime_state.MIN_TIME)]
+        y_domain = [0, max(1.0, max_y)]
 
         return jsonify({
-            'waiting_retrieval_tasks_data': waiting_retrieval_tasks_data,
+            'waiting_retrieval_tasks_data': data,
             'x_domain': x_domain,
             'y_domain': y_domain,
             'x_tick_values': compute_linear_tick_values(x_domain),
@@ -76,4 +84,38 @@ def get_worker_waiting_retrieval_tasks():
         })
     except Exception as e:
         runtime_state.log_error(f"Error in get_worker_waiting_retrieval_tasks: {e}")
-        return jsonify({'error': str(e)}), 500 
+        return jsonify({'error': str(e)}), 500
+
+@worker_waiting_retrieval_tasks_bp.route('/worker-waiting-retrieval-tasks/export-csv')
+@check_and_reload_data()
+def export_worker_waiting_retrieval_tasks_csv():
+    try:
+        worker_keys, raw_points_array = get_worker_waiting_retrieval_task_points()
+
+        if not raw_points_array:
+            return jsonify({'error': 'No valid worker waiting retrieval tasks data available'}), 404
+
+        merged_df = None
+        for worker, points in zip(worker_keys, raw_points_array):
+            wid = f"{worker[0]}:{worker[1]}"
+            df = pd.DataFrame(points, columns=["time", wid])
+            if merged_df is None:
+                merged_df = df
+            else:
+                merged_df = pd.merge(merged_df, df, on="time", how="outer")
+
+        merged_df = merged_df.sort_values("time").fillna(0).round(2)
+        merged_df.columns = ["time (s)"] + [f"{col}" for col in merged_df.columns[1:]]
+
+        buffer = StringIO()
+        merged_df.to_csv(buffer, index=False)
+        buffer.seek(0)
+
+        response = make_response(buffer.getvalue())
+        response.headers['Content-Disposition'] = 'attachment; filename=worker_waiting_retrieval_tasks.csv'
+        response.headers['Content-Type'] = 'text/csv'
+        return response
+
+    except Exception as e:
+        runtime_state.log_error(f"Error in export_worker_waiting_retrieval_tasks_csv: {e}")
+        return jsonify({'error': str(e)}), 500

@@ -6,50 +6,68 @@ from .utils import (
     downsample_points,
     get_unit_and_scale_by_max_file_size_mb
 )
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, make_response
+from io import StringIO
 import pandas as pd
 
 file_transferred_size_bp = Blueprint('file_transferred_size', __name__, url_prefix='/api')
+
+def get_file_transferred_size_points():
+    base_time = runtime_state.MIN_TIME
+    events = []
+    for file in runtime_state.files.values():
+        if not file.producers:
+            continue
+        for t in file.transfers:
+            if t.time_stage_in:
+                time = float(t.time_stage_in - base_time)
+            elif t.time_stage_out:
+                time = float(t.time_stage_out - base_time)
+            else:
+                continue
+            events.append((time, file.size_mb))
+
+    if not events:
+        return [], [0, 1], [0, 0], 'MB', 1.0, pd.DataFrame()
+
+    events.sort()
+    cumulative = 0.0
+    raw_points = []
+    for t, size in events:
+        cumulative += size
+        raw_points.append([t, cumulative])
+
+    x_domain = [0, max(p[0] for p in raw_points)]
+    y_max = max(p[1] for p in raw_points)
+    unit, scale = get_unit_and_scale_by_max_file_size_mb(y_max)
+    scaled_points = [[x, y * scale] for x, y in raw_points]
+    y_domain = [0, y_max * scale]
+
+    df = pd.DataFrame(raw_points, columns=['Time (s)', f'Cumulative Size ({unit})'])
+    df[f'Cumulative Size ({unit})'] = df[f'Cumulative Size ({unit})'] * scale
+
+    return scaled_points, x_domain, y_domain, unit, scale, df
+
 
 @file_transferred_size_bp.route('/file-transferred-size')
 @check_and_reload_data()
 def get_file_transferred_size():
     try:
-        base_time = runtime_state.MIN_TIME
-        files = runtime_state.files
-        events = []
-        for file in files.values():
-            if not file.producers:
-                continue
-            for transfer in file.transfers:
-                if transfer.time_stage_in:
-                    t = float(transfer.time_stage_in - base_time)
-                    events.append((t, file.size_mb))
-                elif transfer.time_stage_out:
-                    t = float(transfer.time_stage_out - base_time)
-                    events.append((t, file.size_mb))
-        if not events:
-            return jsonify({'points': [], 'x_domain': [0, 1], 'y_domain': [0, 0],
-                            'x_tick_values': compute_linear_tick_values([0, 1]),
-                            'y_tick_values': compute_linear_tick_values([0, 0]),
-                            'x_tick_formatter': d3_time_formatter(),
-                            'y_tick_formatter': d3_size_formatter('MB')})
+        points, x_domain, y_domain, unit, _, _ = get_file_transferred_size_points()
 
-        events.sort()
-        points = []
-        total = 0.0
-        for t, size in events:
-            total += size
-            points.append([t, total])
-        x_domain = [0, max(p[0] for p in points)]
-        y_max = max(p[1] for p in points)
-        unit, scale = get_unit_and_scale_by_max_file_size_mb(y_max)
-        # scale all y values
-        points = [[t, y * scale] for t, y in points]
-        y_domain = [0, y_max * scale]
-        points = downsample_points(points, SAMPLING_POINTS)
+        if not points:
+            return jsonify({
+                'points': [],
+                'x_domain': x_domain,
+                'y_domain': y_domain,
+                'x_tick_values': compute_linear_tick_values(x_domain),
+                'y_tick_values': compute_linear_tick_values(y_domain),
+                'x_tick_formatter': d3_time_formatter(),
+                'y_tick_formatter': d3_size_formatter(unit)
+            })
+
         return jsonify({
-            'points': points,
+            'points': downsample_points(points, SAMPLING_POINTS),
             'x_domain': x_domain,
             'y_domain': y_domain,
             'x_tick_values': compute_linear_tick_values(x_domain),
@@ -57,6 +75,28 @@ def get_file_transferred_size():
             'x_tick_formatter': d3_time_formatter(),
             'y_tick_formatter': d3_size_formatter(unit)
         })
+
     except Exception as e:
         runtime_state.log_error(f"Error in get_file_transferred_size: {e}")
-        return jsonify({'error': str(e)}), 500 
+        return jsonify({'error': str(e)}), 500
+
+@file_transferred_size_bp.route('/file-transferred-size/export-csv')
+@check_and_reload_data()
+def export_file_transferred_size_csv():
+    try:
+        _, _, _, unit, _, df = get_file_transferred_size_points()
+        if df.empty:
+            return jsonify({'error': 'No file transferred data'}), 404
+
+        buffer = StringIO()
+        df.to_csv(buffer, index=False)
+        buffer.seek(0)
+
+        response = make_response(buffer.getvalue())
+        response.headers['Content-Disposition'] = 'attachment; filename=file_transferred_size.csv'
+        response.headers['Content-Type'] = 'text/csv'
+        return response
+
+    except Exception as e:
+        runtime_state.log_error(f"Error in export_file_transferred_size_csv: {e}")
+        return jsonify({'error': str(e)}), 500

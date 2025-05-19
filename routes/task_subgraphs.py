@@ -3,7 +3,11 @@ from flask import Blueprint, jsonify, request
 import graphviz
 import os
 from pathlib import Path
-
+from collections import defaultdict
+from io import StringIO
+import csv
+import pandas as pd
+from flask import make_response
 
 task_subgraphs_bp = Blueprint('task_subgraphs', __name__, url_prefix='/api')
 
@@ -132,4 +136,37 @@ def get_task_subgraphs():
         return jsonify(data)
     except Exception as e:
         runtime_state.logger.error(f'Error in get_task_subgraphs: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@task_subgraphs_bp.route('/task-subgraphs/export-csv')
+@check_and_reload_data()
+def export_task_subgraph_csv():
+    try:
+        rows = []
+
+        for (tid, try_id), task in runtime_state.tasks.items():
+            dependent_ids = set()
+            for file_name in task.output_files:
+                file = runtime_state.files.get(file_name)
+                if not file:
+                    continue
+                for consumer_task_id, _ in file.consumers:
+                    dependent_ids.add(consumer_task_id)
+
+            rows.append([tid, ' '.join(str(did) for did in sorted(dependent_ids))])
+
+        output = StringIO()
+        writer = csv.writer(output)
+        writer.writerow(['task_id', 'dependent_task_ids'])
+        writer.writerows(rows)
+        output.seek(0)
+
+        response = make_response(output.getvalue())
+        response.headers["Content-Disposition"] = "attachment; filename=task_subgraphs.csv"
+        response.headers["Content-Type"] = "text/csv"
+        return response
+
+    except Exception as e:
+        runtime_state.logger.error(f'Error in export_task_subgraph_csv: {e}')
         return jsonify({'error': str(e)}), 500
