@@ -6,22 +6,28 @@ from .utils import (
     downsample_points,
     compute_points_domain
 )
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, make_response
+import pandas as pd
+from io import StringIO
 
 task_retrieval_time_bp = Blueprint('task_retrieval_time', __name__, url_prefix='/api')
+
+def get_retrieval_time_points():
+    if not runtime_state.task_stats:
+        return []
+
+    return [
+        [row['task_id'], row['task_waiting_retrieval_time']]
+        for row in runtime_state.task_stats
+        if row['task_waiting_retrieval_time'] is not None
+    ]
+
 
 @task_retrieval_time_bp.route('/task-retrieval-time')
 @check_and_reload_data()
 def get_task_retrieval_time():
     try:
-        raw_points = []
-
-        for idx, task in enumerate(runtime_state.tasks.values()):
-            if not task.when_retrieved or not task.when_waiting_retrieval:
-                continue
-            retrieval_time = round(task.when_retrieved - task.when_waiting_retrieval, 2)
-            retrieval_time = max(retrieval_time, 0.01)
-            raw_points.append([idx, retrieval_time])
+        raw_points = get_retrieval_time_points()
 
         if not raw_points:
             return jsonify({'error': 'No task retrieval time data available'}), 404
@@ -39,4 +45,28 @@ def get_task_retrieval_time():
         })
     except Exception as e:
         runtime_state.log_error(f"Error in get_task_retrieval_time: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@task_retrieval_time_bp.route('/task-retrieval-time/export-csv')
+@check_and_reload_data()
+def export_task_retrieval_time_csv():
+    try:
+        raw_points = get_retrieval_time_points()
+
+        if not raw_points:
+            return jsonify({'error': 'No task retrieval time data available'}), 404
+
+        df = pd.DataFrame(raw_points, columns=["Task ID", "Retrieval Time"])
+
+        buffer = StringIO()
+        df.to_csv(buffer, index=False)
+        buffer.seek(0)
+
+        response = make_response(buffer.getvalue())
+        response.headers["Content-Disposition"] = "attachment; filename=task_retrieval_time.csv"
+        response.headers["Content-Type"] = "text/csv"
+        return response
+
+    except Exception as e:
+        runtime_state.log_error(f"Error in export_task_retrieval_time_csv: {e}")
         return jsonify({'error': str(e)}), 500

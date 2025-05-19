@@ -7,32 +7,36 @@ from .utils import (
     compute_points_domain
 )
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, make_response
+import pandas as pd
+from io import StringIO
 
 task_response_time_bp = Blueprint(
     'task_response_time', __name__, url_prefix='/api')
+
+def get_response_time_points():
+    if not runtime_state.task_stats:
+        return []
+
+    return [
+        [row['task_id'], row['task_response_time']]
+        for row in runtime_state.task_stats
+        if row['task_response_time'] is not None
+    ]
 
 @task_response_time_bp.route('/task-response-time')
 @check_and_reload_data()
 def get_task_response_time():
     try:
-        raw_points = []
-
-        for idx, task in enumerate(runtime_state.tasks.values()):
-            if not task.when_running:
-                continue
-            response_time = max(round(task.when_running - task.when_ready, 2), 0.01)
-            raw_points.append([idx, response_time])
+        raw_points = get_response_time_points()
 
         if not raw_points:
-            return jsonify({'error': 'No task has started running'}), 404
+            return jsonify({'error': 'No valid response time found'}), 404
 
         x_domain, y_domain = compute_points_domain(raw_points)
 
-        points = downsample_points(raw_points, SAMPLING_POINTS)
-
         return jsonify({
-            'points': points,
+            'points': downsample_points(raw_points, SAMPLING_POINTS),
             'x_domain': x_domain,
             'y_domain': y_domain,
             'x_tick_values': compute_linear_tick_values(x_domain),
@@ -43,4 +47,29 @@ def get_task_response_time():
 
     except Exception as e:
         runtime_state.log_error(f"Error in get_task_response_time: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@task_response_time_bp.route('/task-response-time/export-csv')
+@check_and_reload_data()
+def export_task_response_time_csv():
+    try:
+        raw_points = get_response_time_points()
+
+        if not raw_points:
+            return jsonify({'error': 'No valid response time found'}), 404
+
+        df = pd.DataFrame(raw_points, columns=["Task ID", "Response Time"])
+
+        buffer = StringIO()
+        df.to_csv(buffer, index=False)
+        buffer.seek(0)
+
+        response = make_response(buffer.getvalue())
+        response.headers["Content-Disposition"] = "attachment; filename=task_response_time.csv"
+        response.headers["Content-Type"] = "text/csv"
+        return response
+
+    except Exception as e:
+        runtime_state.log_error(f"Error in export_task_response_time_csv: {e}")
         return jsonify({'error': str(e)}), 500
