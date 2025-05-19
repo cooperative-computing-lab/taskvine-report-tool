@@ -51,7 +51,9 @@ def get_worker_storage_points(show_percentage=False):
             if disk > 0:
                 df['storage'] = df['storage'] / disk * 100
 
-        df = df.groupby('time')['storage'].max().reset_index()
+        df['time'] = df['time'].round(2)
+        df = df.drop_duplicates(subset='time', keep='last')
+
         if df.empty or df['storage'].isna().all():
             continue
 
