@@ -11,22 +11,12 @@ export class WorkerLifetimeModule extends BaseModule {
         if (!this.data) return;
         this.initSVG();
 
-        const barWidth = this.bottomScale.bandwidth() * 0.8;
+        const xWidth = this.bottomScale.bandwidth() * 0.8;
+        const yFormatter = eval(this.data['y_tick_formatter']);
 
         this.data['points'].forEach(([worker_idx, lifetime]) => {
-            const x = this.bottomScale(worker_idx);
-            const y = this.leftScale(lifetime);
-            const height = -(this.leftScale(lifetime) - this.leftScale(0));
-
-            this.plotRect(
-                x,
-                y,
-                barWidth,
-                height,
-                'steelblue',
-                1,
-                `Worker: ${this.data['idx_to_worker_key'][worker_idx]}<br>Lifetime: ${lifetime} s`
-            );
+            const innerHTML = `Worker: ${this.data['idx_to_worker_key'][worker_idx]}<br>Lifetime: ${yFormatter(lifetime)} s`;
+            this.plotVerticalRect(worker_idx, xWidth, lifetime, 'steelblue', 1, innerHTML);
         });
     }
 }

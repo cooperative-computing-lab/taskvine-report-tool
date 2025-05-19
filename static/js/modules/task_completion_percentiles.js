@@ -11,23 +11,12 @@ export class TaskCompletionPercentilesModule extends BaseModule {
         if (!this.data) return;
         this.initSVG();
 
-        const barWidth = this.bottomScale.bandwidth() * 0.8;
+        const xWidth = this.bottomScale.bandwidth() * 0.8;
         const yFormatter = eval(this.data['y_tick_formatter']);
 
         this.data['points'].forEach(([percentile, time]) => {
-            const x = this.bottomScale(percentile);
-            const y = this.leftScale(time);
-            const height = -(this.leftScale(time) - this.leftScale(0));
-
-            this.plotRect(
-                x,
-                y,
-                barWidth,
-                height,
-                'steelblue',
-                1,
-                `Percentile: ${percentile}%<br>Time: ${yFormatter(time)}`
-            );
+            const innerHTML = `Percentile: ${percentile}%<br>Time: ${yFormatter(time)}`;
+            this.plotVerticalRect(percentile, xWidth, time, 'steelblue', 1, innerHTML);
         });
     }
 } 
