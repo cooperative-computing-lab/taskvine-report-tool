@@ -116,11 +116,11 @@
 
 /* buttons and selectors in the toolbox */
 .report-button,
+.toolbox-input,
 .toolbox-selector {
     padding: 6px 12px;
     border: 1px solid #ccc;
     border-radius: 5px;
-    cursor: pointer;
     outline: none;
     transition: all 0.3s ease;
     font-size: 13px;
@@ -135,8 +135,9 @@
 }
 
 .report-button:hover {
-    background-color: #e6e6e6;
-    box-shadow: 0 0 5px rgba(102, 175, 233, 0.6);
+    cursor: pointer;
+    border-color: #999;
+    box-shadow: 0 0 4px rgba(102, 175, 233, 0.5);
 }
 
 .report-button-active {
@@ -144,6 +145,7 @@
 }
 
 .toolbox-selector {
+    cursor: pointer;
     background-color: white;
     background-image: url("data:image/svg+xml,%3Csvg fill='black' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
@@ -151,18 +153,15 @@
     background-size: 1rem 1rem;
     padding-right: 2rem;
 }
+.toolbox-selector:hover {
+    border-color: #999;
+    box-shadow: 0 0 4px rgba(102, 175, 233, 0.5);
+}
 
-
-.toolbox-input {
-    flex: 1;
-    padding: 0.4rem 0.6rem;
-    border-radius: 1rem;
-    font-size: 12px;
-    border: 1px solid #d1d5db;
-    background-color: white;
-    white-space: nowrap;
-    min-width: 0;
-    box-sizing: border-box;
+.toolbox-input:hover {
+    cursor: text;
+    border-color: #999;
+    box-shadow: 0 0 4px rgba(102, 175, 233, 0.5);
 }
 
 .toolbox-input[type="number"]::-webkit-inner-spin-button,
