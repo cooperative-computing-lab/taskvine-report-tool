@@ -40,13 +40,14 @@ export class ToolboxItem {
         return row;
     }
 
-    _createInput() {
+    _createInput(type = "number") {
         if (this._type !== "input") {
             return;
         }
 
         this._input = document.createElement("input");
         this._input.placeholder = "Input";
+        this._input.type = type;
         this._input.className = "toolbox-input";
         this._input.id = `input-${this._id}`;
     }

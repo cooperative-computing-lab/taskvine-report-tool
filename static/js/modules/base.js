@@ -154,7 +154,18 @@ export class BaseModule {
                 }
             }
         );
-    }    
+    }
+
+    createToolboxItemSetXMin() {
+        return this.toolbox.createInputItem('x-min', 'Set X Min', (id, value) => {
+            const parsed = parseFloat(value);
+            if (!isNaN(parsed)) {
+                this.setXMin(parsed);
+            } else {
+                console.warn('Invalid value for X Min');
+            }
+        });
+    }
 
     setToolboxItems(items) {
         this.toolbox.setItems(items);
@@ -164,6 +175,7 @@ export class BaseModule {
     initToolbox() {
         const items = [
             this.createToolboxItemExport(),
+            this.createToolboxItemSetXMin(),
             this.createToolboxItemReset(),
         ];
 
