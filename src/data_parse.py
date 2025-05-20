@@ -14,7 +14,8 @@ from collections import defaultdict
 import cloudpickle
 from datetime import timezone, timedelta
 import pytz
-from src.utils import floor_decimal
+from src.utils import floor_decimal, get_unit_and_scale_by_max_file_size_mb
+
 
 def count_lines(file_name):
     if platform.system() in ["Linux", "Darwin"]:  # Linux or macOS
@@ -109,9 +110,7 @@ class DataParser:
                 if "listening on port" in line:
                     parts = line.strip().split()
                     mgr_start_datestring = f"{parts[0]} {parts[1]}"
-                    mgr_start_datestring = datetime.strptime(
-                        mgr_start_datestring, "%Y/%m/%d %H:%M:%S.%f"
-                    ).replace(microsecond=0)
+                    mgr_start_datestring = datetime.strptime(mgr_start_datestring, "%Y/%m/%d %H:%M:%S.%f").replace(microsecond=0)
                     break
 
         # read the first line containing "MANAGER" and "START" in transactions file
@@ -152,8 +151,7 @@ class DataParser:
 
     @lru_cache(maxsize=4096)
     def datestring_to_timestamp(self, datestring):
-        equivalent_datestring = datetime.strptime(
-            datestring, "%Y/%m/%d %H:%M:%S.%f").replace(tzinfo=self.manager.equivalent_tz)
+        equivalent_datestring = datetime.strptime(datestring, "%Y/%m/%d %H:%M:%S.%f").replace(tzinfo=self.manager.equivalent_tz)
         unix_timestamp = float(equivalent_datestring.timestamp())
         return unix_timestamp
 
@@ -757,7 +755,10 @@ class DataParser:
 
         self.current_try_id = defaultdict(int)
         total_lines = count_lines(self.debug)
+        debug_file_size_mb = floor_decimal(os.path.getsize(self.debug) / 1024 / 1024, 2)
+        unit, scale = get_unit_and_scale_by_max_file_size_mb(debug_file_size_mb)
 
+        print(f"Debug file size: {floor_decimal(debug_file_size_mb * scale, 2)} {unit}")
         with open(self.debug, 'rb') as file:
             pbar = tqdm(total=total_lines, desc="Parsing debug")
             for raw_line in file:
