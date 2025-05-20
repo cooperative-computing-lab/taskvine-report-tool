@@ -227,9 +227,9 @@ class DataParser:
             
             worker_entry = (worker.ip, worker.port, worker.connect_id)
             # files on the worker are removed
-            for file in self.files.values():
-                if file.filename in worker.active_files_or_transfers:
-                    file.prune_file_on_worker_entry(worker_entry, timestamp)
+            for filename in worker.active_files_or_transfers:
+                self.files[filename].prune_file_on_worker_entry(worker_entry, timestamp)
+
             return
 
         if "transfer-port" in parts:
@@ -570,10 +570,8 @@ class DataParser:
             exit_status = int(parts[complete_idx + 2])
             output_length = int(parts[complete_idx + 3])
             bytes_sent = int(parts[complete_idx + 4])
-            time_worker_start = floor_decimal(
-                float(parts[complete_idx + 5]) / 1e6, 2)
-            time_worker_end = floor_decimal(
-                float(parts[complete_idx + 6]) / 1e6, 2)
+            time_worker_start = floor_decimal(float(parts[complete_idx + 5]) / 1e6, 2)
+            time_worker_end = floor_decimal(float(parts[complete_idx + 6]) / 1e6, 2)
             sandbox_used = None
             try:
                 task_id = int(parts[complete_idx + 8])
