@@ -149,47 +149,47 @@ The tool provides various visualization modules to analyze different aspects of 
   ![Example](imgs/example_task_execution_details.png)
 - **Task Concurrency**: Visualizes task states over time from the manager's perspective, tracking five distinct states: waiting (committed but not dispatched), committing (dispatched but not yet executed), executing (currently running on workers), waiting retrieval (completed with outputs pending retrieval), and done (fully completed, whether succeeded or failed).
   ![Example](imgs/example_task_concurrency.png)
-- **Task Response Time**: Distribution of time between task submission and start of execution
+- **Task Response Time**: Measures the duration between task commitment to the manager and its dispatch to a worker. High response times may indicate task queue congestion or scheduler inefficiencies when available cores are significantly outnumbered by waiting tasks.
   ![Example](imgs/example_task_response_time.png)
-- **Task Execution Time**: Distribution of actual task execution durations
+- **Task Execution Time**: Displays the actual runtime duration of each task, providing insights into computational performance and resource utilization.
   ![Example](imgs/example_task_execution_time.png)
-- **Task Retrieval Time**: Time taken to retrieve task dependencies
+- **Task Retrieval Time**: Tracks the time required to retrieve task outputs, beginning when a task completes and sends its completion message to the manager. This phase ends when outputs are successfully retrieved or an error is identified.
   ![Example](imgs/example_task_retrieval_time.png)
-- **Task Completion Percentiles**: Distribution of task completion times
+- **Task Completion Percentiles**: Shows the time required to complete specific percentages of the total workflow. For instance, the 10th percentile indicates the time needed to complete the first 10% of all tasks.
   ![Example](imgs/example_task_completion_percentiles.png)
-- **Task Dependencies**: Visualization of task dependency relationships
+- **Task Dependencies**: Visualizes the number of parent tasks for each task. A task can only execute after all its parent tasks have completed and their outputs have been successfully retrieved by the manager.
   ![Example](imgs/example_task_dependencies.png)
-- **Task Dependents**: Shows which tasks depend on each task
+- **Task Dependents**: Shows the number of child tasks that depend on each task's outputs as their inputs.
   ![Example](imgs/example_task_dependents.png)
-- **Task Subgraphs**: Displays task dependency subgraphs
+- **Task Subgraphs**: Displays the workflow's independent Directed Acyclic Graphs (DAGs), where each subgraph represents a set of tasks connected by input-output file dependencies.
   ![Example](imgs/example_task_subgraphs.png)
 
 ### Worker Analysis
-- **Worker Storage Consumption**: Storage usage patterns across workers
+- **Worker Storage Consumption**: Monitors the actual storage usage of each worker over time, specifically tracking worker cache consumption. Note that this metric excludes task-related sandboxes as they represent virtual resource allocation.
   ![Example](imgs/example_worker_storage_consumption.png)
-- **Worker Concurrency**: Number of concurrent tasks per worker
+- **Worker Concurrency**: Tracks the number of active workers over time, providing insights into cluster utilization and scalability.
   ![Example](imgs/example_worker_concurrency.png)
-- **Worker Incoming Transfers**: File transfer patterns to workers
+- **Worker Incoming Transfers**: Shows the number of file download requests received by each worker over time. These transfers occur when other workers need files from this worker or when the manager is retrieving task outputs.
   ![Example](imgs/example_worker_incoming_transfers.png)
-- **Worker Outgoing Transfers**: File transfer patterns from workers
+- **Worker Outgoing Transfers**: Displays the number of file download requests initiated by each worker over time, including transfers from the cloud, other workers, or the manager.
   ![Example](imgs/example_worker_outgoing_transfers.png)
-- **Worker Executing Tasks**: Tasks currently running on each worker
+- **Worker Executing Tasks**: Tracks the number of tasks actively running on each worker over time.
   ![Example](imgs/example_worker_executing_tasks.png)
-- **Worker Waiting Retrieval Tasks**: Tasks waiting for file retrieval
+- **Worker Waiting Retrieval Tasks**: Shows the number of completed tasks on each worker that are pending output retrieval.
   ![Example](imgs/example_worker_waiting_retrieval_tasks.png)
-- **Worker Lifetime**: Worker availability and uptime patterns
+- **Worker Lifetime**: Visualizes the active period of each worker throughout the workflow, accounting for varying connection times and potential crashes.
   ![Example](imgs/example_worker_lifetime.png)
 
 ### File Analysis
-- **File Sizes**: Distribution of file sizes in the workflow
+- **File Sizes**: Displays the size of each task-related file, including both input and output files.
   ![Example](imgs/example_file_sizes.png)
-- **File Concurrent Replicas**: Number of simultaneous file replicas
+- **File Concurrent Replicas**: Shows the maximum number of file replicas at any given time. Higher values indicate better redundancy and fault tolerance. Replication occurs automatically for temporary files when specified by the manager's `temp-replica-count` parameter, or naturally when workers fetch inputs from other workers.
   ![Example](imgs/example_file_concurrent_replicas.png)
-- **File Retention Time**: How long files are kept in the system
+- **File Retention Time**: Measures the duration between file creation and removal from the cluster. Longer retention times provide better redundancy but consume more disk space. This can be optimized through the manager's file pruning feature.
   ![Example](imgs/example_file_retention_time.png)
-- **File Transferred Size**: Total size of files transferred
+- **File Transferred Size**: Tracks the cumulative size of data transferred between workers over time.
   ![Example](imgs/example_file_transferred_size.png)
-- **File Created Size**: Size of files created during execution
+- **File Created Size**: Shows the cumulative size of distinct files created during workflow execution.
   ![Example](imgs/example_file_created_size.png)
 
 ## Troubleshooting
