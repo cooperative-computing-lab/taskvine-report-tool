@@ -34,13 +34,7 @@ export class LogManager {
     }
 
     async init() {
-        this._setSelectorValue(this._currentLogFolder);
-
-        this.selector.addEventListener('click', async () => {
-            if (this.selector.options.length <= 1) {
-                await this._refreshLogOptions();
-            }
-        });        
+        this._setSelectorValue(this._currentLogFolder);    
 
         this.selector.addEventListener('change', async () => {
             const selectedOption = this.selector.selectedOptions[0];
@@ -58,6 +52,19 @@ export class LogManager {
             this.selector.disabled = true;
             await this._changeLogFolderTo(selectedOption.value);
             this.selector.disabled = false;
+        });  
+        
+        this.selector.addEventListener('focus', () => {
+            const previousValue = this.selector.value;
+        
+            setTimeout(async () => {
+                await this._refreshLogOptions();
+        
+                this.selector.focus();
+                if (previousValue) {
+                    this.selector.value = previousValue;
+                }
+            }, 100);
         });        
 
         this.reloadButton.addEventListener('click', async () => {
