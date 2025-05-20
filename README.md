@@ -140,6 +140,58 @@ On the web interface, you can:
 4. Ensure sufficient disk space for generated data files
 5. For workflows with large task graphs, the initial data generation and graph visualization might take significant time (potentially hours on some machines). However, once processed, the results are cached in the `pkl-files` directory, making subsequent loads much faster.
 
+## Visualization Modules
+
+The tool provides various visualization modules to analyze different aspects of your TaskVine workflow. Here's a brief description of each module:
+
+### Task Analysis
+- **Task Execution Details**: Detailed view of task execution patterns and statistics
+  ![Example](imgs/example_task_execution_details.png)
+- **Task Concurrency**: Shows the number of tasks running simultaneously over time
+  ![Example](imgs/example_task_concurrency.png)
+- **Task Response Time**: Distribution of time between task submission and start of execution
+  ![Example](imgs/example_task_response_time.png)
+- **Task Execution Time**: Distribution of actual task execution durations
+  ![Example](imgs/example_task_execution_time.png)
+- **Task Retrieval Time**: Time taken to retrieve task dependencies
+  ![Example](imgs/example_task_retrieval_time.png)
+- **Task Completion Percentiles**: Distribution of task completion times
+  ![Example](imgs/example_task_completion_percentiles.png)
+- **Task Dependencies**: Visualization of task dependency relationships
+  ![Example](imgs/example_task_dependencies.png)
+- **Task Dependents**: Shows which tasks depend on each task
+  ![Example](imgs/example_task_dependents.png)
+- **Task Subgraphs**: Displays task dependency subgraphs
+  ![Example](imgs/example_task_subgraphs.png)
+
+### Worker Analysis
+- **Worker Storage Consumption**: Storage usage patterns across workers
+  ![Example](imgs/example_worker_storage_consumption.png)
+- **Worker Concurrency**: Number of concurrent tasks per worker
+  ![Example](imgs/example_worker_concurrency.png)
+- **Worker Incoming Transfers**: File transfer patterns to workers
+  ![Example](imgs/example_worker_incoming_transfers.png)
+- **Worker Outgoing Transfers**: File transfer patterns from workers
+  ![Example](imgs/example_worker_outgoing_transfers.png)
+- **Worker Executing Tasks**: Tasks currently running on each worker
+  ![Example](imgs/example_worker_executing_tasks.png)
+- **Worker Waiting Retrieval Tasks**: Tasks waiting for file retrieval
+  ![Example](imgs/example_worker_waiting_retrieval_tasks.png)
+- **Worker Lifetime**: Worker availability and uptime patterns
+  ![Example](imgs/example_worker_lifetime.png)
+
+### File Analysis
+- **File Sizes**: Distribution of file sizes in the workflow
+  ![Example](imgs/example_file_sizes.png)
+- **File Concurrent Replicas**: Number of simultaneous file replicas
+  ![Example](imgs/example_file_concurrent_replicas.png)
+- **File Retention Time**: How long files are kept in the system
+  ![Example](imgs/example_file_retention_time.png)
+- **File Transferred Size**: Total size of files transferred
+  ![Example](imgs/example_file_transferred_size.png)
+- **File Created Size**: Size of files created during execution
+  ![Example](imgs/example_file_created_size.png)
+
 ## Troubleshooting
 
 If you encounter issues:
