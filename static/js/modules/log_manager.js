@@ -52,6 +52,7 @@ export class LogManager {
         this._loadingOption.disabled = true;
         this._loadingOption.selected = true;
         this.selector.appendChild(this._loadingOption);
+        this.selector.disabled = true;
     }
 
     _showSelectLogOption() {
@@ -59,12 +60,14 @@ export class LogManager {
         this._selectLogOption.disabled = false;
         this._selectLogOption.selected = true;
         this.selector.appendChild(this._selectLogOption);
+        this.selector.disabled = false;
     }
 
     _removeLoadingIndicator() {
         this._loadingOption?.remove();
         this._selectLogOption.disabled = false;
         this._selectLogOption.selected = false;
+        this.selector.disabled = false;
     }
 
     registerLogChangeCallback(callback) {
@@ -123,7 +126,7 @@ export class LogManager {
     }
 
     async _changeLogFolderTo(selectedFolder) {
-        if (!selectedFolder || selectedFolder === this._currentLogFolder) return;
+        if (!selectedFolder || selectedFolder === this._currentLogFolder || selectedFolder === 'Loading...') return;
     
         if (selectedFolder === '--- select log ---') {
             this.selector.value = this._currentLogFolder;
