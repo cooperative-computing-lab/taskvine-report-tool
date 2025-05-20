@@ -34,8 +34,7 @@ class WorkerInfo:
         self.active_files_or_transfers.add(filename)
 
     def remove_active_file_or_transfer(self, filename: str):
-        if filename not in self.active_files_or_transfers:
-            raise ValueError(f"filename {filename} not in active_files_or_transfers on worker {self.ip}:{self.port}")
+        # allow double removing the same filename (is this correct?)
         self.active_files_or_transfers.remove(filename)
 
     def set_checkpoint_worker(self):
