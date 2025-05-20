@@ -1,6 +1,6 @@
 # TaskVine Report Tool
 
-An interactive visualization tool for [TaskVine](https://cctools.readthedocs.io/en/stable/taskvine/), a task scheduler for large workflows to run efficiently on HPC clusters. This tool helps you analyze task execution patterns, file transfers, resource utilization, and other key metrics.
+An interactive visualization tool for [TaskVine](https://github.com/cooperative-computing-lab/cctools), a task scheduler for large workflows to run efficiently on HPC clusters. This tool helps you analyze task execution patterns, file transfers, resource utilization, storage consumption, and other key metrics.
 
 ## Quick Install
 
@@ -14,15 +14,54 @@ conda install -y flask pandas tqdm bitarray python-graphviz
 
 Follow these steps to use the visualization tool:
 
-### 1. Configure TaskVine Log Location (Recommended)
+### 1. Prepare Log Files
 
-The easiest way to use this tool is to configure TaskVine to generate logs directly in the correct location. When creating your TaskVine manager, set these parameters:
+After running your TaskVine workflow, you'll find the logs in a directory named with a timestamp (e.g., `2025-05-20T110437`) or your specified workflow name. The default structure looks like this:
+
+```
+workflow_name/
+└── vine-logs/
+    ├── debug
+    ├── performance
+    ├── taskgraph
+    ├── transactions
+    └── workflow.json
+```
+
+To use these logs with the visualization tool:
+
+1. Copy the entire workflow directory to the tool's `logs` directory:
+```bash
+cp -r /path/to/workflow_name logs/
+```
+
+2. Generate the visualization data:
+```bash
+python3 generate_data.py logs/your_workflow_name
+```
+
+3. Start the visualization server:
+```bash
+python3 app.py
+```
+
+4. View the report in your browser at `http://localhost:9122`
+
+Note: In the web interface, you'll only see log collections that have been successfully processed by `generate_data.py`. You can process multiple log collections at once by providing multiple paths:
+
+```bash
+python3 generate_data.py logs/log1 logs/log2 logs/log3
+```
+
+### 2. Alternative: Configure TaskVine Log Location
+
+Instead of manually copying logs, you can configure TaskVine to generate logs directly in the correct location. When creating your TaskVine manager, set these parameters:
 
 ```python
 manager = vine.Manager(
     9123,
     run_info_path="~/taskvine-report-tool",   # Path to this tool's directory
-    run_info_template="experiment1"           # Name for this run's logs
+    run_info_template="your_workflow_name"    # Name for this run's logs
 )
 ```
 
@@ -30,7 +69,7 @@ This will automatically create the correct directory structure:
 ```
 ~/taskvine-report-tool/
 └── logs/
-    └── experiment1/
+    └── your_workflow_name/
         └── vine-logs/
             ├── debug
             └── transactions
@@ -38,24 +77,12 @@ This will automatically create the correct directory structure:
 
 After your workflow completes, simply:
 1. Navigate to the tool directory: `cd ~/taskvine-report-tool`
-2. Generate the visualization data: `python3 generate_data.py logs/experiment1`
+2. Generate the visualization data: `python3 generate_data.py logs/your_workflow_name`
 3. Refresh your browser to see the new log collection
 
-### 2. Prepare Log Files
+### 3. Multiple Log Collections
 
-All log files should be placed in the `logs` directory. Currently, the tool only parses the `debug` and `transactions` logs, so the other log files are optional. The directory structure should be:
-
-```
-logs/
-└── your_log_folder_name/
-    └── vine-logs/
-        ├── debug         (required)
-        ├── performance   (optional)
-        ├── taskgraph     (optional)
-        └── transactions  (required)
-```
-
-For example, if you have multiple log collections, your directory structure might look like this:
+You can have multiple log collections in your `logs` directory. For example:
 
 ```
 logs/
@@ -75,7 +102,7 @@ logs/
         └── transactions
 ```
 
-### 3. Generate Visualization Data
+### 4. Generate Visualization Data
 
 For each log collection, generate the visualization data by running:
 
@@ -103,7 +130,7 @@ logs/
         └── subgraphs.pkl   # Task dependency graphs
 ```
 
-### 4. Start Visualization Server
+### 5. Start Visualization Server
 
 After generating the data, start the web server:
 
@@ -117,7 +144,7 @@ By default, the server runs on port 9122. You can specify a different port using
 python3 app.py --port 8080
 ```
 
-### 5. View Visualization Report
+### 6. View Visualization Report
 
 Once the server is running, access the visualization in your browser at:
 
