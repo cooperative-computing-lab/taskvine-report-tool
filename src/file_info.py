@@ -215,10 +215,9 @@ class FileInfo:
             transfer.stage_out(time_stage_out, "cache_invalid")
 
     def end_all_transfers_on_worker_entry(self, worker_entry, time_stage_out):
-        # this affects incoming transfers on the destination worker
         for transfer in self.transfers:
             dest = transfer.destination
-            if isinstance(dest, tuple) and dest == worker_entry:
+            if isinstance(dest, tuple) and (dest == worker_entry or dest == worker_entry):
                 if transfer.time_stage_out:
                     continue
                 if transfer.time_start_stage_in > time_stage_out:

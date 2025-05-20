@@ -34,6 +34,7 @@ def get_worker_executing_task_points():
         all_worker_events[worker].extend([(start, 1), (end, -1)])
 
     for worker, events in all_worker_events.items():
+        
         w = workers.get(worker)
         if w:
             boundary_times = [floor_decimal(t - base_time, 2) for t in w.time_connected + w.time_disconnected]

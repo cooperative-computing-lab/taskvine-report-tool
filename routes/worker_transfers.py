@@ -42,25 +42,30 @@ def get_worker_transfer_raw_points(role):
             transfers_by_worker[worker].append((t1, -1))
 
     raw_points_array = []
-    worker_keys = []
+    worker_keys = [] 
 
     for worker, events in transfers_by_worker.items():
-        w = runtime_state.workers.get(worker)
-        if w:
-            boundary_times = [floor_decimal(t - base_time, 2) for t in w.time_connected + w.time_disconnected]
-            events += [(t, 0) for t in boundary_times]
-
         if not events:
             continue
 
-        df = pd.DataFrame(events, columns=['time', 'delta'])
+        w = runtime_state.workers.get(worker)
+        boundary_events = []
+        if w:
+            boundary_times = [floor_decimal(t - base_time, 2) for t in w.time_connected + w.time_disconnected]
+            boundary_events = [(t, 0) for t in boundary_times]
+
+        all_events = events + boundary_events
+        df = pd.DataFrame(all_events, columns=['time', 'delta'])
         df = df.groupby('time', as_index=False)['delta'].sum()
-        df['cumulative'] = df['delta'].cumsum()
-        df['cumulative'] = df['cumulative'].clip(lower=0)
+        df['cumulative'] = df['delta'].cumsum().clip(lower=0)
+
+        if df['cumulative'].isna().all():
+            continue
 
         worker_keys.append(worker)
         compressed_points = compress_time_based_critical_points(df[['time', 'cumulative']].values.tolist())
         raw_points_array.append(compressed_points)
+
 
     return worker_keys, raw_points_array
 
