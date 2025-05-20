@@ -1,5 +1,5 @@
 from pathlib import Path
-from decimal import Decimal, ROUND_FLOOR
+import math
 
 # check if all required subfolders exist
 def all_subfolders_exists(parent: str, folder_names: list[str]) -> bool:
@@ -10,7 +10,6 @@ def all_subfolders_exists(parent: str, folder_names: list[str]) -> bool:
             return False
     return True
 
-def floor_decimal(number, decimal_places):
-    num = Decimal(str(number))
-    quantizer = Decimal(f"1e-{decimal_places}")
-    return float(num.quantize(quantizer, rounding=ROUND_FLOOR))
+def floor_decimal(x, decimal_places):
+    factor = 10 ** decimal_places
+    return math.floor(x * factor) / factor

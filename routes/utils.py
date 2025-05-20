@@ -1,11 +1,10 @@
 import os
 import hashlib
-from decimal import Decimal, ROUND_FLOOR
+import math
 
-def floor_decimal(number, decimal_places):
-    num = Decimal(str(number))
-    quantizer = Decimal(f"1e-{decimal_places}")
-    return float(num.quantize(quantizer, rounding=ROUND_FLOOR))
+def floor_decimal(x, decimal_places):
+    factor = 10 ** decimal_places
+    return math.floor(x * factor) / factor
 
 def get_unit_and_scale_by_max_file_size_mb(max_file_size_mb) -> tuple[str, float]:
     if max_file_size_mb >= 1024 * 1024:
