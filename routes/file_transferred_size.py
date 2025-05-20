@@ -6,47 +6,46 @@ from .utils import (
     downsample_points,
     get_unit_and_scale_by_max_file_size_mb
 )
-from flask import Blueprint, jsonify, make_response
-from io import StringIO
+from flask import Blueprint, jsonify, Response
 import pandas as pd
 
 file_transferred_size_bp = Blueprint('file_transferred_size', __name__, url_prefix='/api')
 
 def get_file_transferred_size_points():
     base_time = runtime_state.MIN_TIME
-    events = []
-    for file in runtime_state.files.values():
-        if not file.producers:
-            continue
-        for t in file.transfers:
-            if t.time_stage_in:
-                time = float(t.time_stage_in - base_time)
-            elif t.time_stage_out:
-                time = float(t.time_stage_out - base_time)
-            else:
-                continue
-            events.append((time, file.size_mb))
+
+    events = [
+        (float(t.time_stage_in - base_time), file.size_mb)
+        if t.time_stage_in else
+        (float(t.time_stage_out - base_time), file.size_mb)
+        for file in runtime_state.files.values() if file.producers
+        for t in file.transfers if t.time_stage_in or t.time_stage_out
+    ]
 
     if not events:
-        return [], [0, 1], [0, 0], 'MB', 1.0, pd.DataFrame()
+        return [], [0, 1], [0, 0], 'MB', 1.0, []
 
-    events.sort()
-    cumulative = 0.0
-    raw_points = []
-    for t, size in events:
-        cumulative += size
-        raw_points.append([t, cumulative])
+    df = pd.DataFrame(events, columns=["time", "delta"])
+    df["time"] = df["time"].round(2)
+    df = df.groupby("time", as_index=False)["delta"].sum()
+    df["cumulative"] = df["delta"].cumsum()
+    df["cumulative"] = df["cumulative"].clip(lower=0)
 
-    x_domain = [0, max(p[0] for p in raw_points)]
-    y_max = max(p[1] for p in raw_points)
-    unit, scale = get_unit_and_scale_by_max_file_size_mb(y_max)
+    if df.empty:
+        return [], [0, 1], [0, 0], 'MB', 1.0, []
+
+    raw_points = df[["time", "cumulative"]].values.tolist()
+
+    x_max = df["time"].max()
+    x_domain = [0, float(x_max) if pd.notna(x_max) else 1.0]
+
+    y_max = df["cumulative"].max()
+    unit, scale = get_unit_and_scale_by_max_file_size_mb(y_max if pd.notna(y_max) else 0)
     scaled_points = [[x, y * scale] for x, y in raw_points]
-    y_domain = [0, y_max * scale]
+    y_domain = [0, y_max * scale if pd.notna(y_max) else 0]
 
-    df = pd.DataFrame(raw_points, columns=['Time (s)', f'Cumulative Size ({unit})'])
-    df[f'Cumulative Size ({unit})'] = df[f'Cumulative Size ({unit})'] * scale
+    return scaled_points, x_domain, y_domain, unit, scale, raw_points
 
-    return scaled_points, x_domain, y_domain, unit, scale, df
 
 
 @file_transferred_size_bp.route('/file-transferred-size')
@@ -54,18 +53,6 @@ def get_file_transferred_size_points():
 def get_file_transferred_size():
     try:
         points, x_domain, y_domain, unit, _, _ = get_file_transferred_size_points()
-
-        if not points:
-            return jsonify({
-                'points': [],
-                'x_domain': x_domain,
-                'y_domain': y_domain,
-                'x_tick_values': compute_linear_tick_values(x_domain),
-                'y_tick_values': compute_linear_tick_values(y_domain),
-                'x_tick_formatter': d3_time_formatter(),
-                'y_tick_formatter': d3_size_formatter(unit)
-            })
-
         return jsonify({
             'points': downsample_points(points, SAMPLING_POINTS),
             'x_domain': x_domain,
@@ -75,28 +62,33 @@ def get_file_transferred_size():
             'x_tick_formatter': d3_time_formatter(),
             'y_tick_formatter': d3_size_formatter(unit)
         })
-
     except Exception as e:
         runtime_state.log_error(f"Error in get_file_transferred_size: {e}")
         return jsonify({'error': str(e)}), 500
+
 
 @file_transferred_size_bp.route('/file-transferred-size/export-csv')
 @check_and_reload_data()
 def export_file_transferred_size_csv():
     try:
-        _, _, _, unit, _, df = get_file_transferred_size_points()
-        if df.empty:
+        _, _, _, unit, scale, raw_points = get_file_transferred_size_points()
+        if not raw_points:
             return jsonify({'error': 'No file transferred data'}), 404
 
-        buffer = StringIO()
-        df.to_csv(buffer, index=False)
-        buffer.seek(0)
+        def generate_csv():
+            yield f"Time (s),Cumulative Size ({unit})\n"
+            cumulative = 0.0
+            for t, size in raw_points:
+                cumulative += size
+                yield f"{t},{cumulative * scale}\n"
 
-        response = make_response(buffer.getvalue())
-        response.headers['Content-Disposition'] = 'attachment; filename=file_transferred_size.csv'
-        response.headers['Content-Type'] = 'text/csv'
-        return response
-
+        return Response(
+            generate_csv(),
+            headers={
+                "Content-Disposition": "attachment; filename=file_transferred_size.csv",
+                "Content-Type": "text/csv"
+            }
+        )
     except Exception as e:
         runtime_state.log_error(f"Error in export_file_transferred_size_csv: {e}")
         return jsonify({'error': str(e)}), 500

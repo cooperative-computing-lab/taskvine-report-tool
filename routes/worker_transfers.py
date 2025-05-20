@@ -1,7 +1,6 @@
-from flask import Blueprint, jsonify, make_response
+from flask import Blueprint, jsonify, make_response, Response
 import pandas as pd
 from collections import defaultdict
-import math
 from io import StringIO
 
 from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
@@ -9,13 +8,19 @@ from .utils import (
     compute_linear_tick_values,
     d3_time_formatter,
     d3_int_formatter,
-    downsample_points_array
+    downsample_points_array,
+    floor_decimal,
+    compress_time_based_critical_points
 )
 
 worker_transfers_bp = Blueprint('worker_transfers', __name__, url_prefix='/api')
 
 def get_worker_transfer_raw_points(role):
-    assert role in ['source', 'destination']
+    assert role in ['outgoing', 'incoming']
+    if role == 'outgoing':
+        role = 'source'
+    else:
+        role = 'destination'
 
     base_time = runtime_state.MIN_TIME
     transfers_by_worker = defaultdict(list)
@@ -25,32 +30,37 @@ def get_worker_transfer_raw_points(role):
             worker = getattr(transfer, role)
             if not isinstance(worker, tuple):
                 continue
-            transfers_by_worker[worker].append((transfer.time_start_stage_in - base_time, 1))
-            if transfer.time_stage_in:
-                transfers_by_worker[worker].append((transfer.time_stage_in - base_time, -1))
-            elif transfer.time_stage_out:
-                transfers_by_worker[worker].append((transfer.time_stage_out - base_time, -1))
+            t0 = floor_decimal(transfer.time_start_stage_in - base_time, 2)
+            transfers_by_worker[worker].append((t0, 1))
 
-    worker_keys = []
+            if transfer.time_stage_in:
+                t1 = floor_decimal(transfer.time_stage_in - base_time, 2)
+            elif transfer.time_stage_out:
+                t1 = floor_decimal(transfer.time_stage_out - base_time, 2)
+            else:
+                continue
+            transfers_by_worker[worker].append((t1, -1))
+
     raw_points_array = []
+    worker_keys = []
 
     for worker, events in transfers_by_worker.items():
-        df = pd.DataFrame(events, columns=['time', 'event']).sort_values('time')
-        df['time'] = df['time'].round(2)
-        df['cumulative'] = df['event'].cumsum()
-        df = df.drop_duplicates('time', keep='last')
-        points = df[['time', 'cumulative']].values.tolist()
+        w = runtime_state.workers.get(worker)
+        if w:
+            boundary_times = [floor_decimal(t - base_time, 2) for t in w.time_connected + w.time_disconnected]
+            events += [(t, 0) for t in boundary_times]
 
-        for t0, t1 in zip(runtime_state.workers[worker].time_connected,
-                          runtime_state.workers[worker].time_disconnected):
-            points.insert(0, [round(t0 - base_time, 2), 0])
-            points.append([round(t1 - base_time, 2), 0])
-
-        if not points or any(len(p) != 2 or math.isnan(p[0]) or math.isnan(p[1]) for p in points):
+        if not events:
             continue
 
+        df = pd.DataFrame(events, columns=['time', 'delta'])
+        df = df.groupby('time', as_index=False)['delta'].sum()
+        df['cumulative'] = df['delta'].cumsum()
+        df['cumulative'] = df['cumulative'].clip(lower=0)
+
         worker_keys.append(worker)
-        raw_points_array.append(points)
+        compressed_points = compress_time_based_critical_points(df[['time', 'cumulative']].values.tolist())
+        raw_points_array.append(compressed_points)
 
     return worker_keys, raw_points_array
 
@@ -59,7 +69,7 @@ def get_worker_transfer_raw_points(role):
 @check_and_reload_data()
 def get_worker_incoming_transfers():
     try:
-        worker_keys, raw_points_array = get_worker_transfer_raw_points('destination')
+        worker_keys, raw_points_array = get_worker_transfer_raw_points('incoming')
         if not raw_points_array:
             return jsonify({'error': 'No incoming transfer data'}), 404
 
@@ -90,7 +100,7 @@ def get_worker_incoming_transfers():
 @check_and_reload_data()
 def get_worker_outgoing_transfers():
     try:
-        worker_keys, raw_points_array = get_worker_transfer_raw_points('source')
+        worker_keys, raw_points_array = get_worker_transfer_raw_points('outgoing')
         if not raw_points_array:
             return jsonify({'error': 'No outgoing transfer data'}), 404
 
@@ -116,67 +126,47 @@ def get_worker_outgoing_transfers():
         runtime_state.log_error(f"Error in get_worker_outgoing_transfers: {e}")
         return jsonify({'error': str(e)}), 500
 
+def export_worker_transfer_csv(role):
+    try:
+        worker_keys, raw_points_array = get_worker_transfer_raw_points(role)
+        if not raw_points_array:
+            return jsonify({'error': f'No {role} transfer data'}), 404
+
+        column_data = {}
+        time_set = set()
+
+        for worker, points in zip(worker_keys, raw_points_array):
+            wid = f"{worker[0]}:{worker[1]}"
+            col_map = {floor_decimal(t, 2): v for t, v in points}
+            column_data[wid] = col_map
+            time_set.update(col_map)
+
+        sorted_times = sorted(time_set)
+        columns = list(column_data.keys())
+
+        def generate_csv():
+            yield "time (s)," + ",".join(columns) + "\n"
+            for t in sorted_times:
+                row = [f"{t:.2f}"] + [f"{column_data[c].get(t, 0):.6f}" for c in columns]
+                yield ",".join(row) + "\n"
+
+        return Response(
+            generate_csv(),
+            headers={
+                "Content-Disposition": f"attachment; filename=worker_{role}_transfers.csv",
+                "Content-Type": "text/csv"
+            }
+        )
+    except Exception as e:
+        runtime_state.log_error(f"Error in export_worker_{role}_transfers_csv: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @worker_transfers_bp.route('/worker-incoming-transfers/export-csv')
 @check_and_reload_data()
 def export_worker_incoming_transfers_csv():
-    try:
-        worker_keys, raw_points_array = get_worker_transfer_raw_points('destination')
-        if not raw_points_array:
-            return jsonify({'error': 'No incoming transfer data'}), 404
+    return export_worker_transfer_csv('incoming')
 
-        merged_df = None
-        for worker, points in zip(worker_keys, raw_points_array):
-            wid = f"{worker[0]}:{worker[1]}"
-            df = pd.DataFrame(points, columns=["time", wid])
-            if merged_df is None:
-                merged_df = df
-            else:
-                merged_df = pd.merge(merged_df, df, on="time", how="outer")
-
-        merged_df = merged_df.sort_values("time").fillna(0).round(2)
-        merged_df.columns = ["time (s)"] + [f"{col}" for col in merged_df.columns[1:]]
-
-        buffer = StringIO()
-        merged_df.to_csv(buffer, index=False)
-        buffer.seek(0)
-
-        response = make_response(buffer.getvalue())
-        response.headers['Content-Disposition'] = 'attachment; filename=worker_incoming_transfers.csv'
-        response.headers['Content-Type'] = 'text/csv'
-        return response
-    except Exception as e:
-        runtime_state.log_error(f"Error in export_worker_incoming_transfers_csv: {e}")
-        return jsonify({'error': str(e)}), 500
-    
 @worker_transfers_bp.route('/worker-outgoing-transfers/export-csv')
 @check_and_reload_data()
 def export_worker_outgoing_transfers_csv():
-    try:
-        worker_keys, raw_points_array = get_worker_transfer_raw_points('source')
-        if not raw_points_array:
-            return jsonify({'error': 'No outgoing transfer data'}), 404
-
-        merged_df = None
-        for worker, points in zip(worker_keys, raw_points_array):
-            wid = f"{worker[0]}:{worker[1]}"
-            df = pd.DataFrame(points, columns=["time", wid])
-            if merged_df is None:
-                merged_df = df
-            else:
-                merged_df = pd.merge(merged_df, df, on="time", how="outer")
-
-        merged_df = merged_df.sort_values("time").fillna(0).round(2)
-        merged_df.columns = ["time (s)"] + [f"{col}" for col in merged_df.columns[1:]]
-
-        buffer = StringIO()
-        merged_df.to_csv(buffer, index=False)
-        buffer.seek(0)
-
-        response = make_response(buffer.getvalue())
-        response.headers['Content-Disposition'] = 'attachment; filename=worker_outgoing_transfers.csv'
-        response.headers['Content-Type'] = 'text/csv'
-        return response
-    except Exception as e:
-        runtime_state.log_error(f"Error in export_worker_outgoing_transfers_csv: {e}")
-        return jsonify({'error': str(e)}), 500
+    return export_worker_transfer_csv('outgoing')

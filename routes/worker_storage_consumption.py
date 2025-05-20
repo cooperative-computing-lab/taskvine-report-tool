@@ -5,7 +5,9 @@ from .utils import (
     d3_size_formatter,
     d3_percentage_formatter,
     downsample_points_array,
-    get_unit_and_scale_by_max_file_size_mb
+    get_unit_and_scale_by_max_file_size_mb,
+    floor_decimal,
+    compress_time_based_critical_points
 )
 
 import pandas as pd
@@ -22,22 +24,25 @@ def get_worker_storage_points(show_percentage=False):
     files = runtime_state.files
     workers = runtime_state.workers
 
-    raw_points_array = []
-    worker_keys = []
-
     all_worker_storage = defaultdict(list)
     for file in files.values():
         for transfer in file.transfers:
             dest = transfer.destination
             if not isinstance(dest, tuple) or transfer.time_stage_in is None:
                 continue
-            time_in = round(float(transfer.time_start_stage_in - base_time), 2)
-            time_out = round(float(transfer.time_stage_out - base_time), 2)
+            time_in = floor_decimal(float(transfer.time_start_stage_in - base_time), 2)
+            time_out = floor_decimal(float(transfer.time_stage_out - base_time), 2)
             size = max(0, file.size_mb)
             all_worker_storage[dest].append((time_in, size))
             all_worker_storage[dest].append((time_out, -size))
 
+    raw_points_array = []
+    worker_keys = []
+
     for worker, events in all_worker_storage.items():
+        if not events:
+            continue
+
         df = pd.DataFrame(events, columns=['time', 'size']).sort_values('time')
         df['storage'] = df['size'].cumsum().clip(lower=0)
 
@@ -46,28 +51,26 @@ def get_worker_storage_points(show_percentage=False):
             if disk > 0:
                 df['storage'] = df['storage'] / disk * 100
 
-        df['time'] = df['time'].round(2)
-        df = df.drop_duplicates(subset='time', keep='last')
+        df['time'] = df['time'].map(lambda x: floor_decimal(x, 2))
+        df = df.groupby('time', as_index=False)['storage'].last()
 
-        if df.empty or df['storage'].isna().all():
-            continue
+        t0s = workers[worker].time_connected
+        t1s = workers[worker].time_disconnected
+        boundary = [(floor_decimal(float(t - base_time), 2), 0.0) for t in t0s + t1s]
 
-        points = df[['time', 'storage']].values.tolist()
+        boundary_df = pd.DataFrame(boundary, columns=['time', 'storage'])
+        full_df = pd.concat([df, boundary_df], ignore_index=True).sort_values('time')
+        full_df = full_df.groupby('time', as_index=False)['storage'].max()
 
-        for t0, t1 in zip(workers[worker].time_connected, workers[worker].time_disconnected):
-            points.insert(0, [round(float(t0 - base_time), 2), 0.0])
-            points.append([round(float(t1 - base_time), 2), 0.0])
-
-        final_df = pd.DataFrame(points, columns=['time', 'storage']).sort_values('time')
-        final_df = final_df.drop_duplicates(subset='time', keep='last')
-
-        if final_df.empty or final_df['storage'].isna().all():
+        if full_df['storage'].isna().all():
             continue
 
         worker_keys.append(worker)
-        raw_points_array.append(final_df[['time', 'storage']].values.tolist())
+        compressed_points = compress_time_based_critical_points(full_df.values.tolist())
+        raw_points_array.append(compressed_points)
 
     return worker_keys, raw_points_array
+
 
 @worker_storage_consumption_bp.route('/worker-storage-consumption')
 @check_and_reload_data()
@@ -126,6 +129,7 @@ def get_worker_storage_consumption():
         runtime_state.log_error(f"Error in get_worker_storage_consumption: {e}")
         return jsonify({'error': str(e)}), 500
 
+
 @worker_storage_consumption_bp.route('/worker-storage-consumption/export-csv')
 @check_and_reload_data()
 def export_worker_storage_consumption_csv():
@@ -136,34 +140,31 @@ def export_worker_storage_consumption_csv():
         if not raw_points_array:
             return jsonify({'error': 'No valid storage consumption data available'}), 404
 
-        # build time -> value map per worker
         time_set = set()
         column_data = {}
         for worker, points in zip(worker_keys, raw_points_array):
             wid = f"{worker[0]}:{worker[1]}"
-            col_map = {}
-            for t, v in points:
-                t = round(t, 2)
-                col_map[t] = v
-                time_set.add(t)
+            col_map = {floor_decimal(t, 2): v for t, v in points}
             column_data[wid] = col_map
+            time_set.update(col_map.keys())
 
         sorted_times = sorted(time_set)
         column_names = list(column_data.keys())
 
-        # optional unit label
         if show_percentage:
             unit_label = "(%)"
         else:
             max_val = max((max(col.values(), default=0) for col in column_data.values()), default=0)
             unit_label = f"({get_unit_and_scale_by_max_file_size_mb(max_val)[0]})"
 
-        # stream csv
+        header = ",".join(["Time (s)"] + [f"{name} {unit_label}" for name in column_names])
+        get_row = lambda t: ",".join(
+            [f"{t:.2f}"] + [f"{column_data[name].get(t, 0):.6f}" for name in column_names]
+        )
+
         def generate_csv():
-            yield "time (s)," + ",".join(f"{name} {unit_label}" for name in column_names) + "\n"
-            for t in sorted_times:
-                row = [f"{t:.2f}"] + [f"{column_data[name].get(t, 0):.6f}" for name in column_names]
-                yield ",".join(row) + "\n"
+            yield header + "\n"
+            yield from (get_row(t) + "\n" for t in sorted_times)
 
         return Response(generate_csv(),
                         headers={

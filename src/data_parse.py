@@ -14,13 +14,7 @@ from collections import defaultdict
 import cloudpickle
 from datetime import timezone, timedelta
 import pytz
-from decimal import Decimal, ROUND_FLOOR
-
-
-def floor_decimal(number, decimal_places):
-    num = Decimal(str(number))
-    quantizer = Decimal(f"1e-{decimal_places}")
-    return float(num.quantize(quantizer, rounding=ROUND_FLOOR))
+from src.utils import floor_decimal
 
 def count_lines(file_name):
     if platform.system() in ["Linux", "Darwin"]:  # Linux or macOS
@@ -849,8 +843,7 @@ class DataParser:
                           subgraph in enumerate(sorted_subgraphs, 1)}
 
         time_end = time.time()
-        print(
-            f"Parsing subgraphs took {round(time_end - time_start, 4)} seconds")
+        print(f"Parsing subgraphs took {round(time_end - time_start, 4)} seconds")
 
         self.checkpoint_subgraphs()
 
@@ -859,26 +852,22 @@ class DataParser:
         with open(os.path.join(self.pkl_files_dir, 'workers.pkl'), 'wb') as f:
             cloudpickle.dump(self.workers, f)
         time_end = time.time()
-        print(
-            f"Checkpointing workers.pkl took {round(time_end - time_start, 4)} seconds")
+        print(f"Checkpointing workers.pkl took {round(time_end - time_start, 4)} seconds")
         time_start = time.time()
         with open(os.path.join(self.pkl_files_dir, 'files.pkl'), 'wb') as f:
             cloudpickle.dump(self.files, f)
         time_end = time.time()
-        print(
-            f"Checkpointing files.pkl took {round(time_end - time_start, 4)} seconds")
+        print(f"Checkpointing files.pkl took {round(time_end - time_start, 4)} seconds")
         time_start = time.time()
         with open(os.path.join(self.pkl_files_dir, 'tasks.pkl'), 'wb') as f:
             cloudpickle.dump(self.tasks, f)
         time_end = time.time()
-        print(
-            f"Checkpointing tasks.pkl took {round(time_end - time_start, 4)} seconds")
+        print(f"Checkpointing tasks.pkl took {round(time_end - time_start, 4)} seconds")
         time_start = time.time()
         with open(os.path.join(self.pkl_files_dir, 'manager.pkl'), 'wb') as f:
             cloudpickle.dump(self.manager, f)
         time_end = time.time()
-        print(
-            f"Checkpointing manager.pkl took {round(time_end - time_start, 4)} seconds")
+        print(f"Checkpointing manager.pkl took {round(time_end - time_start, 4)} seconds")
 
     def postprocess_debug(self):
         time_start = time.time()
@@ -886,8 +875,7 @@ class DataParser:
         # if the manager has not finished yet, we do something to set up the None values to make the plotting tool work
         # 1. if the manager's time_end is None, we set it to the current timestamp
         if self.manager.time_end is None:
-            print(
-                f"Manager didn't exit normally, setting manager time_end to {self.manager.current_max_time}")
+            print(f"Manager didn't exit normally, setting manager time_end to {self.manager.current_max_time}")
             self.manager.set_time_end(self.manager.current_max_time)
 
         # post-processing for tasks
@@ -939,29 +927,24 @@ class DataParser:
             with open(os.path.join(self.pkl_files_dir, 'workers.pkl'), 'rb') as f:
                 self.workers = cloudpickle.load(f)
             time_end = time.time()
-            print(
-                f"Restoring workers.pkl took {round(time_end - time_start, 4)} seconds")
+            print(f"Restoring workers.pkl took {round(time_end - time_start, 4)} seconds")
             time_start = time.time()
             with open(os.path.join(self.pkl_files_dir, 'files.pkl'), 'rb') as f:
                 self.files = cloudpickle.load(f)
             time_end = time.time()
-            print(
-                f"Restoring files.pkl took {round(time_end - time_start, 4)} seconds")
+            print(f"Restoring files.pkl took {round(time_end - time_start, 4)} seconds")
             time_start = time.time()
             with open(os.path.join(self.pkl_files_dir, 'tasks.pkl'), 'rb') as f:
                 self.tasks = cloudpickle.load(f)
             time_end = time.time()
-            print(
-                f"Restoring tasks.pkl took {round(time_end - time_start, 4)} seconds")
+            print(f"Restoring tasks.pkl took {round(time_end - time_start, 4)} seconds")
             time_start = time.time()
             with open(os.path.join(self.pkl_files_dir, 'manager.pkl'), 'rb') as f:
                 self.manager = cloudpickle.load(f)
             time_end = time.time()
-            print(
-                f"Restoring manager.pkl took {round(time_end - time_start, 4)} seconds")
+            print(f"Restoring manager.pkl took {round(time_end - time_start, 4)} seconds")
         except Exception:
-            raise ValueError(
-                "The debug file has not been successfully parsed yet")
+            raise ValueError("The debug file has not been successfully parsed yet")
         time_end = time.time()
         print(f"Restored workers, files, tasks, manager from checkpoint in {round(time_end - time_start, 4)} seconds")
 

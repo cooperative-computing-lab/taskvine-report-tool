@@ -3,7 +3,8 @@ from .utils import (
     compute_linear_tick_values,
     d3_time_formatter,
     d3_int_formatter,
-    downsample_points_array
+    downsample_points_array,
+    floor_decimal
 )
 
 import pandas as pd
@@ -35,35 +36,35 @@ def compute_task_concurrency_points():
 
     for task in runtime_state.tasks.values():
         if task.when_ready:
-            t0 = round(max(task.when_ready - base_time, 0), 2)
+            t0 = floor_decimal(max(task.when_ready - base_time, 0), 2)
             task_phases['tasks_waiting'].append((t0, 1))
             if task.when_running:
-                t1 = round(task.when_running - base_time, 2)
+                t1 = floor_decimal(task.when_running - base_time, 2)
                 task_phases['tasks_waiting'].append((t1, -1))
 
         if task.when_running:
-            t0 = round(task.when_running - base_time, 2)
+            t0 = floor_decimal(task.when_running - base_time, 2)
             task_phases['tasks_committing'].append((t0, 1))
             if task.time_worker_start:
-                t1 = round(task.time_worker_start - base_time, 2)
+                t1 = floor_decimal(task.time_worker_start - base_time, 2)
                 task_phases['tasks_committing'].append((t1, -1))
 
         if task.time_worker_start:
-            t0 = round(task.time_worker_start - base_time, 2)
+            t0 = floor_decimal(task.time_worker_start - base_time, 2)
             task_phases['tasks_executing'].append((t0, 1))
             if task.time_worker_end:
-                t1 = round(task.time_worker_end - base_time, 2)
+                t1 = floor_decimal(task.time_worker_end - base_time, 2)
                 task_phases['tasks_executing'].append((t1, -1))
 
         if task.time_worker_end:
-            t0 = round(task.time_worker_end - base_time, 2)
+            t0 = floor_decimal(task.time_worker_end - base_time, 2)
             task_phases['tasks_retrieving'].append((t0, 1))
             if task.when_retrieved:
-                t1 = round(task.when_retrieved - base_time, 2)
+                t1 = floor_decimal(task.when_retrieved - base_time, 2)
                 task_phases['tasks_retrieving'].append((t1, -1))
 
         if task.when_done:
-            t0 = round(task.when_done - base_time, 2)
+            t0 = floor_decimal(task.when_done - base_time, 2)
             task_phases['tasks_done'].append((t0, 1))
 
     raw_points_array = []
@@ -74,8 +75,9 @@ def compute_task_concurrency_points():
             raw_points_array.append([])
             continue
         df = pd.DataFrame(events, columns=['time', 'event']).sort_values('time')
-        df = df.groupby('time')['event'].sum().reset_index()  # 合并相同时刻的事件
-        df['cumulative'] = df['event'].cumsum()
+        df = df.groupby('time')['event'].sum().reset_index()
+        df['cumulative'] = df['event'].cumsum().clip(lower=0)
+        df['time'] = df['time'].map(lambda x: floor_decimal(x, 2))
         raw_points_array.append(df[['time', 'cumulative']].values.tolist())
 
     return dict(zip(phase_keys, raw_points_array))
@@ -123,7 +125,7 @@ def export_task_concurrency_csv():
         for phase_key, points in phase_points.items():
             if not points:
                 continue
-            column_title = PHASE_COLUMN_TITLES.get(phase_key, phase_key)
+            column_title = PHASE_COLUMN_TITLES.get(phase_key, phase_key.capitalize())
             df = pd.DataFrame(points, columns=["time", column_title])
             df = df.groupby("time")[column_title].max().reset_index()
             df = df.set_index("time")
@@ -133,7 +135,7 @@ def export_task_concurrency_csv():
             return jsonify({'error': 'No concurrency data available'}), 404
 
         merged_df = pd.concat(df_list, axis=1).fillna(0).reset_index()
-        merged_df["time"] = merged_df["time"].round(2)
+        merged_df["time"] = merged_df["time"].map(lambda x: floor_decimal(x, 2))
 
         buffer = StringIO()
         merged_df.to_csv(buffer, index=False)

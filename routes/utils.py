@@ -1,6 +1,11 @@
 import os
 import hashlib
+from decimal import Decimal, ROUND_FLOOR
 
+def floor_decimal(number, decimal_places):
+    num = Decimal(str(number))
+    quantizer = Decimal(f"1e-{decimal_places}")
+    return float(num.quantize(quantizer, rounding=ROUND_FLOOR))
 
 def get_unit_and_scale_by_max_file_size_mb(max_file_size_mb) -> tuple[str, float]:
     if max_file_size_mb >= 1024 * 1024:
@@ -225,3 +230,33 @@ def select_best_try_per_task(task_stats):
 
 def get_worker_ip_port_from_key(key):
     return ':'.join(key.split(':')[:-1])
+
+def compress_time_based_critical_points(points, max_points=100000):
+    if len(points) <= max_points:
+        return points
+
+    peaks = [points[0]]
+
+    for i in range(1, len(points) - 1):
+        prev_y, curr_y, next_y = points[i - 1][1], points[i][1], points[i + 1][1]
+        if (curr_y > prev_y and curr_y >= next_y) or (curr_y < prev_y and curr_y <= next_y):
+            peaks.append(points[i])
+
+    peaks.append(points[-1])
+
+    seen = set()
+    unique_peaks = []
+    for p in peaks:
+        if p not in seen:
+            seen.add(p)
+            unique_peaks.append(p)
+
+    if len(unique_peaks) <= max_points:
+        return unique_peaks
+
+    stride = max(1, len(unique_peaks) // max_points)
+    compressed = unique_peaks[::stride]
+    if compressed[-1] != unique_peaks[-1]:
+        compressed.append(unique_peaks[-1])
+
+    return compressed

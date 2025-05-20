@@ -3,13 +3,13 @@ from .utils import (
     compute_linear_tick_values,
     d3_time_formatter,
     d3_int_formatter,
-    downsample_points_array
+    downsample_points_array,
+    floor_decimal,
+    compress_time_based_critical_points
 )
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, Response
 from collections import defaultdict
 import pandas as pd
-from io import StringIO
-from flask import make_response
 
 worker_executing_tasks_bp = Blueprint('worker_executing_tasks', __name__, url_prefix='/api')
 
@@ -18,39 +18,41 @@ def get_worker_executing_task_points():
     workers = runtime_state.workers
     tasks = runtime_state.tasks
 
+    raw_points_array = []
+    worker_keys = []
+
     all_worker_events = defaultdict(list)
 
     for task in tasks.values():
         if not task.worker_id or not task.time_worker_start or not task.time_worker_end:
             continue
         worker = (task.worker_ip, task.worker_port)
-        start = round(task.time_worker_start - base_time, 2)
-        end = round(task.time_worker_end - base_time, 2)
-        all_worker_events[worker].append((start, 1))
-        all_worker_events[worker].append((end, -1))
-
-    worker_keys = []
-    raw_points_array = []
+        start = floor_decimal(task.time_worker_start - base_time, 2)
+        end = floor_decimal(task.time_worker_end - base_time, 2)
+        if start >= end:
+            continue
+        all_worker_events[worker].extend([(start, 1), (end, -1)])
 
     for worker, events in all_worker_events.items():
-        df = pd.DataFrame(events, columns=['time', 'event']).sort_values('time')
-        df['cumulative'] = df['event'].cumsum()
-        df = df.drop_duplicates('time', keep='last')
-        points = df[['time', 'cumulative']].values.tolist()
-
         w = workers.get(worker)
         if w:
-            for t0, t1 in zip(w.time_connected, w.time_disconnected):
-                points.insert(0, [round(t0 - base_time, 2), 0])
-                points.append([round(t1 - base_time, 2), 0])
+            boundary_times = [floor_decimal(t - base_time, 2) for t in w.time_connected + w.time_disconnected]
+            events += [(t, 0) for t in boundary_times]
 
-        if not points:
+        if not events:
             continue
 
+        df = pd.DataFrame(events, columns=['time', 'delta'])
+        df = df.groupby('time', as_index=False)['delta'].sum()
+        df['cumulative'] = df['delta'].cumsum()
+        df['cumulative'] = df['cumulative'].clip(lower=0)
+
+        compressed_points = compress_time_based_critical_points(df[['time', 'cumulative']].values.tolist())
+        raw_points_array.append(compressed_points)
         worker_keys.append(worker)
-        raw_points_array.append(points)
 
     return worker_keys, raw_points_array
+
 
 @worker_executing_tasks_bp.route('/worker-executing-tasks')
 @check_and_reload_data()
@@ -91,31 +93,34 @@ def get_worker_executing_tasks():
 def export_worker_executing_tasks_csv():
     try:
         worker_keys, raw_points_array = get_worker_executing_task_points()
-
         if not raw_points_array:
             return jsonify({'error': 'No valid worker executing tasks data available'}), 404
 
-        merged_df = None
+        column_data = {}
+        time_set = set()
+
         for worker, points in zip(worker_keys, raw_points_array):
             wid = f"{worker[0]}:{worker[1]}"
-            df = pd.DataFrame(points, columns=["time", wid])
-            if merged_df is None:
-                merged_df = df
-            else:
-                merged_df = pd.merge(merged_df, df, on="time", how="outer")
+            col_map = {floor_decimal(t, 2): v for t, v in points}
+            column_data[wid] = col_map
+            time_set.update(col_map.keys())
 
-        merged_df = merged_df.sort_values("time").fillna(0).round(2)
-        merged_df.columns = ["time (s)"] + [f"{col}" for col in merged_df.columns[1:]]
+        sorted_times = sorted(time_set)
+        columns = list(column_data.keys())
 
-        buffer = StringIO()
-        merged_df.to_csv(buffer, index=False)
-        buffer.seek(0)
+        def generate_csv():
+            yield "time (s)," + ",".join(columns) + "\n"
+            for t in sorted_times:
+                row = [f"{t:.2f}"] + [f"{column_data[c].get(t, 0):.6f}" for c in columns]
+                yield ",".join(row) + "\n"
 
-        response = make_response(buffer.getvalue())
-        response.headers['Content-Disposition'] = 'attachment; filename=worker_executing_tasks.csv'
-        response.headers['Content-Type'] = 'text/csv'
-        return response
-
+        return Response(
+            generate_csv(),
+            headers={
+                "Content-Disposition": "attachment; filename=worker_executing_tasks.csv",
+                "Content-Type": "text/csv"
+            }
+        )
     except Exception as e:
         runtime_state.log_error(f"Error in export_worker_executing_tasks_csv: {e}")
         return jsonify({'error': str(e)}), 500
