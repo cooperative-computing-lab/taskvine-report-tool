@@ -88,17 +88,14 @@ class FileInfo:
         self.worker_retentions = {}      # key: worker_entry, value: list of [time_retention_start, time_retention_end]
  
     def prune_file_on_worker_entry(self, worker_entry, time_stage_out):
-        if worker_entry not in self.worker_retentions:
-            return
-        
-        records = self.worker_retentions[worker_entry]
-        for i, (time_start, time_end) in enumerate(records):
-            assert time_start is not None
-            if time_end is None:
-                records[i] = (time_start, time_stage_out)
+        if worker_entry in self.worker_retentions:
+            records = self.worker_retentions[worker_entry]
+            for i, (time_start, time_end) in enumerate(records):
+                assert time_start is not None
+                if time_end is None:
+                    records[i] = (time_start, time_stage_out)
 
         self.end_all_transfers_on_worker_entry(worker_entry, time_stage_out)
-
 
     def start_worker_retention(self, worker_entry, time_retention_start):
         if worker_entry not in self.worker_retentions:
@@ -216,12 +213,13 @@ class FileInfo:
 
     def end_all_transfers_on_worker_entry(self, worker_entry, time_stage_out):
         for transfer in self.transfers:
-            dest = transfer.destination
-            if isinstance(dest, tuple) and (dest == worker_entry or dest == worker_entry):
-                if transfer.time_stage_out:
-                    continue
-                if transfer.time_start_stage_in > time_stage_out:
-                    continue
+            if transfer.time_stage_out:
+                continue
+            if transfer.time_start_stage_in > time_stage_out:
+                continue
+            if isinstance(transfer.destination, tuple) and transfer.destination == worker_entry:
+                transfer.stage_out(time_stage_out, "worker_removed")
+            if isinstance(transfer.source, tuple) and transfer.source == worker_entry:
                 transfer.stage_out(time_stage_out, "worker_removed")
 
     def set_size_mb(self, size_mb):
