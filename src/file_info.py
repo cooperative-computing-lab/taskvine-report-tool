@@ -88,32 +88,15 @@ class FileInfo:
         self.worker_retentions = {}      # key: worker_entry, value: list of [time_retention_start, time_retention_end]
  
     def prune_file_on_worker_entry(self, worker_entry, time_stage_out):
-        if worker_entry in self.worker_retentions:
-            records = self.worker_retentions[worker_entry]
-            for i, (time_start, time_end) in enumerate(records):
-                assert time_start is not None
-                if time_end is None:
-                    records[i] = (time_start, time_stage_out)
-
-        self.end_all_transfers_on_worker_entry(worker_entry, time_stage_out)
-
-    def start_worker_retention(self, worker_entry, time_retention_start):
-        if worker_entry not in self.worker_retentions:
-            self.worker_retentions[worker_entry] = [(time_retention_start, None)]
-        else:
-            self.worker_retentions[worker_entry].append((time_retention_start, None))
-
-    def end_worker_retention(self, worker_entry, time_retention_end):
-        # a worker entry not not in the worker_retentions because we set the time_retention_start only if the file
-        # is successfully staged in, but chances are that the file can be unlinked when it is pending, if it is in 
-        # this case, we simply avoid setting the time_retention_end
-        if worker_entry not in self.worker_retentions:
-            return
-        worker_retention_records = self.worker_retentions[worker_entry]
-        for i, (time_retention_start, time_retention_end) in enumerate(worker_retention_records):
-            if time_retention_end is None:
-                worker_retention_records[i] = (time_retention_start, time_retention_end)
-                return
+        for transfer in self.transfers:
+            if transfer.time_stage_out:
+                continue
+            if transfer.time_start_stage_in > time_stage_out:
+                continue
+            if isinstance(transfer.destination, tuple) and transfer.destination == worker_entry:
+                transfer.stage_out(time_stage_out, "worker_removed")
+            if isinstance(transfer.source, tuple) and transfer.source == worker_entry:
+                transfer.stage_out(time_stage_out, "worker_removed")
 
     def add_consumer(self, consumer_task):
         self.consumers.add((consumer_task.task_id, consumer_task.task_try_id))
@@ -164,9 +147,6 @@ class FileInfo:
         has_started_staging_in = False
         time_stage_in = float(time_stage_in)
 
-        # a file is newly retained by the destination worker
-        self.start_worker_retention(worker_entry, time_stage_in)
-
         for transfer in self.transfers:
             if transfer.destination != worker_entry:
                 continue
@@ -187,9 +167,6 @@ class FileInfo:
             transfer.stage_in(time_stage_in, "cache_update")
 
     def unlink(self, worker_entry, time_stage_out):
-        # a file is unlinked from the destination worker
-        self.end_worker_retention(worker_entry, time_stage_out)
-
         # this affects the incoming transfers on the destination worker
         for transfer in self.transfers:
             if transfer.destination != worker_entry:
@@ -210,17 +187,6 @@ class FileInfo:
             if transfer.time_start_stage_in > time_stage_out:
                 continue
             transfer.stage_out(time_stage_out, "cache_invalid")
-
-    def end_all_transfers_on_worker_entry(self, worker_entry, time_stage_out):
-        for transfer in self.transfers:
-            if transfer.time_stage_out:
-                continue
-            if transfer.time_start_stage_in > time_stage_out:
-                continue
-            if isinstance(transfer.destination, tuple) and transfer.destination == worker_entry:
-                transfer.stage_out(time_stage_out, "worker_removed")
-            if isinstance(transfer.source, tuple) and transfer.source == worker_entry:
-                transfer.stage_out(time_stage_out, "worker_removed")
 
     def set_size_mb(self, size_mb):
         size_mb = float(size_mb)

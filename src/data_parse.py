@@ -242,7 +242,8 @@ class DataParser:
             worker_entry = (worker.ip, worker.port, worker.connect_id)
             # files on the worker are removed
             for file in self.files.values():
-                file.prune_file_on_worker_entry(worker_entry, timestamp)
+                if file.filename in worker.active_files_or_transfers:
+                    file.prune_file_on_worker_entry(worker_entry, timestamp)
             return
 
         if "transfer-port" in parts:
@@ -270,10 +271,11 @@ class DataParser:
                 raise ValueError(f"pending file type: {file_name}")
 
             file = self.ensure_file_info_entry(file_name, file_size_mb)
-            file.start_worker_retention(worker_entry, timestamp)
             transfer = file.add_transfer('manager', worker_entry, 'manager_put', file_type, file_cache_level)
             transfer.start_stage_in(timestamp, "pending")
             assert worker_entry not in self.putting_transfers
+            worker = self.workers[worker_entry]
+            worker.add_active_file_or_transfer(file_name)
 
             self.putting_transfers[worker_entry] = transfer
             return
@@ -335,8 +337,7 @@ class DataParser:
             else:
                 transfer_event = 'puturl_now'
 
-            puturl_id = parts.index(
-                "puturl") if "puturl" in parts else parts.index("puturl_now")
+            puturl_id = parts.index("puturl") if "puturl" in parts else parts.index("puturl_now")
             file_name = parts[puturl_id + 2]
             file_cache_level = int(parts[puturl_id + 3])
             size_in_mb = int(parts[puturl_id + 4]) / 2**20
@@ -348,9 +349,8 @@ class DataParser:
             dest_ip, dest_port = WorkerInfo.extract_ip_port_from_string(parts[puturl_id - 1])
             dest_worker = self.get_current_worker_by_ip_port(dest_ip, dest_port)
             assert dest_worker is not None
-            
-            dest_worker_entry = (dest_worker.ip, dest_worker.port, dest_worker.connect_id)
 
+            dest_worker_entry = (dest_worker.ip, dest_worker.port, dest_worker.connect_id)
             # the source can be a url or an ip:port
             source = parts[puturl_id + 1]
             if source.startswith('https://'):
@@ -363,8 +363,9 @@ class DataParser:
                 source_worker_entry = (source_worker.ip, source_worker.port, source_worker.connect_id)
                 transfer = file.add_transfer(source_worker_entry, dest_worker_entry, transfer_event, 2, file_cache_level)
             else:
-                raise ValueError(
-                    f"unrecognized source: {source}, line: {line}")
+                raise ValueError(f"unrecognized source: {source}, line: {line}")
+            
+            dest_worker.add_active_file_or_transfer(file_name)
 
             transfer.start_stage_in(timestamp, "pending")
             return
@@ -383,6 +384,8 @@ class DataParser:
             file = self.ensure_file_info_entry(file_name, file_size)
             transfer = file.add_transfer(source, dest_worker_entry, 'mini_task', 2, cache_level)
             transfer.start_stage_in(timestamp, "pending")
+            dest_worker = self.workers[dest_worker_entry]
+            dest_worker.add_active_file_or_transfer(file_name)
             return
 
         if "tx to" in line and "task" in parts and parts.index("task") + 2 == len(parts):
@@ -639,6 +642,9 @@ class DataParser:
             ip, port = WorkerInfo.extract_ip_port_from_string(parts[cache_update_id - 1])
             worker_entry = self.get_current_worker_entry_by_ip_port(ip, port)
             assert worker_entry is not None
+            
+            worker = self.workers[worker_entry]
+            worker.add_active_file_or_transfer(file_name)
 
             # let the file handle the cache update
             file.cache_update(worker_entry, timestamp, file_type, file_cache_level)
@@ -666,6 +672,8 @@ class DataParser:
 
             file = self.files[file_name]
             file.unlink(worker_entry, timestamp)
+            worker = self.workers[worker_entry]
+            worker.remove_active_file_or_transfer(file_name)
             return
 
         if "Submitted recovery task" in line:
@@ -696,6 +704,8 @@ class DataParser:
             transfer = file.add_transfer(source_worker_entry, 'manager', 'manager_get', 1, 1)
             transfer.start_stage_in(timestamp, "pending")
             self.sending_back_transfers[source_worker_entry] = transfer
+            source_worker = self.workers[source_worker_entry]
+            source_worker.add_active_file_or_transfer(file_name)
             return
         if self.sending_back and "rx from" in line and "file" in parts:
             file_idx = parts.index("file")

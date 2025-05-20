@@ -26,6 +26,18 @@ class WorkerInfo:
         self.tasks_completed = []
         self.tasks_failed = []
 
+        # active files or transfers, set of filenames
+        self.active_files_or_transfers = set()
+
+    def add_active_file_or_transfer(self, filename: str):
+        # allow double adding the same filename because we add upon "puturl" and then the subsequent "cache-update"
+        self.active_files_or_transfers.add(filename)
+
+    def remove_active_file_or_transfer(self, filename: str):
+        if filename not in self.active_files_or_transfers:
+            raise ValueError(f"filename {filename} not in active_files_or_transfers on worker {self.ip}:{self.port}")
+        self.active_files_or_transfers.remove(filename)
+
     def set_checkpoint_worker(self):
         self.is_checkpoint_worker = True
 
