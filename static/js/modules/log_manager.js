@@ -36,15 +36,29 @@ export class LogManager {
     async init() {
         this._setSelectorValue(this._currentLogFolder);
 
-        this.selector.addEventListener('mousedown', async () => {
-            await this._refreshLogOptions();
-        });
+        this.selector.addEventListener('click', async () => {
+            if (this.selector.options.length <= 1) {
+                await this._refreshLogOptions();
+            }
+        });        
 
         this.selector.addEventListener('change', async () => {
+            const selectedOption = this.selector.selectedOptions[0];
+
+            if (
+                !selectedOption ||
+                !selectedOption.value ||
+                selectedOption.disabled ||
+                selectedOption.value === this._currentLogFolder
+            ) {
+                this.selector.value = this._currentLogFolder;
+                return;
+            }
+        
             this.selector.disabled = true;
-            await this._changeLogFolderTo(this.selector.value);
+            await this._changeLogFolderTo(selectedOption.value);
             this.selector.disabled = false;
-        });
+        });        
 
         this.reloadButton.addEventListener('click', async () => {
             await this._reloadCurrentLog();
