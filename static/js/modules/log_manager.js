@@ -14,9 +14,13 @@ export class LogManager {
 
         this._loadingOption = document.createElement('option');
         this._loadingOption.textContent = 'Loading...';
-
+        this._loadingOption.disabled = true;
+        this._loadingOption.value = '';
+        
         this._selectLogOption = document.createElement('option');
         this._selectLogOption.textContent = this._currentLogFolder;
+        this._selectLogOption.disabled = true;
+        this._selectLogOption.value = '';
     }
 
     _setSelectorValue(value) {
@@ -33,9 +37,6 @@ export class LogManager {
         this._setSelectorValue(this._currentLogFolder);
 
         this.selector.addEventListener('mousedown', async () => {
-            if (this.selector.value === 'Loading...') {
-                return;
-            }
             await this._refreshLogOptions();
         });
 
@@ -52,6 +53,7 @@ export class LogManager {
 
     _showLoadingIndicator() {
         this.selector.innerHTML = '';
+        this._loadingOption.value = '';
         this._loadingOption.disabled = true;
         this._loadingOption.selected = true;
         this.selector.appendChild(this._loadingOption);
@@ -126,12 +128,15 @@ export class LogManager {
     }
 
     async _changeLogFolderTo(selectedFolder) {
-        if (!selectedFolder || selectedFolder === this._currentLogFolder) return;
-    
-        if (selectedFolder === '--- select log ---') {
+        if (
+            !selectedFolder ||
+            selectedFolder === this._currentLogFolder ||
+            selectedFolder === '--- select log ---' ||
+            selectedFolder === 'Loading...'
+        ) {
             this.selector.value = this._currentLogFolder;
             return;
-        }
+        }        
     
         let lockAcquired = false;
     
