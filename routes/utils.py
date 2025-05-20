@@ -230,7 +230,7 @@ def select_best_try_per_task(task_stats):
 def get_worker_ip_port_from_key(key):
     return ':'.join(key.split(':')[:-1])
 
-def compress_time_based_critical_points(points, max_points=100000):
+def compress_time_based_critical_points(points, max_points=10000):
     if len(points) <= max_points:
         return points
 
