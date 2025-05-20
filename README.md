@@ -145,9 +145,9 @@ On the web interface, you can:
 The tool provides various visualization modules to analyze different aspects of your TaskVine workflow. Here's a brief description of each module:
 
 ### Task Analysis
-- **Task Execution Details**: Detailed view of task execution patterns and statistics
+- **Task Execution Details**: Comprehensive visualization of task distribution across workers and cores. Each task undergoes three phases: committing (input preparation and process initialization), execution (actual task processing), and retrieval (output transfer to manager). The visualization also tracks task failures, which may occur due to invalid inputs, worker disconnections, or resource exhaustion. Additionally, it monitors recovery tasks that are automatically submitted to handle file losses caused by worker evictions or crashes.
   ![Example](imgs/example_task_execution_details.png)
-- **Task Concurrency**: Shows the number of tasks running simultaneously over time
+- **Task Concurrency**: Visualizes task states over time from the manager's perspective, tracking five distinct states: waiting (committed but not dispatched), committing (dispatched but not yet executed), executing (currently running on workers), waiting retrieval (completed with outputs pending retrieval), and done (fully completed, whether succeeded or failed).
   ![Example](imgs/example_task_concurrency.png)
 - **Task Response Time**: Distribution of time between task submission and start of execution
   ![Example](imgs/example_task_response_time.png)
