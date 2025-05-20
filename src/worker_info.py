@@ -35,7 +35,7 @@ class WorkerInfo:
 
     def remove_active_file_or_transfer(self, filename: str):
         # allow double removing the same filename (is this correct?)
-        self.active_files_or_transfers.remove(filename)
+        self.active_files_or_transfers.discard(filename)
 
     def set_checkpoint_worker(self):
         self.is_checkpoint_worker = True
