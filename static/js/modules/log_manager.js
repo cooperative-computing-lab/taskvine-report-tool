@@ -33,6 +33,9 @@ export class LogManager {
         this._setSelectorValue(this._currentLogFolder);
 
         this.selector.addEventListener('mousedown', async () => {
+            if (this.selector.value === 'Loading...') {
+                return;
+            }
             await this._refreshLogOptions();
         });
 
