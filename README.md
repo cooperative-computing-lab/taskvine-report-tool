@@ -140,6 +140,34 @@ On the web interface, you can:
 4. Ensure sufficient disk space for generated data files
 5. For workflows with large task graphs, the initial data generation and graph visualization might take significant time (potentially hours on some machines). However, once processed, the results are cached in the `pkl-files` directory, making subsequent loads much faster.
 
+## Features
+
+The tool provides several interactive features to enhance user experience and facilitate detailed analysis:
+
+### Interactive Visualization
+- **Zoom**: Use your trackpad or hold Ctrl and scroll with your mouse to zoom in/out. This is especially useful when you have lots of tasks and want to focus on a particular area.
+  ![Example](imgs/example_zoom.png)
+
+- **Hover**: Hover over any point or line to see its details. This helps you quickly find slow or failed tasks and check their logs. Other elements will fade out to help you focus.
+  ![Example](imgs/example_hover.png)
+
+- **Legend**: Use the checkboxes to show only the data you care about. Mix and match different types of information to create your own view. Click on worker names in the legend to show or hide their data. This helps you focus on specific workers without getting distracted by others.
+  ![Example](imgs/example_legend.png)
+
+- **Toolbox** Use the toolbox to customize your plot:
+  - Save your charts in different formats:
+    - Vector formats (SVG, PDF) - great for papers and reports
+    - Image formats (PNG, JPG) - perfect for sharing online
+  - Download the raw data as CSV files to:
+    - Make your own charts
+    - Do your own analysis
+    - Use with other tools
+  - Adjust the axes:
+    - Set your own X and Y axis ranges
+    - Focus on specific parts of the data
+    - Make the chart look exactly how you want
+  ![Example](imgs/example_toolbox.png)
+
 ## Visualization Modules
 
 The tool provides various visualization modules to analyze different aspects of your TaskVine workflow. Here's a brief description of each module:
