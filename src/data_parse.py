@@ -67,7 +67,7 @@ class DataParser:
         # workers
         self.workers = {}      # key: (ip, port, connect_id), value: WorkerInfo
         self.current_worker_connect_id = defaultdict(int)  # key: (ip, port), value: connect_id
-        self.ip_transfer_port_to_worker = {}  # key: (ip, transfer_port), value: WorkerInfo
+        self.map_ip_and_transfer_port_to_worker_port = {}  # key: (ip, transfer_port), value: WorkerInfo
 
         # files
         self.files = {}      # key: file_name, value: FileInfo
@@ -181,20 +181,6 @@ class DataParser:
         worker.id = len(self.workers)
         return worker
 
-    def find_worker_by_ip_transfer_port(self, ip: str, transfer_port: int):
-        results = []
-        for worker in self.workers.values():
-            # skip workers that have disconnected
-            if len(worker.time_connected) == len(worker.time_disconnected):
-                continue
-            if worker.ip == ip and worker.transfer_port == transfer_port:
-                results.append(worker)
-        assert len(results) <= 1
-        
-        if len(results) == 1:
-            return results[0]
-        return None
-
     def parse_debug_line(self, line):
         parts = line.strip().split(" ")
         try:
@@ -252,6 +238,7 @@ class DataParser:
             ip, port = WorkerInfo.extract_ip_port_from_string(parts[transfer_port_idx - 1])
             worker = self.get_current_worker_by_ip_port(ip, port)
             worker.set_transfer_port(transfer_port)
+            self.map_ip_and_transfer_port_to_worker_port[(ip, transfer_port)] = port
             return
 
         if "put" in parts:
@@ -357,10 +344,10 @@ class DataParser:
                 transfer = file.add_transfer(source, dest_worker_entry, transfer_event, 2, file_cache_level)
             elif source.startswith('workerip://'):
                 source_ip, source_transfer_port = WorkerInfo.extract_ip_port_from_string(source)
-                source_worker = self.find_worker_by_ip_transfer_port(source_ip, source_transfer_port)
-                assert source_worker is not None
+                source_worker_port = self.map_ip_and_transfer_port_to_worker_port[(source_ip, source_transfer_port)]
+                source_worker_entry = self.get_current_worker_entry_by_ip_port(source_ip, source_worker_port)
+                assert source_worker_entry is not None
 
-                source_worker_entry = (source_worker.ip, source_worker.port, source_worker.connect_id)
                 transfer = file.add_transfer(source_worker_entry, dest_worker_entry, transfer_event, 2, file_cache_level)
             else:
                 raise ValueError(f"unrecognized source: {source}, line: {line}")
