@@ -11,6 +11,7 @@ from .utils import (
 )
 import json
 import time
+import traceback
 import threading
 
 
@@ -138,7 +139,10 @@ class RuntimeState:
     def log_info(self, message):
         self.logger.info(f"{self.log_prefix} {message}")
 
-    def log_error(self, message):
+    def log_error(self, message, with_traceback=True):
+        if with_traceback:
+            tb = traceback.format_exc()
+            message = f"{message}\n{tb}\n"
         self.logger.error(f"{self.log_prefix} {message}")
 
     def log_warning(self, message):
