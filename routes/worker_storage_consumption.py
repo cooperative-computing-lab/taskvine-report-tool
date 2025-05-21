@@ -12,7 +12,6 @@ from .utils import (
 
 import pandas as pd
 from flask import Blueprint, jsonify, request, Response
-from io import StringIO
 from collections import defaultdict
 
 worker_storage_consumption_bp = Blueprint(

@@ -26,16 +26,16 @@ def get_worker_executing_task_points():
     for task in tasks.values():
         if not task.worker_id or not task.time_worker_start or not task.time_worker_end:
             continue
-        worker = (task.worker_ip, task.worker_port)
+        worker_entry = (task.worker_ip, task.worker_port, task.connect_id)
         start = floor_decimal(task.time_worker_start - base_time, 2)
         end = floor_decimal(task.time_worker_end - base_time, 2)
         if start >= end:
             continue
-        all_worker_events[worker].extend([(start, 1), (end, -1)])
+        all_worker_events[worker_entry].extend([(start, 1), (end, -1)])
 
-    for worker, events in all_worker_events.items():
+    for worker_entry, events in all_worker_events.items():
         
-        w = workers.get(worker)
+        w = workers.get(worker_entry)
         if w:
             boundary_times = [floor_decimal(t - base_time, 2) for t in w.time_connected + w.time_disconnected]
             events += [(t, 0) for t in boundary_times]
@@ -50,7 +50,7 @@ def get_worker_executing_task_points():
 
         compressed_points = compress_time_based_critical_points(df[['time', 'cumulative']].values.tolist())
         raw_points_array.append(compressed_points)
-        worker_keys.append(worker)
+        worker_keys.append(worker_entry)
 
     return worker_keys, raw_points_array
 
@@ -69,7 +69,7 @@ def get_worker_executing_tasks():
         max_y = 0
 
         for worker, points in zip(worker_keys, downsampled_array):
-            wid = f"{worker[0]}:{worker[1]}"
+            wid = f"{worker[0]}:{worker[1]}:{worker[2]}"
             data[wid] = points
             max_y = max(max_y, max(p[1] for p in points))
 
@@ -101,7 +101,7 @@ def export_worker_executing_tasks_csv():
         time_set = set()
 
         for worker, points in zip(worker_keys, raw_points_array):
-            wid = f"{worker[0]}:{worker[1]}"
+            wid = f"{worker[0]}:{worker[1]}:{worker[2]}"
             col_map = {floor_decimal(t, 2): v for t, v in points}
             column_data[wid] = col_map
             time_set.update(col_map.keys())

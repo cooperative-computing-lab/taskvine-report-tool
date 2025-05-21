@@ -27,11 +27,11 @@ def get_worker_transfer_raw_points(role):
 
     for file in runtime_state.files.values():
         for transfer in file.transfers:
-            worker = getattr(transfer, role)
-            if not isinstance(worker, tuple):
+            worker_entry = getattr(transfer, role)
+            if not isinstance(worker_entry, tuple) or len(worker_entry) != 3:
                 continue
             t0 = floor_decimal(transfer.time_start_stage_in - base_time, 2)
-            transfers_by_worker[worker].append((t0, 1))
+            transfers_by_worker[worker_entry].append((t0, 1))
 
             if transfer.time_stage_in:
                 t1 = floor_decimal(transfer.time_stage_in - base_time, 2)
@@ -39,16 +39,16 @@ def get_worker_transfer_raw_points(role):
                 t1 = floor_decimal(transfer.time_stage_out - base_time, 2)
             else:
                 continue
-            transfers_by_worker[worker].append((t1, -1))
+            transfers_by_worker[worker_entry].append((t1, -1))
 
     raw_points_array = []
     worker_keys = [] 
 
-    for worker, events in transfers_by_worker.items():
+    for worker_entry, events in transfers_by_worker.items():
         if not events:
             continue
 
-        w = runtime_state.workers.get(worker)
+        w = runtime_state.workers.get(worker_entry)
         boundary_events = []
         if w:
             boundary_times = [floor_decimal(t - base_time, 2) for t in w.time_connected + w.time_disconnected]
@@ -62,10 +62,9 @@ def get_worker_transfer_raw_points(role):
         if df['cumulative'].isna().all():
             continue
 
-        worker_keys.append(worker)
+        worker_keys.append(worker_entry)
         compressed_points = compress_time_based_critical_points(df[['time', 'cumulative']].values.tolist())
         raw_points_array.append(compressed_points)
-
 
     return worker_keys, raw_points_array
 
@@ -81,8 +80,8 @@ def get_worker_incoming_transfers():
         downsampled_array = downsample_points_array(raw_points_array, SAMPLING_POINTS)
         transfers = {}
         max_y = 0
-        for worker, points in zip(worker_keys, downsampled_array):
-            wid = f"{worker[0]}:{worker[1]}"
+        for worker_entry, points in zip(worker_keys, downsampled_array):
+            wid = f"{worker_entry[0]}:{worker_entry[1]}:{worker_entry[2]}"
             transfers[wid] = points
             max_y = max(max_y, max(p[1] for p in points))
 
@@ -112,8 +111,8 @@ def get_worker_outgoing_transfers():
         downsampled_array = downsample_points_array(raw_points_array, SAMPLING_POINTS)
         transfers = {}
         max_y = 0
-        for worker, points in zip(worker_keys, downsampled_array):
-            wid = f"{worker[0]}:{worker[1]}"
+        for worker_entry, points in zip(worker_keys, downsampled_array):
+            wid = f"{worker_entry[0]}:{worker_entry[1]}:{worker_entry[2]}"
             transfers[wid] = points
             max_y = max(max_y, max(p[1] for p in points))
 
@@ -140,8 +139,8 @@ def export_worker_transfer_csv(role):
         column_data = {}
         time_set = set()
 
-        for worker, points in zip(worker_keys, raw_points_array):
-            wid = f"{worker[0]}:{worker[1]}"
+        for worker_entry, points in zip(worker_keys, raw_points_array):
+            wid = f"{worker_entry[0]}:{worker_entry[1]}:{worker_entry[2]}"
             col_map = {floor_decimal(t, 2): v for t, v in points}
             column_data[wid] = col_map
             time_set.update(col_map)
