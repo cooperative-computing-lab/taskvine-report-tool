@@ -3,7 +3,8 @@ from .utils import (
     compute_linear_tick_values,
     d3_int_formatter,
     compute_discrete_tick_values,
-    get_worker_ip_port_from_key
+    get_worker_ip_port_from_key,
+    d3_time_formatter
 )
 from flask import Blueprint, jsonify, make_response
 from io import StringIO
@@ -52,7 +53,7 @@ def get_worker_lifetime():
             'x_tick_values': compute_discrete_tick_values(x_domain),
             'y_tick_values': compute_linear_tick_values(y_domain),
             'x_tick_formatter': d3_int_formatter(),
-            'y_tick_formatter': d3_int_formatter()
+            'y_tick_formatter': d3_time_formatter()
         })
 
     except Exception as e:
