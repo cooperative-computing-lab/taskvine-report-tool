@@ -142,7 +142,7 @@ class RuntimeState:
     def log_error(self, message, with_traceback=True):
         if with_traceback:
             tb = traceback.format_exc()
-            message = f"{message}\n{tb}\n"
+            message = f"{message}\n{tb}"
         self.logger.error(f"{self.log_prefix} {message}")
 
     def log_warning(self, message):
@@ -256,11 +256,6 @@ class RuntimeState:
         # init time range
         self.MIN_TIME = self.manager.when_first_task_start_commit
         self.MAX_TIME = self.manager.time_end
-
-        # convert worker_entry in tasks to tuple (a specical case)
-        for task in self.tasks.values():
-            if task.worker_entry:
-                task.worker_entry = tuple(task.worker_entry)
 
         # init task stats
         self.get_task_stats()

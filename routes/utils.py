@@ -231,6 +231,8 @@ def get_worker_ip_port_from_key(key):
     return ':'.join(key.split(':')[:-1])
 
 def compress_time_based_critical_points(points, max_points=10000):
+    points = [tuple(p) for p in points]
+    
     if len(points) <= max_points:
         return points
 
