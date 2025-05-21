@@ -253,6 +253,11 @@ class RuntimeState:
         self.MIN_TIME = self.manager.when_first_task_start_commit
         self.MAX_TIME = self.manager.time_end
 
+        # convert worker_entry in tasks to tuple (a specical case)
+        for task in self.tasks.values():
+            if task.worker_entry:
+                task.worker_entry = tuple(task.worker_entry)
+
         # init task stats
         self.get_task_stats()
 
