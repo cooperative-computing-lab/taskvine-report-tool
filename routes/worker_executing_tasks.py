@@ -24,9 +24,9 @@ def get_worker_executing_task_points():
     all_worker_events = defaultdict(list)
 
     for task in tasks.values():
-        if not task.worker_id or not task.time_worker_start or not task.time_worker_end:
+        if not task.worker_entry or not task.time_worker_start or not task.time_worker_end:
             continue
-        worker_entry = (task.worker_ip, task.worker_port, task.connect_id)
+        worker_entry = task.worker_entry
         start = floor_decimal(task.time_worker_start - base_time, 2)
         end = floor_decimal(task.time_worker_end - base_time, 2)
         if start >= end:
@@ -68,8 +68,8 @@ def get_worker_executing_tasks():
         data = {}
         max_y = 0
 
-        for worker, points in zip(worker_keys, downsampled_array):
-            wid = f"{worker[0]}:{worker[1]}:{worker[2]}"
+        for worker_entry, points in zip(worker_keys, downsampled_array):
+            wid = f"{worker_entry[0]}:{worker_entry[1]}:{worker_entry[2]}"
             data[wid] = points
             max_y = max(max_y, max(p[1] for p in points))
 
@@ -100,8 +100,8 @@ def export_worker_executing_tasks_csv():
         column_data = {}
         time_set = set()
 
-        for worker, points in zip(worker_keys, raw_points_array):
-            wid = f"{worker[0]}:{worker[1]}:{worker[2]}"
+        for worker_entry, points in zip(worker_keys, raw_points_array):
+            wid = f"{worker_entry[0]}:{worker_entry[1]}:{worker_entry[2]}"
             col_map = {floor_decimal(t, 2): v for t, v in points}
             column_data[wid] = col_map
             time_set.update(col_map.keys())

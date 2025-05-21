@@ -390,8 +390,9 @@ class DataParser:
 
             try:
                 worker_ip, worker_port = WorkerInfo.extract_ip_port_from_string(parts[task_idx - 1])
-                if not self.sending_task.worker_ip:
-                    self.sending_task.set_worker_ip_port(worker_ip, worker_port)
+                worker_entry = (worker_ip, worker_port, self.current_worker_connect_id[(worker_ip, worker_port)])
+                if not self.sending_task.worker_entry:
+                    self.sending_task.set_worker_entry(worker_entry)
             except Exception:
                 raise
             return
@@ -470,11 +471,11 @@ class DataParser:
                 if self.manager.when_first_task_start_commit is None:
                     self.manager.set_when_first_task_start_commit(timestamp)
                 task.set_when_running(timestamp)
-                if not task.worker_ip:
+                if not task.worker_entry:
                     return
                 else:
                     # update the coremap
-                    worker = self.get_current_worker_by_ip_port(task.worker_ip, task.worker_port)
+                    worker = self.workers[task.worker_entry]
                     task.committed_worker_hash = worker.hash
                     task.worker_id = worker.id
                     worker.run_task(task)
@@ -499,14 +500,14 @@ class DataParser:
             elif "RUNNING (2) to WAITING_RETRIEVAL (3)" in line:    # as expected
                 task.set_when_waiting_retrieval(timestamp)
                 # update the coremap
-                worker = self.get_current_worker_by_ip_port(task.worker_ip, task.worker_port)
+                worker = self.workers[task.worker_entry]
                 worker.reap_task(task)
             elif "WAITING_RETRIEVAL (3) to RETRIEVED (4)" in line:  # as expected
                 task.set_when_retrieved(timestamp)
             elif "RETRIEVED (4) to DONE (5)" in line:               # as expected
                 task.set_when_done(timestamp)
-                if task.worker_ip:
-                    worker = self.get_current_worker_by_ip_port(task.worker_ip, task.worker_port)
+                if task.worker_entry:
+                    worker = self.workers[task.worker_entry]
                     self.manager.set_when_last_task_done(timestamp)
                     worker.tasks_completed.append(task)
             elif "WAITING_RETRIEVAL (3) to READY (1)" in line or \
@@ -516,9 +517,9 @@ class DataParser:
                 # we need to set the task status if it was not set yet
                 if not task.task_status:
                     # if it was committed to a worker
-                    if task.worker_ip:
+                    if task.worker_entry:
                         # update the worker's tasks_failed, if the task was successfully committed
-                        worker = self.get_current_worker_by_ip_port(task.worker_ip, task.worker_port)
+                        worker = self.workers[task.worker_entry]
                         worker.tasks_failed.append(task)
                         worker.reap_task(task)
                         # it could be that the worker disconnected
@@ -530,7 +531,7 @@ class DataParser:
                             for input_file in task.input_files:
                                 this_input_ready = False
                                 for transfer in self.files[input_file].transfers:
-                                    if transfer.destination == (task.worker_ip, task.worker_port) and transfer.stage_in is not None:
+                                    if transfer.destination == task.worker_entry and transfer.stage_in is not None:
                                         this_input_ready = True
                                         break
                                 if not this_input_ready:
@@ -563,7 +564,8 @@ class DataParser:
         if "complete" in parts:
             complete_idx = parts.index("complete")
             ip, port = WorkerInfo.extract_ip_port_from_string(parts[complete_idx - 1])
-            worker = self.get_current_worker_by_ip_port(ip, port)
+            worker_entry = (ip, port, self.current_worker_connect_id[(ip, port)])
+            worker = self.workers[worker_entry]
             task_status = int(parts[complete_idx + 1])
             exit_status = int(parts[complete_idx + 2])
             output_length = int(parts[complete_idx + 3])
@@ -641,9 +643,9 @@ class DataParser:
                 # special case: this file was created by a previous manager
                 return
             ip, port = WorkerInfo.extract_ip_port_from_string(parts[cache_invalid_id - 1])
-            worker = self.get_current_worker_by_ip_port(ip, port)
+            worker_entry = (ip, port, self.current_worker_connect_id[(ip, port)])
             file = self.files[file_name]
-            file.cache_invalid((ip, port), timestamp)
+            file.cache_invalid(worker_entry, timestamp)
             return
 
         if "unlink" in parts:
@@ -737,7 +739,8 @@ class DataParser:
             designated_idx = parts.index("designated")
             ip, port = WorkerInfo.extract_ip_port_from_string(
                 parts[designated_idx - 1])
-            worker = self.get_current_worker_by_ip_port(ip, port)
+            worker_entry = (ip, port, self.current_worker_connect_id[(ip, port)])
+            worker = self.workers[worker_entry]
             worker.set_checkpoint_worker()
             return
 

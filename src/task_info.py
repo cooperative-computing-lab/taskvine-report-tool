@@ -55,7 +55,7 @@ class TaskInfo:
         self.when_failure_happens = None
 
         # worker info
-        self.worker_ip, self.worker_port = None, None
+        self.worker_entry = None
         self.worker_id = None
         self.core_id = []       # a task can be assigned to multiple cores
         self.committed_worker_hash = None
@@ -67,6 +67,9 @@ class TaskInfo:
 
         self.is_library_task = False
         self.function_slots = None
+
+    def set_worker_entry(self, worker_entry):
+        self.worker_entry = worker_entry
 
     def set_when_ready(self, when_ready):
         self.when_ready = float(when_ready)

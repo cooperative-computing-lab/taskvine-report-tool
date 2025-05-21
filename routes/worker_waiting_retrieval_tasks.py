@@ -24,17 +24,17 @@ def get_worker_waiting_retrieval_task_points():
     all_worker_events = defaultdict(list)
 
     for task in tasks.values():
-        if not task.worker_id or not task.when_waiting_retrieval or not task.when_retrieved:
+        if not task.worker_entry or not task.when_waiting_retrieval or not task.when_retrieved:
             continue
-        worker = (task.worker_ip, task.worker_port)
+        worker_entry = task.worker_entry
         start = floor_decimal(task.when_waiting_retrieval - base_time, 2)
         end = floor_decimal(task.when_retrieved - base_time, 2)
         if start >= end:
             continue
-        all_worker_events[worker].extend([(start, 1), (end, -1)])
+        all_worker_events[worker_entry].extend([(start, 1), (end, -1)])
 
-    for worker, events in all_worker_events.items():
-        w = workers.get(worker)
+    for worker_entry, events in all_worker_events.items():
+        w = workers.get(worker_entry)
         if w:
             boundary_times = [floor_decimal(t - base_time, 2) for t in w.time_connected + w.time_disconnected]
             events += [(t, 0) for t in boundary_times]
@@ -49,7 +49,7 @@ def get_worker_waiting_retrieval_task_points():
 
         compressed_points = compress_time_based_critical_points(df[['time', 'cumulative']].values.tolist())
         raw_points_array.append(compressed_points)
-        worker_keys.append(worker)
+        worker_keys.append(worker_entry)
 
     return worker_keys, raw_points_array
 
@@ -67,8 +67,8 @@ def get_worker_waiting_retrieval_tasks():
 
         data = {}
         max_y = 0
-        for worker, points in zip(worker_keys, downsampled_array):
-            wid = f"{worker[0]}:{worker[1]}"
+        for worker_entry, points in zip(worker_keys, downsampled_array):
+            wid = f"{worker_entry[0]}:{worker_entry[1]}:{worker_entry[2]}"
             data[wid] = points
             max_y = max(max_y, max(p[1] for p in points))
 
@@ -99,8 +99,8 @@ def export_worker_waiting_retrieval_tasks_csv():
         column_data = {}
         time_set = set()
 
-        for worker, points in zip(worker_keys, raw_points_array):
-            wid = f"{worker[0]}:{worker[1]}"
+        for worker_entry, points in zip(worker_keys, raw_points_array):
+            wid = f"{worker_entry[0]}:{worker_entry[1]}:{worker_entry[2]}"
             col_map = {}
 
             for i, row in enumerate(points):

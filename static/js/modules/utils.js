@@ -7,7 +7,7 @@ export function getTaskInnerHTML(task) {
     return `
         Task ID: ${task.task_id}<br>
         Try ID: ${task.try_id}<br>
-        Worker: ${task.worker_ip}:${task.worker_port}<br>
+        Worker: ${task.worker_entry}<br>
         Core ID: ${task.core_id}<br>
         Inputs: ${task.input_files || 'N/A'}<br>
         Outputs: ${task.output_files || 'N/A'}<br>
@@ -26,7 +26,7 @@ export function getWorkerInnerHTML(worker) {
     return `
         cores: ${worker.cores}<br>
         worker id: ${worker.id}<br>
-        worker ip port: ${worker.worker_ip_port}<br>
+        worker entry: ${worker.worker_entry}<br>
     `
 }
 

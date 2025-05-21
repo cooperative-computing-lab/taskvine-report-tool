@@ -133,6 +133,11 @@ def get_task_execution_details():
         for task in runtime_state.tasks.values():
             if not task.core_id:
                 continue
+            if not task.worker_entry:
+                continue
+
+            worker = runtime_state.workers[task.worker_entry]
+            worker_id = worker.id
 
             if task.task_status == 0:
                 if not task.when_retrieved or task.is_library_task:
@@ -141,9 +146,8 @@ def get_task_execution_details():
                 successful_tasks.append({
                     'task_id': task.task_id,
                     'try_id': task.task_try_id,
-                    'worker_ip': task.worker_ip,
-                    'worker_port': task.worker_port,
-                    'worker_id': task.worker_id,
+                    'worker_entry': task.worker_entry,
+                    'worker_id': worker_id,
                     'core_id': task.core_id[0],
                     'is_recovery_task': task.is_recovery_task,
                     'input_files': file_list_formatter(task.input_files),
@@ -165,9 +169,8 @@ def get_task_execution_details():
                 unsuccessful_tasks.append({
                     'task_id': task.task_id,
                     'try_id': task.task_try_id,
-                    'worker_ip': task.worker_ip,
-                    'worker_port': task.worker_port,
-                    'worker_id': task.worker_id,
+                    'worker_entry': task.worker_entry,
+                    'worker_id': worker_id,
                     'core_id': task.core_id[0],
                     'is_recovery_task': task.is_recovery_task,
                     'input_files': file_list_formatter(task.input_files),
@@ -194,7 +197,7 @@ def get_task_execution_details():
             workers.append({
                 'hash': w.hash,
                 'id': w.id,
-                'worker_ip_port': f"{w.ip}:{w.port}",
+                'worker_entry': f"{w.ip}:{w.port}:{w.connect_id}",
                 'time_connected': [max(t - runtime_state.MIN_TIME, 0) for t in w.time_connected],
                 'time_disconnected': [max(t - runtime_state.MIN_TIME, 0) for t in w.time_disconnected],
                 'cores': w.cores,
@@ -285,9 +288,7 @@ def export_task_execution_details_csv():
                     'type': 'Worker',
                     'start_time(s)': round(t0 - runtime_state.MIN_TIME, 2),
                     'end_time(s)': round(t1 - runtime_state.MIN_TIME, 2),
-                    'worker_ip': w.ip,
-                    'worker_port': w.port,
-                    'worker_connect_id': idx
+                    'worker_entry': f"{w.ip}:{w.port}:{w.connect_id}",
                 })
 
         df = pd.DataFrame(rows)
