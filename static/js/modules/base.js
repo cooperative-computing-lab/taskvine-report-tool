@@ -1250,7 +1250,6 @@ export class BaseModule {
     createLegendRow(items, options = {}) {
         const {
             singleSelect = false,
-            lineWidth = 4,
             onToggle = () => {},
             columnsPerRow = 6,
             checkboxName = 'legend-checkbox',

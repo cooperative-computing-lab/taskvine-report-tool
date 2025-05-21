@@ -11,7 +11,7 @@ export class WorkerStorageConsumptionModule extends BaseModule {
     }
 
     legendOnToggle(id, visible) {
-        const path = this.svg.selectAll(`#storage-${id}`);
+        const path = this.svg.selectAll(`#${this.id}-storage-${id}`);
         path.style('display', visible ? null : 'none');
     }
 
@@ -22,7 +22,6 @@ export class WorkerStorageConsumptionModule extends BaseModule {
             color: getWorkerColor(worker, idx)
         }));
         this.createLegendRow(legendItems, {
-            lineWidth: 4,
             checkboxName: 'storage-consumption',
             onToggle: (id, visible) => {
                 this.legendOnToggle(id, visible);
@@ -40,7 +39,7 @@ export class WorkerStorageConsumptionModule extends BaseModule {
             this.plotPath(points, {
                 stroke: color,
                 className: 'storage-line',
-                id: `storage-${safeId}`,
+                id: `${this.id}-storage-${safeId}`,
                 tooltipInnerHTML: `${worker}`
             });
         });

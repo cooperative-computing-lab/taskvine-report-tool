@@ -4,18 +4,23 @@ import { escapeWorkerId, getWorkerColor } from './utils.js';
 export class WorkerExecutinigTasksModule extends BaseModule {
     constructor(id, title, api_url) {
         super(id, title, api_url);
+
         this.setBottomScaleType('linear');
         this.setLeftScaleType('linear');
     }
 
     legendOnToggle(id, visible) {
-        const path = this.svg.selectAll(`#executing-tasks-${id}`);
+        const path = this.svg.selectAll(`#${id}`);
         path.style('display', visible ? null : 'none');
+    }
+
+    getUniqueWorkerId(worker) {
+        return `${this.id}-executing-tasks-${escapeWorkerId(worker)}`;
     }
 
     initLegend() {
         const legendItems = Object.keys(this.data.executing_tasks_data).map((worker, idx) => ({
-            id: escapeWorkerId(worker),
+            id: this.getUniqueWorkerId(worker),
             label: worker,
             color: getWorkerColor(worker, idx)
         }));
@@ -31,13 +36,13 @@ export class WorkerExecutinigTasksModule extends BaseModule {
     plot() {
         if (!this.data) return;
         this.initSVG();
+
         Object.entries(this.data.executing_tasks_data).forEach(([worker, points], idx) => {
-            const safeId = escapeWorkerId(worker);
             const color = getWorkerColor(worker, idx);
             this.plotPath(points, {
                 stroke: color,
-                className: 'executing-tasks-line',
-                id: `executing-tasks-${safeId}`,
+                className: 'worker-executing-tasks-line',
+                id: this.getUniqueWorkerId(worker),
                 tooltipInnerHTML: `${worker}`
             });
         });

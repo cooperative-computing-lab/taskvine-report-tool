@@ -14,6 +14,7 @@ export class WorkerConcurrencyModule extends BaseModule {
         this.plotPath(this.data.points, {
             stroke: '#2077B4',
             className: 'worker-concurrency-path',
+            id: `${this.id}-worker-concurrency`,
         });
     }
 } 

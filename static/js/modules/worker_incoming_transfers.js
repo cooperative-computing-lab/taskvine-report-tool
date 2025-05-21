@@ -11,14 +11,18 @@ export class WorkerIncomingTransfersModule extends BaseModule {
     }
 
     legendOnToggle(id, visible) {
-        const path = this.svg.selectAll(`#transfer-${id}`);
+        const path = this.svg.selectAll(`#${id}`);
         path.style('display', visible ? null : 'none');
+    }
+
+    getUniqueWorkerId(worker) {
+        return `${this.id}-incoming-transfer-${escapeWorkerId(worker)}`;
     }
 
     initLegend() {
         const legendItems = Object.keys(this.data.transfers)
             .map((worker, idx) => ({
-                id: escapeWorkerId(worker),
+                id: this.getUniqueWorkerId(worker),
                 label: worker,
                 color: getWorkerColor(worker, idx)
             }))
@@ -33,16 +37,14 @@ export class WorkerIncomingTransfersModule extends BaseModule {
 
     plot() {
         if (!this.data) return;
-
         this.initSVG();
 
         Object.entries(this.data.transfers).forEach(([worker, points], idx) => {
-            const safeId = escapeWorkerId(worker);
             const color = getWorkerColor(worker, idx);
             this.plotPath(points, {
                 stroke: color,
-                className: 'transfer-line',
-                id: `transfer-${safeId}`,
+                className: 'incoming-transfer-line',
+                id: this.getUniqueWorkerId(worker),
                 tooltipInnerHTML: `${worker}`
             });
         });

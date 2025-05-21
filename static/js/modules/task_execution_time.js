@@ -10,7 +10,6 @@ export class TaskExecutionTimeModule extends BaseModule {
 
     plot() {
         if (!this.data) return;
-
         this.initSVG();
 
         this.plotPoints(this.data.points, {
