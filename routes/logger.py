@@ -21,6 +21,7 @@ class Logger:
         except Exception as e:
             print(f"Warning: Could not remove existing log file: {e}")
 
+        print(f"Initializing logger with log file: {self.log_file}")
         self.logger = logging.getLogger('taskvine')
         self.logger.setLevel(logging.INFO)
 
