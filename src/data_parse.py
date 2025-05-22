@@ -897,6 +897,9 @@ class DataParser:
             # 4. if a task failed but when_failure_happens is not set, set it to the current max time
             elif task.when_failure_happens is None:
                 task.set_when_failure_happens(self.manager.current_max_time)
+            # 5. this is as expected: the task failed but the task_status is not set
+            elif task.when_failure_happens > 0 and task.task_status > 0:
+                pass
             else:
                 print(f"Warning: task {task.task_id} has a task_status that is not None: {task.task_status} and when_failure_happens is not set: {task.when_failure_happens}")
         # post-processing for workers
