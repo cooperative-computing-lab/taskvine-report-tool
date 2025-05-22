@@ -230,8 +230,13 @@ class RuntimeState:
             # calculate task execution time
             if task.task_status == 0:
                 task_execution_time = max(floor_decimal(task.time_worker_end - task.time_worker_start, 2), 0.01)
+                ran_to_completion = True
+            elif task.task_status != 0 and task.when_failure_happens and task.when_failure_happens > 0:
+                task_execution_time = max(floor_decimal(task.when_failure_happens - task.when_running, 2), 0.01)
+                ran_to_completion = False
             else:
                 task_execution_time = None
+                ran_to_completion = None
 
             # calculate task waiting retrieval time
             if task.when_retrieved and task.when_waiting_retrieval:
@@ -248,7 +253,8 @@ class RuntimeState:
                 'task_waiting_retrieval_time': task_waiting_retrieval_time,
                 'dependency_count': len(dependency_map[task_id]),
                 'dependent_count': len(dependent_map[task_id]),
-                'was_dispatched': was_dispatched
+                'was_dispatched': was_dispatched,
+                'ran_to_completion': ran_to_completion
             }
             task_stats.append(row)
 
