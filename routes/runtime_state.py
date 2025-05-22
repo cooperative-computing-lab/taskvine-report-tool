@@ -7,7 +7,7 @@ from .utils import (
     build_response_info_string,
     build_request_info_string,
     get_files_fingerprint,
-    select_best_try_per_task
+    floor_decimal
 )
 import json
 import time
@@ -218,24 +218,24 @@ class RuntimeState:
 
             # calculate task response time
             if task.when_running:
-                task_response_time = max(round(task.when_running - task.when_ready, 2), 0.01)
+                task_response_time = max(floor_decimal(task.when_running - task.when_ready, 2), 0.01)
                 was_dispatched = True
             elif task.when_failure_happens:
-                task_response_time = max(round(task.when_failure_happens - task.when_ready, 2), 0.01)
+                task_response_time = max(floor_decimal(task.when_failure_happens - task.when_ready, 2), 0.01)
                 was_dispatched = False
             else:
                 task_response_time = None
-                was_dispatched = None
+                was_dispatched = False
 
             # calculate task execution time
             if task.task_status == 0:
-                task_execution_time = max(round(task.time_worker_end - task.time_worker_start, 2), 0.01)
+                task_execution_time = max(floor_decimal(task.time_worker_end - task.time_worker_start, 2), 0.01)
             else:
                 task_execution_time = None
 
             # calculate task waiting retrieval time
             if task.when_retrieved and task.when_waiting_retrieval:
-                task_waiting_retrieval_time = max(round(task.when_retrieved - task.when_waiting_retrieval, 2), 0.01)
+                task_waiting_retrieval_time = max(floor_decimal(task.when_retrieved - task.when_waiting_retrieval, 2), 0.01)
             else:
                 task_waiting_retrieval_time = None
 

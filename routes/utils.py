@@ -231,32 +231,6 @@ def get_files_fingerprint(files):
 
     return hashlib.md5(";".join(parts).encode()).hexdigest()
 
-def select_best_try_per_task(task_stats):
-    from collections import defaultdict
-
-    grouped = defaultdict(list)
-    for row in task_stats:
-        grouped[row['task_id']].append(row)
-
-    filtered_stats = []
-
-    for task_id, rows in grouped.items():
-        candidates = [r for r in rows if r['task_response_time'] is not None]
-        if not candidates:
-            candidates = rows
-        sub = [r for r in candidates if r['task_execution_time'] is not None]
-        if sub:
-            candidates = sub
-        sub = [r for r in candidates if r['task_waiting_retrieval_time'] is not None]
-        if sub:
-            candidates = sub
-
-        best = max(candidates, key=lambda r: r['task_try_id'])
-
-        filtered_stats.append({k: v for k, v in best.items() if k != 'task_try_id'})
-
-    return filtered_stats
-
 def get_worker_ip_port_from_key(key):
     return ':'.join(key.split(':')[:-1])
 
