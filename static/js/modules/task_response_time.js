@@ -51,14 +51,14 @@ export class TaskResponseTimeModule extends BaseModule {
 
         /** Plot dispatched tasks */
         this.plotPoints(dispatchedPoints, {
-            tooltipFormatter: d => `Task ID: ${d[0]}<br>Response Time: ${d[1].toFixed(2)}s<br>Status: Dispatched`,
+            tooltipFormatter: d => `Task ID: ${d[0]}<br>Try ID: ${d[3]}<br>Response Time: ${d[1].toFixed(2)}s<br>Status: Dispatched`,
             className: 'task-response-time-point-dispatched-tasks',
             color: 'steelblue'
         });
 
         /** Plot undispatched tasks */
         this.plotPoints(undispatchedPoints, {
-            tooltipFormatter: d => `Task ID: ${d[0]}<br>Response Time: ${d[1].toFixed(2)}s<br>Status: Undispatched`,
+            tooltipFormatter: d => `Task ID: ${d[0]}<br>Try ID: ${d[3]}<br>Response Time: ${d[1].toFixed(2)}s<br>Status: Undispatched`,
             className: 'task-response-time-point-undispatched-tasks',
             color: 'red'
         });
