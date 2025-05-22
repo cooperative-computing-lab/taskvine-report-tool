@@ -17,7 +17,7 @@ def get_retrieval_time_points():
         return []
 
     return [
-        [row['task_id'], row['task_waiting_retrieval_time']]
+        [row['global_idx'], row['task_waiting_retrieval_time']]
         for row in runtime_state.task_stats
         if row['task_waiting_retrieval_time'] is not None
     ]

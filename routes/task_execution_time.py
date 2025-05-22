@@ -20,7 +20,7 @@ def get_execution_points():
         return []
 
     return [
-        [row['task_id'], row['task_execution_time']]
+        [row['global_idx'], row['task_execution_time']]
         for row in runtime_state.task_stats
         if row['task_execution_time'] is not None
     ]

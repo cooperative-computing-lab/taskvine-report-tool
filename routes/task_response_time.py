@@ -19,7 +19,7 @@ def get_response_time_points():
         return []
 
     return [
-        [row['task_id'], row['task_response_time'], row['was_dispatched'], row['task_try_id']]
+        [row['global_idx'], row['task_response_time'], row['was_dispatched'], row['task_try_id']]
         for row in runtime_state.task_stats
         if row['task_response_time'] is not None
     ]

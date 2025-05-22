@@ -204,8 +204,15 @@ class RuntimeState:
                     dependency_map[task_id].add(parent_id)
                     dependent_map[parent_id].add(task_id)
 
+        # sort all tasks by when_ready time
+        sorted_tasks = sorted(
+            self.tasks.values(),
+            key=lambda t: (t.when_ready if t.when_ready is not None else float('inf'))
+        )
+
+        # assign global_idx to each task
         task_stats = []
-        for task in self.tasks.values():
+        for idx, task in enumerate(sorted_tasks, 1):
             task_id = task.task_id
             task_try_id = task.task_try_id
 
@@ -235,6 +242,7 @@ class RuntimeState:
             row = {
                 'task_id': task_id,
                 'task_try_id': task_try_id,
+                'global_idx': idx,
                 'task_response_time': task_response_time,
                 'task_execution_time': task_execution_time,
                 'task_waiting_retrieval_time': task_waiting_retrieval_time,
@@ -244,7 +252,7 @@ class RuntimeState:
             }
             task_stats.append(row)
 
-        self.task_stats = select_best_try_per_task(task_stats)
+        self.task_stats = task_stats
 
     def reload_template(self, runtime_template):
         # init template and data parser

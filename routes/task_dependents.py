@@ -17,7 +17,7 @@ def get_dependent_points():
         return []
 
     return [
-        [row['task_id'], row['dependent_count']]
+        [row['global_idx'], row['dependent_count']]
         for row in runtime_state.task_stats
         if row['dependent_count'] is not None
     ]
