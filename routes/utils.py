@@ -1,6 +1,7 @@
 import os
 import hashlib
 import math
+import numpy as np
 
 def floor_decimal(x, decimal_places):
     factor = 10 ** decimal_places
@@ -125,10 +126,37 @@ def downsample_points_array(points_array, target_point_count=10000):
     return downsampled_array
 
 def compute_points_domain(points):
-    x_domain = [min(points, key=lambda p: p[0])[0], max(points, key=lambda p: p[0])[0]]
-    y_domain = [min(points, key=lambda p: p[1])[1], max(points, key=lambda p: p[1])[1]]
+    if not points:
+        return [0, 1], [0, 1]
 
-    return x_domain, y_domain
+    try:
+        points = [tuple(p) for p in points]
+        
+        points_array = np.array(points)
+        
+        if len(points_array.shape) != 2 or points_array.shape[1] < 2:
+            return [0, 1], [0, 1]
+            
+        x_values = points_array[:, 0]
+        y_values = points_array[:, 1]
+        
+        x_valid = ~np.isnan(x_values)
+        y_valid = ~np.isnan(y_values)
+        
+        if np.any(x_valid):
+            x_domain = [np.min(x_values[x_valid]), np.max(x_values[x_valid])]
+        else:
+            x_domain = [0, 1]
+            
+        if np.any(y_valid):
+            y_domain = [np.min(y_values[y_valid]), np.max(y_values[y_valid])]
+        else:
+            y_domain = [0, 1]
+
+        return x_domain, y_domain
+        
+    except Exception:
+        return [0, 1], [0, 1]
 
 def get_task_produced_files(files, min_time):
     rows = []
