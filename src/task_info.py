@@ -219,8 +219,7 @@ class TaskInfo:
         print("when_done: ", self.when_done)
         print("when_failure_happens: ", self.when_failure_happens)
 
-        print("worker_ip: ", self.worker_ip)
-        print("worker_port: ", self.worker_port)
+        print("worker_entry: ", self.worker_entry)
         print("cores_requested: ", self.cores_requested)
         print("gpus_requested: ", self.gpus_requested)
         print("memory_requested_mb: ", self.memory_requested_mb)

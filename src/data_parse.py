@@ -227,7 +227,6 @@ class DataParser:
             # files on the worker are removed
             for filename in worker.active_files_or_transfers:
                 self.files[filename].prune_file_on_worker_entry(worker_entry, timestamp)
-
             return
 
         if "transfer-port" in parts:
