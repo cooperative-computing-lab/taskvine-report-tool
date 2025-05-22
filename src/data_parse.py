@@ -894,6 +894,9 @@ class DataParser:
                 # note that the task might have not been retrieved yet
                 if task.when_retrieved and task.when_retrieved < task.time_worker_end:
                     raise ValueError(f"task {task.task_id} when_retrieved is smaller than time_worker_end: {task.time_worker_end} - {task.when_retrieved}")
+            # 4. if a task failed but when_failure_happens is not set, set it to the current max time
+            elif task.when_failure_happens is None:
+                task.set_when_failure_happens(self.manager.current_max_time)
             else:
                 print(f"Warning: task {task.task_id} has a task_status that is not None: {task.task_status}")
         # post-processing for workers
