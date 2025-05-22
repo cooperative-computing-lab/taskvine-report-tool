@@ -4,7 +4,6 @@ from .utils import (
     d3_time_formatter,
     d3_size_formatter,
     d3_percentage_formatter,
-    downsample_points_array,
     get_unit_and_scale_by_max_file_size_mb,
     floor_decimal,
     compress_time_based_critical_points
@@ -81,13 +80,11 @@ def get_worker_storage_consumption():
         if not raw_points_array:
             return jsonify({'error': 'No valid storage consumption data available'}), 404
 
-        downsampled_array = downsample_points_array(raw_points_array, SAMPLING_POINTS)
-
         storage_data = {}
         worker_resources = {}
         max_storage = 0
 
-        for worker, points in zip(worker_keys, downsampled_array):
+        for worker, points in zip(worker_keys, raw_points_array):
             wid = f"{worker[0]}:{worker[1]}"
             storage_data[wid] = points
             max_storage = max(max_storage, max(p[1] for p in points))

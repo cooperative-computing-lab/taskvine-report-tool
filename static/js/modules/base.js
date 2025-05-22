@@ -127,7 +127,7 @@ export class BaseModule {
     }
 
     createToolboxItemReset() {
-        return this.toolbox.createButtonItem(`${this.id}-reset`, 'Reset', () => this.resetSVG());
+        return this.toolbox.createButtonItem(`${this.id}-reset`, 'Reset Plot', () => this.resetSVG());
     }
 
     createToolboxItemExport() {
@@ -725,6 +725,7 @@ export class BaseModule {
             strokeWidth = 1.5,
             className = 'data-path',
             id = '',
+            curveType = d3.curveStepAfter,
             tooltipInnerHTML = null,
             tooltipFormatter = null
         } = options;
@@ -739,7 +740,7 @@ export class BaseModule {
                 const y = d[1];
                 return x >= xmin && x <= xmax && y >= ymin && y <= ymax;
             })
-            .curve(d3.curveStepAfter);
+            .curve(curveType);
 
         this.svg.append('path')
             .datum(filteredPoints)

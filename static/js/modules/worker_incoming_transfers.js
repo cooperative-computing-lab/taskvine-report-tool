@@ -45,7 +45,7 @@ export class WorkerIncomingTransfersModule extends BaseModule {
                 stroke: color,
                 className: 'incoming-transfer-line',
                 id: this.getUniqueWorkerId(worker),
-                tooltipInnerHTML: `${worker}`
+                tooltipInnerHTML: `${worker}`,
             });
         });
     }

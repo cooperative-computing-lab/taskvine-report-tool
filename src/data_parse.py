@@ -615,13 +615,14 @@ class DataParser:
 
             # if this is a task-generated file, it is the first time the file is cached on this worker, otherwise we only update the stage in time
             file = self.ensure_file_info_entry(file_name, size_in_mb)
-            if len(file.producers) == 0:
-                # special case: this file was created by a previous manager
-                return
 
             ip, port = WorkerInfo.extract_ip_port_from_string(parts[cache_update_id - 1])
             worker_entry = self.get_current_worker_entry_by_ip_port(ip, port)
-            assert worker_entry is not None
+
+            # TODO: better handle a special case where the file is created by a previous manager
+            if worker_entry is None:
+                del self.files[file_name]
+                return
             
             worker = self.workers[worker_entry]
             worker.add_active_file_or_transfer(file_name)

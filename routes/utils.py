@@ -1,7 +1,7 @@
 import os
 import hashlib
 import math
-import numpy as np
+import random
 
 def floor_decimal(x, decimal_places):
     factor = 10 ** decimal_places
@@ -116,19 +116,6 @@ def downsample_points(points, target_point_count=10000):
 
     return [points[i] for i in sorted(keep_indices)]
 
-def downsample_points_array(points_array, target_point_count=10000):
-    total_points = sum(len(points) for points in points_array)
-    if total_points <= target_point_count:
-        return points_array
-
-    downsampled_array = []
-    for points in points_array:
-        proportional_point_count = int((len(points) / total_points) * target_point_count)
-        downsampled = downsample_points(points, proportional_point_count)
-        downsampled_array.append(downsampled)
-
-    return downsampled_array
-
 def compute_points_domain(points):
     if not points:
         return [0, 1], [0, 1]
@@ -234,34 +221,58 @@ def get_files_fingerprint(files):
 def get_worker_ip_port_from_key(key):
     return ':'.join(key.split(':')[:-1])
 
-def compress_time_based_critical_points(points, max_points=10000):
+def compress_time_based_critical_points(points, max_points=5000):
     points = [tuple(p) for p in points]
-    
+
     if len(points) <= max_points:
         return points
 
-    peaks = [points[0]]
-
+    peak_indices = set()
+    valley_indices = set()
     for i in range(1, len(points) - 1):
         prev_y, curr_y, next_y = points[i - 1][1], points[i][1], points[i + 1][1]
-        if (curr_y > prev_y and curr_y >= next_y) or (curr_y < prev_y and curr_y <= next_y):
-            peaks.append(points[i])
+        if curr_y > prev_y and curr_y >= next_y:
+            peak_indices.add(i)
+        elif curr_y < prev_y and curr_y <= next_y:
+            valley_indices.add(i)
 
-    peaks.append(points[-1])
+    keep_indices = set(peak_indices | valley_indices)
 
-    seen = set()
-    unique_peaks = []
-    for p in peaks:
-        if p not in seen:
-            seen.add(p)
-            unique_peaks.append(p)
+    def add_nearest_opposite(current_set, opposite_set):
+        for idx in current_set:
+            prev = max((j for j in opposite_set if j < idx), default=None)
+            next = min((j for j in opposite_set if j > idx), default=None)
+            if prev is not None:
+                keep_indices.add(prev)
+            if next is not None:
+                keep_indices.add(next)
 
-    if len(unique_peaks) <= max_points:
-        return unique_peaks
+    add_nearest_opposite(peak_indices, valley_indices)
+    add_nearest_opposite(valley_indices, peak_indices)
 
-    stride = max(1, len(unique_peaks) // max_points)
-    compressed = unique_peaks[::stride]
-    if compressed[-1] != unique_peaks[-1]:
-        compressed.append(unique_peaks[-1])
+    keep_indices.add(0)
+    keep_indices.add(len(points) - 1)
 
-    return compressed
+    sorted_indices = sorted(keep_indices)
+    meaningful_indices = [sorted_indices[0]]
+    for i in range(1, len(sorted_indices) - 1):
+        prev = points[sorted_indices[i - 1]]
+        curr = points[sorted_indices[i]]
+        next_ = points[sorted_indices[i + 1]]
+        if not (prev[1] <= curr[1] <= next_[1] or prev[1] >= curr[1] >= next_[1]):
+            meaningful_indices.append(sorted_indices[i])
+    meaningful_indices.append(sorted_indices[-1])
+
+    selected_indices = sorted(set(meaningful_indices))
+    selected = [points[i] for i in selected_indices]
+
+    if len(selected) < max_points:
+        remaining_budget = max_points - len(selected)
+        candidate_indices = list(set(range(len(points))) - set(selected_indices))
+        if candidate_indices:
+            extra_indices = random.sample(candidate_indices, min(remaining_budget, len(candidate_indices)))
+            combined_indices = sorted(set(selected_indices) | set(extra_indices))
+            selected = [points[i] for i in combined_indices]
+
+    return selected
+

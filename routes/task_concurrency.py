@@ -3,12 +3,12 @@ from .utils import (
     compute_linear_tick_values,
     d3_time_formatter,
     d3_int_formatter,
-    downsample_points_array,
+    compress_time_based_critical_points,
     floor_decimal
 )
 
 import pandas as pd
-from flask import Blueprint, jsonify, request, make_response
+from flask import Blueprint, jsonify, make_response
 from io import StringIO
 
 task_concurrency_bp = Blueprint(
@@ -105,7 +105,7 @@ def compute_task_concurrency_points():
         df = pd.DataFrame(events, columns=['time', 'event']).sort_values('time')
         df = df.groupby('time')['event'].sum().reset_index()
         df['cumulative'] = df['event'].cumsum().clip(lower=0)
-        raw_points_array.append(df[['time', 'cumulative']].values.tolist())
+        raw_points_array.append(compress_time_based_critical_points(df[['time', 'cumulative']].values.tolist()))
 
     return dict(zip(phase_keys, raw_points_array))
 
@@ -118,10 +118,9 @@ def get_task_concurrency():
         downsampled_dict = {}
         max_y = 0
         for phase, points in raw_points_dict.items():
-            downsampled = downsample_points_array([points], SAMPLING_POINTS)[0]
-            downsampled_dict[phase] = downsampled
-            if downsampled:
-                max_y = max(max_y, max(p[1] for p in downsampled))
+            downsampled_dict[phase] = points
+            if points:
+                max_y = max(max_y, max(p[1] for p in points))
 
         data = {
             **downsampled_dict,

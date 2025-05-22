@@ -8,7 +8,6 @@ from .utils import (
     compute_linear_tick_values,
     d3_time_formatter,
     d3_int_formatter,
-    downsample_points_array,
     floor_decimal,
     compress_time_based_critical_points
 )
@@ -38,7 +37,7 @@ def get_worker_transfer_raw_points(role):
             elif transfer.time_stage_out:
                 t1 = floor_decimal(transfer.time_stage_out - base_time, 2)
             else:
-                continue
+                runtime_state.log_error(f"========== {file.filename} has no stage_in or stage_out")
             transfers_by_worker[worker_entry].append((t1, -1))
 
     raw_points_array = []
@@ -77,10 +76,9 @@ def get_worker_incoming_transfers():
         if not raw_points_array:
             return jsonify({'error': 'No incoming transfer data'}), 404
 
-        downsampled_array = downsample_points_array(raw_points_array, SAMPLING_POINTS)
         transfers = {}
         max_y = 0
-        for worker_entry, points in zip(worker_keys, downsampled_array):
+        for worker_entry, points in zip(worker_keys, raw_points_array):
             wid = f"{worker_entry[0]}:{worker_entry[1]}:{worker_entry[2]}"
             transfers[wid] = points
             max_y = max(max_y, max(p[1] for p in points))
@@ -108,10 +106,9 @@ def get_worker_outgoing_transfers():
         if not raw_points_array:
             return jsonify({'error': 'No outgoing transfer data'}), 404
 
-        downsampled_array = downsample_points_array(raw_points_array, SAMPLING_POINTS)
         transfers = {}
         max_y = 0
-        for worker_entry, points in zip(worker_keys, downsampled_array):
+        for worker_entry, points in zip(worker_keys, raw_points_array):
             wid = f"{worker_entry[0]}:{worker_entry[1]}:{worker_entry[2]}"
             transfers[wid] = points
             max_y = max(max_y, max(p[1] for p in points))

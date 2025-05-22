@@ -3,7 +3,6 @@ from .utils import (
     compute_linear_tick_values,
     d3_time_formatter,
     d3_int_formatter,
-    downsample_points_array,
     floor_decimal,
     compress_time_based_critical_points
 )
@@ -63,11 +62,9 @@ def get_worker_waiting_retrieval_tasks():
         if not raw_points_array:
             return jsonify({'error': 'No valid worker waiting retrieval tasks data available'}), 404
 
-        downsampled_array = downsample_points_array(raw_points_array, SAMPLING_POINTS)
-
         data = {}
         max_y = 0
-        for worker_entry, points in zip(worker_keys, downsampled_array):
+        for worker_entry, points in zip(worker_keys, raw_points_array):
             wid = f"{worker_entry[0]}:{worker_entry[1]}:{worker_entry[2]}"
             data[wid] = points
             max_y = max(max_y, max(p[1] for p in points))
