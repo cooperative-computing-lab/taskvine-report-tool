@@ -20,9 +20,8 @@ def get_execution_points():
         return []
 
     return [
-        [row['global_idx'], row['task_execution_time']]
+        [row['global_idx'], row['task_execution_time'], row['task_id'], row['task_try_id']]
         for row in runtime_state.task_stats
-        if row['task_execution_time'] is not None
     ]
 
 @task_execution_time_bp.route('/task-execution-time')
@@ -60,7 +59,7 @@ def export_task_execution_time_csv():
         if not raw_points:
             return jsonify({'error': 'No completed tasks available'}), 404
 
-        df = pd.DataFrame(raw_points, columns=["Task ID", "Execution Time"])
+        df = pd.DataFrame(raw_points, columns=["Task ID", "Execution Time", "Task ID", "Task Try ID"])
 
         buffer = StringIO()
         df.to_csv(buffer, index=False)

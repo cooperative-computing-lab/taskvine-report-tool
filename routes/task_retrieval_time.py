@@ -17,9 +17,8 @@ def get_retrieval_time_points():
         return []
 
     return [
-        [row['global_idx'], row['task_waiting_retrieval_time']]
+        [row['global_idx'], row['task_waiting_retrieval_time'], row['task_id'], row['task_try_id']]
         for row in runtime_state.task_stats
-        if row['task_waiting_retrieval_time'] is not None
     ]
 
 
@@ -56,7 +55,7 @@ def export_task_retrieval_time_csv():
         if not raw_points:
             return jsonify({'error': 'No task retrieval time data available'}), 404
 
-        df = pd.DataFrame(raw_points, columns=["Task ID", "Retrieval Time"])
+        df = pd.DataFrame(raw_points, columns=["Task ID", "Retrieval Time", "Task ID", "Task Try ID"])
 
         buffer = StringIO()
         df.to_csv(buffer, index=False)

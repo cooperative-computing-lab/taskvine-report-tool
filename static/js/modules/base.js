@@ -1161,6 +1161,7 @@ export class BaseModule {
             typeof p[1] === 'number' &&
             !Number.isNaN(p[0]) &&
             !Number.isNaN(p[1]) &&
+            p[1] !== null &&
             p[0] >= xmin && p[0] <= xmax &&
             p[1] >= ymin && p[1] <= ymax
         )
