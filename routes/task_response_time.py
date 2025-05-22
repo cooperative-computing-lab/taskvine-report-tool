@@ -19,7 +19,7 @@ def get_response_time_points():
         return []
 
     return [
-        [row['task_id'], row['task_response_time']]
+        [row['task_id'], row['task_response_time'], row['was_dispatched']]
         for row in runtime_state.task_stats
         if row['task_response_time'] is not None
     ]
@@ -33,6 +33,10 @@ def get_task_response_time():
         if not raw_points:
             return jsonify({'error': 'No valid response time found'}), 404
 
+        # count original points before downsampling
+        dispatched_count = sum(1 for p in raw_points if p[2])
+        undispatched_count = sum(1 for p in raw_points if not p[2])
+
         x_domain, y_domain = compute_points_domain(raw_points)
 
         return jsonify({
@@ -42,7 +46,9 @@ def get_task_response_time():
             'x_tick_values': compute_linear_tick_values(x_domain),
             'y_tick_values': compute_linear_tick_values(y_domain),
             'x_tick_formatter': d3_int_formatter(),
-            'y_tick_formatter': d3_time_formatter()
+            'y_tick_formatter': d3_time_formatter(),
+            'dispatched_count': dispatched_count,
+            'undispatched_count': undispatched_count
         })
 
     except Exception as e:
@@ -59,7 +65,7 @@ def export_task_response_time_csv():
         if not raw_points:
             return jsonify({'error': 'No valid response time found'}), 404
 
-        df = pd.DataFrame(raw_points, columns=["Task ID", "Response Time"])
+        df = pd.DataFrame(raw_points, columns=["Task ID", "Response Time", "Status"])
 
         buffer = StringIO()
         df.to_csv(buffer, index=False)

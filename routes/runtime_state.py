@@ -212,10 +212,13 @@ class RuntimeState:
             # calculate task response time
             if task.when_running:
                 task_response_time = max(round(task.when_running - task.when_ready, 2), 0.01)
+                was_dispatched = True
             elif task.when_failure_happens:
                 task_response_time = max(round(task.when_failure_happens - task.when_ready, 2), 0.01)
+                was_dispatched = False
             else:
                 task_response_time = None
+                was_dispatched = None
 
             # calculate task execution time
             if task.task_status == 0:
@@ -236,7 +239,8 @@ class RuntimeState:
                 'task_execution_time': task_execution_time,
                 'task_waiting_retrieval_time': task_waiting_retrieval_time,
                 'dependency_count': len(dependency_map[task_id]),
-                'dependent_count': len(dependent_map[task_id])
+                'dependent_count': len(dependent_map[task_id]),
+                'was_dispatched': was_dispatched
             }
             task_stats.append(row)
 

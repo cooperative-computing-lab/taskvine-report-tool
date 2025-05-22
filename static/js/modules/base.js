@@ -298,7 +298,7 @@ export class BaseModule {
                 }
             });
     }
-        
+
     _unselectAllLegendCheckboxes() {
         this._queryAllLegendCheckboxes()
             .property('checked', false)
