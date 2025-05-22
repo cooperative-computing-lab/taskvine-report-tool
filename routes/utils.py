@@ -28,7 +28,7 @@ def compute_linear_tick_values(domain, num_ticks=5, round_digits=2):
         raise ValueError("num_ticks must be at least 2")
     step = (end - start) / (num_ticks - 1)
 
-    values = [start + i * step for i in range(num_ticks)]
+    values = [float(start + i * step) for i in range(num_ticks)]
 
     if round_digits is None:
         return values
@@ -42,13 +42,13 @@ def compute_discrete_tick_values(domain_list, num_ticks=5):
         return []
     
     if len(domain_list) <= num_ticks * 2:
-        return domain_list
+        return [float(x) for x in domain_list]
     
     domain_list = sorted(set(domain_list))
     n = len(domain_list)
 
     if n <= num_ticks:
-        return domain_list
+        return [float(x) for x in domain_list]
 
     tick_indices = [0]
     for i in range(1, num_ticks - 1):
@@ -57,7 +57,7 @@ def compute_discrete_tick_values(domain_list, num_ticks=5):
     tick_indices.append(n - 1)
 
     tick_indices = sorted(set(tick_indices))
-    return [domain_list[i] for i in tick_indices]
+    return [float(domain_list[i]) for i in tick_indices]
 
 def d3_time_formatter():
     return '(d) => d3.format(".2f")(d) + " s"'
@@ -82,7 +82,11 @@ def downsample_points(points, target_point_count=10000):
     if len(points) > MIN_POINT_COUNT and target_point_count < MIN_POINT_COUNT:
         target_point_count = MIN_POINT_COUNT
 
-    y_max_idx = max(range(len(points)), key=lambda i: points[i][1])
+    valid_points = [(i, p) for i, p in enumerate(points) if p[1] is not None]
+    if not valid_points:
+        return points[:target_point_count] if len(points) > target_point_count else points
+
+    y_max_idx = max(valid_points, key=lambda x: x[1][1])[0]
     keep_indices = {0, len(points) - 1, y_max_idx}
 
     remaining = target_point_count - len(keep_indices)
@@ -132,24 +136,22 @@ def compute_points_domain(points):
     try:
         points = [tuple(p) for p in points]
         
-        points_array = np.array(points)
-        
-        if len(points_array.shape) != 2 or points_array.shape[1] < 2:
+        if not points or not all(len(p) >= 2 for p in points):
             return [0, 1], [0, 1]
             
-        x_values = points_array[:, 0]
-        y_values = points_array[:, 1]
+        x_values = [p[0] for p in points]
+        y_values = [p[1] for p in points]
         
-        x_valid = ~np.isnan(x_values)
-        y_valid = ~np.isnan(y_values)
+        x_valid = [x for x in x_values if x is not None]
+        y_valid = [y for y in y_values if y is not None]
         
-        if np.any(x_valid):
-            x_domain = [np.min(x_values[x_valid]), np.max(x_values[x_valid])]
+        if x_valid:
+            x_domain = [min(x_valid), max(x_valid)]
         else:
             x_domain = [0, 1]
             
-        if np.any(y_valid):
-            y_domain = [np.min(y_values[y_valid]), np.max(y_values[y_valid])]
+        if y_valid:
+            y_domain = [min(y_valid), max(y_valid)]
         else:
             y_domain = [0, 1]
 
