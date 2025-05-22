@@ -723,8 +723,7 @@ class DataParser:
                     task.set_when_done(timestamp)
                 # task was not retrieved
                 elif task.when_retrieved is None:
-                    if not task.when_failure_happens:
-                        task.set_when_failure_happens(timestamp)
+                    task.set_when_failure_happens(timestamp)
                 else:
                     pass
 
