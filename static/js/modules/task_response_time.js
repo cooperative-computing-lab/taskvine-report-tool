@@ -46,19 +46,19 @@ export class TaskResponseTimeModule extends BaseModule {
         this.initSVG();
 
         /** Split points into dispatched and undispatched */
-        const dispatchedPoints = this.data['points'].filter(p => p[2]);
-        const undispatchedPoints = this.data['points'].filter(p => !p[2]);
+        const dispatchedPoints = this.data['points'].filter(p => p[4]);
+        const undispatchedPoints = this.data['points'].filter(p => !p[4]);
 
         /** Plot dispatched tasks */
         this.plotPoints(dispatchedPoints, {
-            tooltipFormatter: d => `Task ID: ${d[0]}<br>Try ID: ${d[3]}<br>Response Time: ${d[1].toFixed(2)}s<br>Status: Dispatched`,
+            tooltipFormatter: d => `Global Index: ${d[0]}<br>Task ID: ${d[2]}<br>Try ID: ${d[3]}<br>Response Time: ${d[1].toFixed(2)}s<br>Status: Dispatched`,
             className: 'task-response-time-point-dispatched-tasks',
             color: 'steelblue'
         });
 
         /** Plot undispatched tasks */
         this.plotPoints(undispatchedPoints, {
-            tooltipFormatter: d => `Task ID: ${d[0]}<br>Try ID: ${d[3]}<br>Response Time: ${d[1].toFixed(2)}s<br>Status: Undispatched`,
+            tooltipFormatter: d => `Global Index: ${d[0]}<br>Task ID: ${d[2]}<br>Try ID: ${d[3]}<br>Response Time: ${d[1].toFixed(2)}s<br>Status: Undispatched`,
             className: 'task-response-time-point-undispatched-tasks',
             color: 'red'
         });
