@@ -13,7 +13,7 @@ export class TaskExecutionTimeModule extends BaseModule {
         this.initSVG();
 
         this.plotPoints(this.data.points, {
-            tooltipFormatter: d => `Task Index: ${d[0]}<br>Task ID: ${d[2]}<br>Try ID: ${d[3]}<br>Execution Time: ${d[1].toFixed(2)}s`,
+            tooltipFormatter: d => `Global Index: ${d[0]}<br>Task ID: ${d[2]}<br>Try ID: ${d[3]}<br>Execution Time: ${d[1].toFixed(2)}s`,
             className: 'execution-time-point'
         });
     }
