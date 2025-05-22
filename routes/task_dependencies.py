@@ -18,7 +18,6 @@ def get_dependency_points():
     return [
         [row['global_idx'], row['dependency_count']]
         for row in runtime_state.task_stats
-        if row['dependency_count'] is not None
     ]
 
 

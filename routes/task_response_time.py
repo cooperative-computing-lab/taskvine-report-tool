@@ -12,7 +12,8 @@ import pandas as pd
 from io import StringIO
 
 task_response_time_bp = Blueprint(
-    'task_response_time', __name__, url_prefix='/api')
+    'task_response_time', __name__, url_prefix='/api'
+)
 
 def get_response_time_points():
     if not runtime_state.task_stats:
@@ -21,7 +22,6 @@ def get_response_time_points():
     return [
         [row['global_idx'], row['task_response_time'], row['task_id'], row['task_try_id'], row['was_dispatched']]
         for row in runtime_state.task_stats
-        if row['task_response_time'] is not None
     ]
 
 @task_response_time_bp.route('/task-response-time')

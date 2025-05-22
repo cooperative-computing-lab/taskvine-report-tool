@@ -22,7 +22,6 @@ def get_execution_points():
     return [
         [row['global_idx'], row['task_execution_time'], row['task_id'], row['task_try_id'], row['ran_to_completion']]
         for row in runtime_state.task_stats
-        if row['task_execution_time'] is not None
     ]
 
 @task_execution_time_bp.route('/task-execution-time')

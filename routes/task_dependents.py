@@ -19,9 +19,7 @@ def get_dependent_points():
     return [
         [row['global_idx'], row['dependent_count']]
         for row in runtime_state.task_stats
-        if row['dependent_count'] is not None
     ]
-
 
 @task_dependents_bp.route('/task-dependents')
 def get_task_dependents():
