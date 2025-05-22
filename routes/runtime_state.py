@@ -212,6 +212,8 @@ class RuntimeState:
             # calculate task response time
             if task.when_running:
                 task_response_time = max(round(task.when_running - task.when_ready, 2), 0.01)
+            elif task.when_failure_happens:
+                task_response_time = max(round(task.when_failure_happens - task.when_ready, 2), 0.01)
             else:
                 task_response_time = None
 
