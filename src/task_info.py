@@ -110,9 +110,13 @@ class TaskInfo:
             raise ValueError(f"sandbox_used mismatch for task {self.task_id}")
         self.sandbox_used = sandbox_used
 
-    def set_task_status(self, task_status):
+    def set_task_status(self, timestamp, task_status):
         # we can change the task status multiple times
         self.task_status = int(task_status)
+        if self.task_status != 0:
+            self.set_when_failure_happens(timestamp)
+        else:
+            self.when_failure_happens = None
 
     def set_stdout_size_mb(self, stdout_size_mb):
         if self.stdout_size_mb and stdout_size_mb != self.stdout_size_mb:

@@ -264,7 +264,8 @@ class RuntimeState:
         self.manager = self.data_parser.manager
         self.workers = self.data_parser.workers
         self.files = self.data_parser.files
-        self.tasks = self.data_parser.tasks
+        # exclude library tasks
+        self.tasks = {tid: t for tid, t in self.data_parser.tasks.items() if not t.is_library_task}
         self.subgraphs = self.data_parser.subgraphs
 
         # init time range

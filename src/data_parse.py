@@ -219,7 +219,7 @@ class DataParser:
             ip, port = WorkerInfo.extract_ip_port_from_string(parts[release_idx - 1])
             worker = self.get_current_worker_by_ip_port(ip, port)
             assert worker is not None
-            
+
             worker.add_disconnection(timestamp)
             self.manager.update_when_last_worker_disconnect(timestamp)
             
@@ -279,8 +279,7 @@ class DataParser:
             task_id = int(parts[parts.index("task") + 1])
             task_entry = (task_id, self.current_try_id[task_id])
             task = self.tasks[task_entry]
-            task.set_task_status(4 << 3)
-            task.set_when_failure_happens(timestamp)
+            task.set_task_status(timestamp, 4 << 3)
             return
 
         if "exhausted resources on" in line:
@@ -511,8 +510,6 @@ class DataParser:
                     worker.tasks_completed.append(task)
             elif "WAITING_RETRIEVAL (3) to READY (1)" in line or \
                     "RUNNING (2) to READY (1)" in line:             # task failure
-                # this indicates that the task failed
-                task.set_when_failure_happens(timestamp)
                 # we need to set the task status if it was not set yet
                 if not task.task_status:
                     # if it was committed to a worker
@@ -523,8 +520,7 @@ class DataParser:
                         worker.reap_task(task)
                         # it could be that the worker disconnected
                         if len(worker.time_connected) == len(worker.time_disconnected):
-                            task.set_task_status(15 << 3)
-                            task.set_when_failure_happens(worker.time_disconnected[-1])
+                            task.set_task_status(worker.time_disconnected[-1], 15 << 3)
                         # it could be that its inputs are missing
                         elif task.input_files:
                             all_inputs_ready = True
@@ -538,15 +534,15 @@ class DataParser:
                                     all_inputs_ready = False
                                     break
                             if all_inputs_ready:
-                                task.set_task_status(1)
+                                task.set_task_status(timestamp, 1)
                         # otherwise, we donot know the reason
                         else:
-                            task.set_task_status(4 << 3)
+                            task.set_task_status(timestamp, 4 << 3)
                     else:
                         # if the task was not committed to a worker, we donot know the reason
-                        task.set_task_status(4 << 3)
+                        task.set_task_status(timestamp, 4 << 3)
 
-                # create a new task entry for the task
+                # create a new task entry for the next try
                 self.current_try_id[task_id] += 1
                 new_task = TaskInfo(task_id, self.current_try_id[task_id])
                 new_task.set_when_ready(timestamp)
@@ -555,8 +551,9 @@ class DataParser:
             elif "RUNNING (2) to RETRIEVED (4)" in line:
                 task.set_when_retrieved(timestamp)
                 if not task.is_library_task:
-                    print(
-                        f"Warning: non-library task {task_id} state change: from RUNNING (2) to RETRIEVED (4)")
+                    print(f"Warning: non-library task {task_id} state change: from RUNNING (2) to RETRIEVED (4)")
+                else:
+                    task.set_task_status(timestamp, 12 << 3)
             else:
                 raise ValueError(f"unrecognized state change: {line}")
             return
@@ -582,9 +579,7 @@ class DataParser:
             task_entry = (task_id, self.current_try_id[task_id])
             task = self.tasks[task_entry]
 
-            task.set_task_status(task_status)
-            if task_status != 0:
-                task.set_when_failure_happens(timestamp)
+            task.set_task_status(timestamp, task_status)
 
             task.set_exit_status(exit_status)
             task.set_output_length(output_length)
@@ -717,15 +712,6 @@ class DataParser:
 
         if "manager end" in line:
             self.manager.set_time_end(timestamp)
-            for task in self.tasks.values():
-                # task was retrieved but not yet done
-                if task.when_done is None and task.when_retrieved is not None:
-                    task.set_when_done(timestamp)
-                # task was not retrieved
-                elif task.when_retrieved is None:
-                    task.set_when_failure_happens(timestamp)
-                else:
-                    pass
 
         if "calculated penalty for file" in line:
             file_idx = parts.index("file")
@@ -878,12 +864,11 @@ class DataParser:
 
         # post-processing for tasks
         for task in self.tasks.values():
-            # 2. if a task's status is None, we set it to 4 << 3, which means the task failed but not yet reported
-            if task.task_status is None:
-                task.set_task_status(4 << 3)
-                task.set_when_failure_happens(self.manager.current_max_time)
-            # 3. if a task succeeds, check if the end time is larger than the start time
-            elif task.task_status == 0:
+            # if a task succeeds, check if the end time is larger than the start time
+            if task.task_status == 0:
+                # task was retrieved but not yet done
+                if task.when_done is None and task.when_retrieved is not None:
+                    task.set_when_done(self.manager.current_max_time)
                 if task.time_worker_start < task.when_running:
                     #! there is a major issue in taskvine: machines may run remotely, their returned timestamps could be in a different timezone
                     #! if this happens, we temporarily modify the time_worker_start to when_running, and time_worker_end to when_waiting_retrieval
@@ -894,17 +879,14 @@ class DataParser:
                 # note that the task might have not been retrieved yet
                 if task.when_retrieved and task.when_retrieved < task.time_worker_end:
                     raise ValueError(f"task {task.task_id} when_retrieved is smaller than time_worker_end: {task.time_worker_end} - {task.when_retrieved}")
-            # 4. if a task failed but when_failure_happens is not set, set it to the current max time
-            elif task.when_failure_happens is None:
-                task.set_when_failure_happens(self.manager.current_max_time)
-            # 5. this is as expected: the task failed but the task_status is not set
-            elif task.when_failure_happens > 0 and task.task_status > 0:
-                pass
+            # if a task fails, we need to check if the task_status is set
             else:
-                print(f"Warning: task {task.task_id} has a task_status that is not None: {task.task_status} and when_failure_happens is not set: {task.when_failure_happens}")
+                # if a task's status is None, we set it to 4 << 3, which means the task failed but not yet reported
+                if not task.task_status:
+                    task.set_task_status(self.manager.current_max_time, 4 << 3)
         # post-processing for workers
         for worker in self.workers.values():
-            # 4. for workers, check if the time_disconnected is larger than the time_connected
+            # for workers, check if the time_disconnected is larger than the time_connected
             for i, (time_connected, time_disconnected) in enumerate(zip(worker.time_connected, worker.time_disconnected)):
                 if time_disconnected < time_connected:
                     if time_disconnected - time_connected > 1:

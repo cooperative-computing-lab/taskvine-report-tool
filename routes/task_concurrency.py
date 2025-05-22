@@ -57,9 +57,13 @@ def compute_task_concurrency_points():
                 time_committing_end = task.when_waiting_retrieval
             elif task.when_failure_happens:
                 time_committing_end = task.when_failure_happens
+            else:
+                print(f"Task {task.task_id} has no time_worker_start or when_failure_happens")
             if time_committing_end:    
                 t1 = floor_decimal(time_committing_end - base_time, 2)
                 task_phases['tasks_committing'].append((t1, -1))
+            else:
+                print(f"Task {task.task_id} has no time_committing_end")
 
         if task.time_worker_start:
             t0 = floor_decimal(max(task.time_worker_start - base_time, 0), 2)
