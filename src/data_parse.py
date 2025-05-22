@@ -898,7 +898,7 @@ class DataParser:
             elif task.when_failure_happens is None:
                 task.set_when_failure_happens(self.manager.current_max_time)
             else:
-                print(f"Warning: task {task.task_id} has a task_status that is not None: {task.task_status}")
+                print(f"Warning: task {task.task_id} has a task_status that is not None: {task.task_status} and when_failure_happens is not set: {task.when_failure_happens}")
         # post-processing for workers
         for worker in self.workers.values():
             # 4. for workers, check if the time_disconnected is larger than the time_connected
