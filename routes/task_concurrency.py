@@ -38,42 +38,57 @@ def compute_task_concurrency_points():
         if task.when_ready:
             t0 = floor_decimal(max(task.when_ready - base_time, 0), 2)
             task_phases['tasks_waiting'].append((t0, 1))
+            time_waiting_end = None
             if task.when_running:
-                t1 = floor_decimal(task.when_running - base_time, 2)
+                time_waiting_end = task.when_running
+            elif task.when_failure_happens:
+                time_waiting_end = task.when_failure_happens
+            if time_waiting_end:
+                t1 = floor_decimal(time_waiting_end - base_time, 2)
                 task_phases['tasks_waiting'].append((t1, -1))
 
         if task.when_running:
-            t0 = floor_decimal(task.when_running - base_time, 2)
+            t0 = floor_decimal(max(task.when_running - base_time, 0), 2)
             task_phases['tasks_committing'].append((t0, 1))
             time_committing_end = None
             if task.time_worker_start:
                 time_committing_end = task.time_worker_start
-            if task.when_waiting_retrieval:
+            elif task.when_waiting_retrieval:
                 time_committing_end = task.when_waiting_retrieval
-            if task.when_failure_happens:
+            elif task.when_failure_happens:
                 time_committing_end = task.when_failure_happens
             if time_committing_end:    
                 t1 = floor_decimal(time_committing_end - base_time, 2)
                 task_phases['tasks_committing'].append((t1, -1))
-            else:
-                runtime_state.log_error(f"Task {task.id} has no committing end time")
 
         if task.time_worker_start:
-            t0 = floor_decimal(task.time_worker_start - base_time, 2)
+            t0 = floor_decimal(max(task.time_worker_start - base_time, 0), 2)
             task_phases['tasks_executing'].append((t0, 1))
+            time_executing_end = None
             if task.time_worker_end:
-                t1 = floor_decimal(task.time_worker_end - base_time, 2)
+                time_executing_end = task.time_worker_end
+            elif task.when_waiting_retrieval:
+                time_executing_end = task.when_waiting_retrieval
+            elif task.when_failure_happens:
+                time_executing_end = task.when_failure_happens
+            if time_executing_end:
+                t1 = floor_decimal(time_executing_end - base_time, 2)
                 task_phases['tasks_executing'].append((t1, -1))
 
         if task.time_worker_end:
             t0 = floor_decimal(task.time_worker_end - base_time, 2)
             task_phases['tasks_retrieving'].append((t0, 1))
-            if task.when_retrieved:
-                t1 = floor_decimal(task.when_retrieved - base_time, 2)
+            time_retrieving_end = None
+            if task.when_waiting_retrieval:
+                time_retrieving_end = task.when_waiting_retrieval
+            elif task.when_failure_happens:
+                time_retrieving_end = task.when_failure_happens
+            if time_retrieving_end:
+                t1 = floor_decimal(time_retrieving_end - base_time, 2)
                 task_phases['tasks_retrieving'].append((t1, -1))
 
         if task.when_done:
-            t0 = floor_decimal(task.when_done - base_time, 2)
+            t0 = floor_decimal(max(task.when_done - base_time, 0), 2)
             task_phases['tasks_done'].append((t0, 1))
 
     raw_points_array = []
@@ -86,7 +101,6 @@ def compute_task_concurrency_points():
         df = pd.DataFrame(events, columns=['time', 'event']).sort_values('time')
         df = df.groupby('time')['event'].sum().reset_index()
         df['cumulative'] = df['event'].cumsum().clip(lower=0)
-        df['time'] = df['time'].map(lambda x: floor_decimal(x, 2))
         raw_points_array.append(df[['time', 'cumulative']].values.tolist())
 
     return dict(zip(phase_keys, raw_points_array))
