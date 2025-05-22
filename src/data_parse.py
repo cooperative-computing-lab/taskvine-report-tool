@@ -524,6 +524,7 @@ class DataParser:
                         # it could be that the worker disconnected
                         if len(worker.time_connected) == len(worker.time_disconnected):
                             task.set_task_status(15 << 3)
+                            task.set_when_failure_happens(worker.time_disconnected[-1])
                         # it could be that its inputs are missing
                         elif task.input_files:
                             all_inputs_ready = True
