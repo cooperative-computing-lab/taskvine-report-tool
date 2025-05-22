@@ -884,27 +884,26 @@ class DataParser:
                 task.set_task_status(4 << 3)
                 task.set_when_failure_happens(self.manager.current_max_time)
             # 3. if a task succeeds, check if the end time is larger than the start time
-            if task.task_status == 0:
+            elif task.task_status == 0:
                 if task.time_worker_start < task.when_running:
                     #! there is a major issue in taskvine: machines may run remotely, their returned timestamps could be in a different timezone
                     #! if this happens, we temporarily modify the time_worker_start to when_running, and time_worker_end to when_waiting_retrieval
                     task.time_worker_start = task.when_running
                     task.time_worker_end = task.when_waiting_retrieval
                 if task.time_worker_end < task.time_worker_start:
-                    raise ValueError(
-                        f"task {task.task_id} time_worker_end is smaller than time_worker_start: {task.time_worker_start} - {task.time_worker_end}")
+                    raise ValueError(f"task {task.task_id} time_worker_end is smaller than time_worker_start: {task.time_worker_start} - {task.time_worker_end}")
                 # note that the task might have not been retrieved yet
                 if task.when_retrieved and task.when_retrieved < task.time_worker_end:
-                    raise ValueError(
-                        f"task {task.task_id} when_retrieved is smaller than time_worker_end: {task.time_worker_end} - {task.when_retrieved}")
+                    raise ValueError(f"task {task.task_id} when_retrieved is smaller than time_worker_end: {task.time_worker_end} - {task.when_retrieved}")
+            else:
+                print(f"Warning: task {task.task_id} has a task_status that is not None: {task.task_status}")
         # post-processing for workers
         for worker in self.workers.values():
             # 4. for workers, check if the time_disconnected is larger than the time_connected
             for i, (time_connected, time_disconnected) in enumerate(zip(worker.time_connected, worker.time_disconnected)):
                 if time_disconnected < time_connected:
                     if time_disconnected - time_connected > 1:
-                        print(
-                            f"Warning: worker {worker.ip} has a disconnected time that is smaller than the connected time")
+                        print(f"Warning: worker {worker.ip} has a disconnected time that is smaller than the connected time")
                     else:
                         worker.time_disconnected[i] = time_connected
         # post-processing for files

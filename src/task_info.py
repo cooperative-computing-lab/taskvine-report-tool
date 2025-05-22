@@ -78,20 +78,10 @@ class TaskInfo:
         self.when_running = float(when_running)
 
     def set_when_failure_happens(self, when_failure_happens):
-        try:
-            # it could be a float indicating that the task was failed
-            when_failure_happens = float(when_failure_happens)
-            if self.when_failure_happens and when_failure_happens != self.when_failure_happens:
-                raise ValueError(
-                    f"when_failure_happens mismatch for task {self.task_id}")
-            self.when_failure_happens = when_failure_happens
-            if self.when_failure_happens < self.when_ready:
-                assert self.when_failure_happens - self.when_ready < 1
-                self.when_failure_happens = self.when_ready
-        except Exception:
-            # it could be a string indicating that the task was not failed
-            self.when_failure_happens = when_failure_happens
-            pass
+        self.when_failure_happens = min(self.when_failure_happens, when_failure_happens) if self.when_failure_happens else when_failure_happens
+        if self.when_failure_happens < self.when_ready:
+            assert abs(self.when_failure_happens - self.when_ready) < 1
+            self.when_failure_happens = self.when_ready
 
     def set_when_waiting_retrieval(self, when_waiting_retrieval):
         when_waiting_retrieval = float(when_waiting_retrieval)
