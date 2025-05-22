@@ -231,7 +231,7 @@ class RuntimeState:
             if task.task_status == 0:
                 task_execution_time = max(floor_decimal(task.time_worker_end - task.time_worker_start, 2), 0.01)
                 ran_to_completion = True
-            elif task.task_status != 0 and task.when_failure_happens and task.when_failure_happens > 0:
+            elif task.task_status != 0 and task.when_running and task.when_failure_happens:
                 task_execution_time = max(floor_decimal(task.when_failure_happens - task.when_running, 2), 0.01)
                 ran_to_completion = False
             else:
