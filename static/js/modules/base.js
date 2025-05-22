@@ -123,16 +123,16 @@ export class BaseModule {
     }
 
     createToolboxItemDownloadSVG() {
-        return this.toolbox.createButtonItem('download-svg', 'Download SVG', () => this.downloadSVG());
+        return this.toolbox.createButtonItem(`${this.id}-download-svg`, 'Download SVG', () => this.downloadSVG());
     }
 
     createToolboxItemReset() {
-        return this.toolbox.createButtonItem('reset', 'Reset', () => this.resetSVG());
+        return this.toolbox.createButtonItem(`${this.id}-reset`, 'Reset', () => this.resetSVG());
     }
 
     createToolboxItemExport() {
         return this.toolbox.createSelectorItem(
-            'export',
+            `${this.id}-export`,
             'Export',
             [
                 { value: 'svg', label: 'SVG' },
@@ -201,7 +201,7 @@ export class BaseModule {
     }      
 
     createToolboxItemSetXMin() {
-        return this.toolbox.createInputItem('x-min', 'Set X Min', (id, value) => {
+        return this.toolbox.createInputItem(`${this.id}-x-min`, 'Set X Min', (id, value) => {
             const parsed = parseFloat(value);
             if (!isNaN(parsed)) {
                 this.setXLimits({ xmin: parsed });
@@ -212,7 +212,7 @@ export class BaseModule {
     }    
 
     createToolboxItemSetXMax() {
-        return this.toolbox.createInputItem('x-max', 'Set X Max', (id, value) => {
+        return this.toolbox.createInputItem(`${this.id}-x-max`, 'Set X Max', (id, value) => {
             const parsed = parseFloat(value);
             if (!isNaN(parsed)) {
                 this.setXLimits({ xmax: parsed });
@@ -263,7 +263,7 @@ export class BaseModule {
     }    
 
     createToolboxItemSetYMin() {
-        return this.toolbox.createInputItem('y-min', 'Set Y Min', (id, value) => {
+        return this.toolbox.createInputItem(`${this.id}-y-min`, 'Set Y Min', (id, value) => {
             const parsed = parseFloat(value);
             if (!isNaN(parsed)) {
                 this.setYLimits({ ymin: parsed });
@@ -274,7 +274,7 @@ export class BaseModule {
     }
     
     createToolboxItemSetYMax() {
-        return this.toolbox.createInputItem('y-max', 'Set Y Max', (id, value) => {
+        return this.toolbox.createInputItem(`${this.id}-y-max`, 'Set Y Max', (id, value) => {
             const parsed = parseFloat(value);
             if (!isNaN(parsed)) {
                 this.setYLimits({ ymax: parsed });
@@ -315,11 +315,11 @@ export class BaseModule {
     }
 
     createToolboxItemSelectAll() {
-        return this.toolbox.createButtonItem('select-all', 'Select All Legend', () => this._selectAllLegendCheckboxes());
+        return this.toolbox.createButtonItem(`${this.id}-select-all`, 'Select All Legend', () => this._selectAllLegendCheckboxes());
     }
 
     createToolboxItemClearAll() {
-        return this.toolbox.createButtonItem('clear-all', 'Clear All Legend', () => this._unselectAllLegendCheckboxes());
+        return this.toolbox.createButtonItem(`${this.id}-clear-all`, 'Clear All Legend', () => this._unselectAllLegendCheckboxes());
     }
     
     _setToolboxItems(items) {
