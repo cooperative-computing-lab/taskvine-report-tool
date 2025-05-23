@@ -757,6 +757,9 @@ class DataParser:
                     self.parse_debug_line(line)
                 except UnicodeDecodeError:
                     print(f"Error decoding line to utf-8: {raw_line}")
+                except Exception as e:
+                    print(f"Error parsing line: {line}")
+                    raise e
 
             pbar.close()
 

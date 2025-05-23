@@ -105,7 +105,7 @@ def compute_task_concurrency_points():
         df = pd.DataFrame(events, columns=['time', 'event']).sort_values('time')
         df = df.groupby('time')['event'].sum().reset_index()
         df['cumulative'] = df['event'].cumsum().clip(lower=0)
-        raw_points_array.append(compress_time_based_critical_points(df[['time', 'cumulative']].values.tolist()))
+        raw_points_array.append(compress_time_based_critical_points(df[['time', 'cumulative']].values.tolist(), max_points=10000))
 
     return dict(zip(phase_keys, raw_points_array))
 
