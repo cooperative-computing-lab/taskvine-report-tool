@@ -699,9 +699,9 @@ class DataParser:
                 file_name = parts[symlink_idx + 1]
                 source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[symlink_idx - 1])
             elif "dir" in parts:
-                dir_idx = parts.index("dir")
-                file_name = parts[dir_idx + 1]
-                source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[dir_idx - 1])
+                # if this is a dir, we will call vine_manager_get_dir_contents recursively to get all files in the dir
+                # therefore, we return here and process the subsequent lines to get files
+                return 
             elif "error" in parts:
                 print(f"Warning: error in sending back, line: {line}")
                 self.sending_back = False
@@ -713,9 +713,6 @@ class DataParser:
             assert source_worker_entry in self.sending_back_transfers
             if file_name != None and file_name not in self.files:
                 raise ValueError(f"file {file_name} not found in self.files, line: {line}")
-
-        if self.sending_back and "Receiving file" in line:
-            pass
         if self.sending_back and "sent" in parts:
             send_idx = parts.index("sent")
             source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[send_idx - 1])
