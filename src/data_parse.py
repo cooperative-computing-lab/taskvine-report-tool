@@ -345,6 +345,8 @@ class DataParser:
                 assert source_worker_entry is not None
 
                 transfer = file.add_transfer(source_worker_entry, dest_worker_entry, transfer_event, 2, file_cache_level)
+            elif source.startswith('file://'):
+                transfer = file.add_transfer(source, dest_worker_entry, transfer_event, 2, file_cache_level)
             else:
                 raise ValueError(f"unrecognized source: {source}, line: {line}")
             
