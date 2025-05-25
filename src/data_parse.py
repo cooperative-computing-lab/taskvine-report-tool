@@ -397,6 +397,8 @@ class DataParser:
                 raise
             return
         if self.sending_task:
+            if "tx to" not in line:
+                return
             if "end" in parts or "failed to send" in line:
                 self.sending_task = None
             elif "cores" in parts:
