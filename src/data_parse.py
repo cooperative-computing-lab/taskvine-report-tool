@@ -887,26 +887,22 @@ class DataParser:
 
         # post-processing for tasks
         for task in self.tasks.values():
-            # if a task succeeds, check if the end time is larger than the start time
-            if task.task_status == 0:
-                # task was retrieved but not yet done
-                if task.when_done is None and task.when_retrieved is not None:
-                    task.set_when_done(self.manager.current_max_time)
-                if task.time_worker_start < task.when_running:
-                    #! there is a major issue in taskvine: machines may run remotely, their returned timestamps could be in a different timezone
-                    #! if this happens, we temporarily modify the time_worker_start to when_running, and time_worker_end to when_waiting_retrieval
-                    task.time_worker_start = task.when_running
-                    task.time_worker_end = task.when_waiting_retrieval
-                if task.time_worker_end < task.time_worker_start:
-                    raise ValueError(f"task {task.task_id} time_worker_end is smaller than time_worker_start: {task.time_worker_start} - {task.time_worker_end}")
-                # note that the task might have not been retrieved yet
-                if task.when_retrieved and task.when_retrieved < task.time_worker_end:
-                    raise ValueError(f"task {task.task_id} when_retrieved is smaller than time_worker_end: {task.time_worker_end} - {task.when_retrieved}")
-            # if a task fails, we need to check if the task_status is set
-            else:
-                # if a task's status is None, we set it to 4 << 3, which means the task failed but not yet reported
-                if not task.task_status:
-                    task.set_task_status(self.manager.current_max_time, 4 << 3)
+            # if a task's status is None, we set it to 4 << 3, which means the task failed but not yet reported
+            if task.task_status is None:
+                task.set_task_status(self.manager.current_max_time, 4 << 3)
+            # task was retrieved but not yet done
+            if task.when_done is None and task.when_retrieved is not None:
+                task.set_when_done(self.manager.current_max_time)
+            if task.time_worker_start and task.when_running and task.time_worker_start < task.when_running:
+                #! there is a big flaw in taskvine: machines may run remotely, their returned timestamps could be in a different timezone
+                #! if this happens, we temporarily modify the time_worker_start to when_running, and time_worker_end to when_waiting_retrieval
+                task.set_time_worker_start(task.when_running)
+                task.set_time_worker_end(task.when_waiting_retrieval)
+            if task.time_worker_end and task.time_worker_start and task.time_worker_end < task.time_worker_start:
+                raise ValueError(f"task {task.task_id} time_worker_end is smaller than time_worker_start: {task.time_worker_start} - {task.time_worker_end}")
+            # note that the task might have not been retrieved yet
+            if task.when_retrieved and task.time_worker_end and task.when_retrieved < task.time_worker_end:
+                raise ValueError(f"task {task.task_id} when_retrieved is smaller than time_worker_end: {task.time_worker_end} - {task.when_retrieved}")
         # post-processing for workers
         for worker in self.workers.values():
             # for workers, check if the time_disconnected is larger than the time_connected

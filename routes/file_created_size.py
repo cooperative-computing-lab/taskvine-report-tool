@@ -49,6 +49,7 @@ def get_file_created_size_points():
 
     export_df = pd.DataFrame(raw_points, columns=['Time (s)', f'Cumulative Size ({unit})'])
     export_df[f'Cumulative Size ({unit})'] *= scale
+    export_df = export_df.sort_values('Time (s)')
 
     return scaled_points, x_domain, y_domain, unit, scale, export_df
 

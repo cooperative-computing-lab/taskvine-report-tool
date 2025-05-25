@@ -36,6 +36,7 @@ def compute_task_concurrency_points():
 
     for task in runtime_state.tasks.values():
         if task.when_ready:
+            # ready tasks can happen before the base time
             t0 = floor_decimal(max(task.when_ready - base_time, 0), 2)
             task_phases['tasks_waiting'].append((t0, 1))
             time_waiting_end = None
@@ -48,15 +49,15 @@ def compute_task_concurrency_points():
                 task_phases['tasks_waiting'].append((t1, -1))
 
         if task.when_running:
-            t0 = floor_decimal(max(task.when_running - base_time, 0), 2)
+            t0 = floor_decimal(task.when_running - base_time, 2)
             task_phases['tasks_committing'].append((t0, 1))
             time_committing_end = None
             if task.time_worker_start:
                 time_committing_end = task.time_worker_start
-            elif task.when_waiting_retrieval:
-                time_committing_end = task.when_waiting_retrieval
             elif task.when_failure_happens:
                 time_committing_end = task.when_failure_happens
+            elif task.when_waiting_retrieval:
+                time_committing_end = task.when_waiting_retrieval
             else:
                 print(f"Task {task.task_id} has no time_worker_start or when_failure_happens")
             if time_committing_end:    
@@ -66,15 +67,18 @@ def compute_task_concurrency_points():
                 print(f"Task {task.task_id} has no time_committing_end")
 
         if task.time_worker_start:
-            t0 = floor_decimal(max(task.time_worker_start - base_time, 0), 2)
+            t0 = floor_decimal(task.time_worker_start - base_time, 2)
+            if t0 < 0:
+                runtime_state.log_error(f"Task {task.task_id} has negative time_worker_start: {task.time_worker_start} - {base_time} = {t0}")
+                task.print_info()
             task_phases['tasks_executing'].append((t0, 1))
             time_executing_end = None
             if task.time_worker_end:
                 time_executing_end = task.time_worker_end
-            elif task.when_waiting_retrieval:
-                time_executing_end = task.when_waiting_retrieval
             elif task.when_failure_happens:
                 time_executing_end = task.when_failure_happens
+            elif task.when_waiting_retrieval:
+                time_executing_end = task.when_waiting_retrieval
             if time_executing_end:
                 t1 = floor_decimal(time_executing_end - base_time, 2)
                 task_phases['tasks_executing'].append((t1, -1))
@@ -92,7 +96,7 @@ def compute_task_concurrency_points():
                 task_phases['tasks_retrieving'].append((t1, -1))
 
         if task.when_done:
-            t0 = floor_decimal(max(task.when_done - base_time, 0), 2)
+            t0 = floor_decimal(task.when_done - base_time, 2)
             task_phases['tasks_done'].append((t0, 1))
 
     raw_points_array = []
@@ -162,6 +166,8 @@ def export_task_concurrency_csv():
 
         merged_df = pd.concat(df_list, axis=1).fillna(0).reset_index()
         merged_df["time"] = merged_df["time"].map(lambda x: floor_decimal(x, 2))
+        
+        merged_df = merged_df.sort_values("time")
 
         buffer = StringIO()
         merged_df.to_csv(buffer, index=False)

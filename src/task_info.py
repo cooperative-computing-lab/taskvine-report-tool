@@ -131,9 +131,13 @@ class TaskInfo:
         self.exit_status = exit_status
 
     def set_time_worker_start(self, time_worker_start):
+        if time_worker_start == 0:
+            return
         self.time_worker_start = float(time_worker_start)
 
     def set_time_worker_end(self, time_worker_end):
+        if time_worker_end == 0:
+            return
         self.time_worker_end = float(time_worker_end)
 
     def set_worker_ip_port(self, worker_ip, worker_port):

@@ -75,11 +75,11 @@ def export_file_transferred_size_csv():
         if not raw_points:
             return jsonify({'error': 'No file transferred data'}), 404
 
+        sorted_points = sorted(raw_points, key=lambda x: x[0])
+        
         def generate_csv():
             yield f"Time (s),Cumulative Size ({unit})\n"
-            cumulative = 0.0
-            for t, size in raw_points:
-                cumulative += size
+            for t, cumulative in sorted_points:
                 yield f"{t},{cumulative * scale}\n"
 
         return Response(
