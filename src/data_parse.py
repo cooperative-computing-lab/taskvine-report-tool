@@ -690,13 +690,14 @@ class DataParser:
             source_worker = self.workers[source_worker_entry]
             source_worker.add_active_file_or_transfer(file_name)
             return
+        """
         if self.sending_back and "rx from" in line:
-            file_name = None
             if "file" in parts:
                 file_idx = parts.index("file")
                 file_name = parts[file_idx + 1]
                 file_size = int(parts[file_idx + 2])
                 source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[file_idx - 1])
+                assert source_ip is not None and source_port is not None
             elif "symlink" in parts:
                 # we do not support symlinks for now
                 print(f"Warning: symlinks are not supported yet, line: {line}")
@@ -709,14 +710,9 @@ class DataParser:
                 print(f"Warning: error in sending back, line: {line}")
                 self.sending_back = False
                 return
-            else:
-                raise ValueError(f"unrecognized line: {line}")
-            source_worker_entry = self.get_current_worker_entry_by_ip_port(source_ip, source_port)
-            assert source_worker_entry is not None
-            assert source_worker_entry in self.sending_back_transfers
-
             # the file might be an output file of a command-line task, which does not return a cache-update message
-            # thus it might not be in self.files, so we do not check it here
+            # thus it might not be in self.files, so we do not check it here, and do nothing at the moment
+        """
         if self.sending_back and "sent" in parts:
             send_idx = parts.index("sent")
             source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[send_idx - 1])
