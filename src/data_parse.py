@@ -689,18 +689,29 @@ class DataParser:
             source_worker.add_active_file_or_transfer(file_name)
             return
         if self.sending_back and "rx from" in line:
-            if "file" in parts or "symlink" in parts or "dir" in parts:
+            file_name = None
+            if "file" in parts:
                 file_idx = parts.index("file")
                 file_name = parts[file_idx + 1]
-                source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[parts.index("file") - 1])
-                source_worker_entry = self.get_current_worker_entry_by_ip_port(source_ip, source_port)
-                assert source_worker_entry is not None
-                if file_name not in self.files:
-                    raise ValueError(f"file {file_name} not found in self.files, line: {line}")
-                assert source_worker_entry in self.sending_back_transfers
+            elif "symlink" in parts:
+                symlink_idx = parts.index("symlink")
+                file_name = parts[symlink_idx + 1]
+            elif "dir" in parts:
+                dir_idx = parts.index("dir")
+                file_name = parts[dir_idx + 1]
             elif "error" in parts:
+                print(f"Warning: error in sending back, line: {line}")
                 self.sending_back = False
                 return
+            else:
+                raise ValueError(f"unrecognized line: {line}")
+            source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[parts.index("file") - 1])
+            source_worker_entry = self.get_current_worker_entry_by_ip_port(source_ip, source_port)
+            assert source_worker_entry is not None
+            if file_name not in self.files:
+                raise ValueError(f"file {file_name} not found in self.files, line: {line}")
+            assert source_worker_entry in self.sending_back_transfers
+
         if self.sending_back and "Receiving file" in line:
             pass
         if self.sending_back and "sent" in parts:
