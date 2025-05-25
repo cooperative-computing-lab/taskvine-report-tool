@@ -65,7 +65,7 @@ def export_task_execution_time_csv():
         if not raw_points:
             return jsonify({'error': 'No completed tasks available'}), 404
 
-        df = pd.DataFrame(raw_points, columns=["Task ID", "Execution Time", "Task ID", "Task Try ID", "Ran to Completion"])
+        df = pd.DataFrame(raw_points, columns=["Global Index", "Execution Time", "Task ID", "Task Try ID", "Ran to Completion"])
 
         buffer = StringIO()
         df.to_csv(buffer, index=False)

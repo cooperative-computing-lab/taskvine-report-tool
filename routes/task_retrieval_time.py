@@ -55,7 +55,7 @@ def export_task_retrieval_time_csv():
         if not raw_points:
             return jsonify({'error': 'No task retrieval time data available'}), 404
 
-        df = pd.DataFrame(raw_points, columns=["Task ID", "Retrieval Time", "Task ID", "Task Try ID"])
+        df = pd.DataFrame(raw_points, columns=["Global Index", "Retrieval Time", "Task ID", "Task Try ID"])
 
         buffer = StringIO()
         df.to_csv(buffer, index=False)

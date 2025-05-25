@@ -34,8 +34,8 @@ def get_task_response_time():
             return jsonify({'error': 'No valid response time found'}), 404
 
         # count original points before downsampling
-        dispatched_count = sum(1 for p in raw_points if p[2])
-        undispatched_count = sum(1 for p in raw_points if not p[2])
+        dispatched_count = sum(1 for p in raw_points if p[4])
+        undispatched_count = sum(1 for p in raw_points if not p[4])
 
         x_domain, y_domain = compute_points_domain(raw_points)
 
@@ -65,7 +65,7 @@ def export_task_response_time_csv():
         if not raw_points:
             return jsonify({'error': 'No valid response time found'}), 404
 
-        df = pd.DataFrame(raw_points, columns=["Task ID", "Response Time", "Status", "Try ID"])
+        df = pd.DataFrame(raw_points, columns=["Global Index", "Response Time", "Task ID", "Try ID", "Was Dispatched"])
 
         buffer = StringIO()
         df.to_csv(buffer, index=False)
