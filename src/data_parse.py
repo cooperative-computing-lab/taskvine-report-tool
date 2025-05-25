@@ -681,6 +681,8 @@ class DataParser:
             assert source_worker_entry is not None
             assert source_worker_entry not in self.sending_back_transfers
 
+            # note that the file might be a dir which has multiple files in it, we only receive a cache-update for the 
+            # dir itself, but we do not know the files in the dir yet, subfiles will be received recursively
             file = self.files[file_name]
             transfer = file.add_transfer(source_worker_entry, 'manager', 'manager_get', 1, 1)
             transfer.start_stage_in(timestamp, "pending")
@@ -693,11 +695,12 @@ class DataParser:
             if "file" in parts:
                 file_idx = parts.index("file")
                 file_name = parts[file_idx + 1]
+                file_size = int(parts[file_idx + 2])
                 source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[file_idx - 1])
             elif "symlink" in parts:
-                symlink_idx = parts.index("symlink")
-                file_name = parts[symlink_idx + 1]
-                source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[symlink_idx - 1])
+                # we do not support symlinks for now
+                print(f"Warning: symlinks are not supported yet, line: {line}")
+                return
             elif "dir" in parts:
                 # if this is a dir, we will call vine_manager_get_dir_contents recursively to get all files in the dir
                 # therefore, we return here and process the subsequent lines to get files
@@ -711,18 +714,21 @@ class DataParser:
             source_worker_entry = self.get_current_worker_entry_by_ip_port(source_ip, source_port)
             assert source_worker_entry is not None
             assert source_worker_entry in self.sending_back_transfers
-            if file_name != None and file_name not in self.files:
-                raise ValueError(f"file {file_name} not found in self.files, line: {line}")
+
+            # the file might be an output file of a command-line task, which does not return a cache-update message
+            # thus it might not be in self.files, so we do not check it here
         if self.sending_back and "sent" in parts:
             send_idx = parts.index("sent")
             source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[send_idx - 1])
             source_worker_entry = self.get_current_worker_entry_by_ip_port(source_ip, source_port)
             assert source_worker_entry is not None
             assert source_worker_entry in self.sending_back_transfers
+
             transfer = self.sending_back_transfers[source_worker_entry]
             transfer.stage_in(timestamp, "manager_received")
             del self.sending_back_transfers[source_worker_entry]
             self.sending_back = False
+            return
 
         if "manager end" in line:
             self.manager.set_time_end(timestamp)
