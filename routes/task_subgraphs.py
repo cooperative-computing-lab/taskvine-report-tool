@@ -11,6 +11,15 @@ from flask import make_response
 
 task_subgraphs_bp = Blueprint('task_subgraphs', __name__, url_prefix='/api')
 
+def sanitize_filename(filename):
+    import re
+    # remove or replace characters that might cause issues on different filesystems
+    filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
+    # limit length to avoid filesystem limits
+    if len(filename) > 200:
+        filename = filename[:200]
+    return filename
+
 @task_subgraphs_bp.route('/task-subgraphs')
 @check_and_reload_data()
 def get_task_subgraphs():
@@ -38,12 +47,26 @@ def get_task_subgraphs():
         os.makedirs(svg_dir, exist_ok=True)
         
         # use a safer filename without special characters that might cause I/O issues
-        safe_filename = f'task-subgraph-{subgraph_id}-{str(plot_unsuccessful_task).lower()}-{str(plot_recovery_task).lower()}'
-        svg_file_path_without_suffix = os.path.join(svg_dir, safe_filename)
+        # ensure filename is safe across different filesystems
+        base_filename = f'task-subgraph-{subgraph_id}-{str(plot_unsuccessful_task).lower()}-{str(plot_recovery_task).lower()}'
+        safe_filename = sanitize_filename(base_filename)
+        # normalize path for cross-platform compatibility
+        svg_file_path_without_suffix = os.path.normpath(os.path.join(svg_dir, safe_filename))
         svg_file_path = f'{svg_file_path_without_suffix}.svg'
 
         if not Path(svg_file_path).exists():
-            dot = graphviz.Digraph()
+            # check if graphviz is available on the system
+            import shutil
+            if not shutil.which('dot'):
+                # graphviz not found, return error SVG
+                error_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="100"><text x="10" y="30" font-family="Arial" font-size="14">Error: Graphviz not installed. Please install graphviz package.</text><text x="10" y="50" font-family="Arial" font-size="12">Linux: sudo apt-get install graphviz</text><text x="10" y="70" font-family="Arial" font-size="12">macOS: brew install graphviz</text></svg>'
+                with open(svg_file_path, 'w') as f:
+                    f.write(error_svg)
+            else:
+                dot = graphviz.Digraph()
+                # set explicit format and engine for better cross-platform compatibility
+                dot.format = 'svg'
+                dot.engine = 'dot'
 
             def plot_task_node(dot, task):
                 node_id = f'{task.task_id}-{task.task_try_id}'
@@ -112,24 +135,39 @@ def get_task_subgraphs():
                         continue
                     plot_file_node(dot, file)
                     plot_task2file_edge(dot, task, file)
-            dot.attr(rankdir='TB')
-            dot.engine = 'dot'
-            
-            # generate SVG and handle potential errors
-            dot.render(svg_file_path_without_suffix, format='svg', view=False)
-            
-            # verify the generated file is valid
-            if not Path(svg_file_path).exists() or Path(svg_file_path).stat().st_size == 0:
-                # if file doesn't exist or is empty, create a simple error SVG
-                with open(svg_file_path, 'w') as f:
-                    f.write('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="100"><text x="10" y="30" font-family="Arial" font-size="14">Error: Failed to generate subgraph visualization</text></svg>')
+                dot.attr(rankdir='TB')
+                
+                # generate SVG with better error handling for cross-platform compatibility
+                svg_generated = False
+                error_message = ""
+                
+                # attempt to render the SVG
+                dot.render(svg_file_path_without_suffix, format='svg', view=False, cleanup=True)
+                
+                # verify the generated file is valid
+                if Path(svg_file_path).exists() and Path(svg_file_path).stat().st_size > 0:
+                    # check if the content is actually valid SVG
+                    with open(svg_file_path, 'r') as f:
+                        content = f.read().strip()
+                        if content and (content.startswith('<?xml') or content.startswith('<svg')):
+                            svg_generated = True
+                        else:
+                            error_message = "Generated file is not valid SVG"
+                else:
+                    error_message = "SVG file was not generated or is empty"
+                
+                # if generation failed, create a fallback SVG
+                if not svg_generated:
+                    fallback_svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="500" height="150"><rect width="500" height="150" fill="#f8f9fa" stroke="#dee2e6"/><text x="10" y="30" font-family="Arial" font-size="14" fill="#dc3545">Error: Failed to generate subgraph visualization</text><text x="10" y="50" font-family="Arial" font-size="12" fill="#6c757d">Reason: {error_message}</text><text x="10" y="80" font-family="Arial" font-size="12" fill="#6c757d">Subgraph ID: {subgraph_id}</text><text x="10" y="100" font-family="Arial" font-size="12" fill="#6c757d">Tasks: {len(task_tries)}</text><text x="10" y="130" font-family="Arial" font-size="10" fill="#6c757d">Please check graphviz installation and permissions</text></svg>'
+                    with open(svg_file_path, 'w', encoding='utf-8') as f:
+                        f.write(fallback_svg)
 
         data['subgraph_id'] = subgraph_id
         data['num_task_tries'] = len(task_tries)
         
         # check if SVG file exists and has valid content before reading
         if Path(svg_file_path).exists():
-            with open(svg_file_path, 'r') as f:
+            with open(svg_file_path, 'r', encoding='utf-8') as f:
                 svg_content = f.read().strip()
                 # check if the content is valid SVG (starts with <?xml or <svg)
                 if svg_content and (svg_content.startswith('<?xml') or svg_content.startswith('<svg')):
