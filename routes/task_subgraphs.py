@@ -114,16 +114,30 @@ def get_task_subgraphs():
                     plot_task2file_edge(dot, task, file)
             dot.attr(rankdir='TB')
             dot.engine = 'dot'
+            
+            # generate SVG and handle potential errors
             dot.render(svg_file_path_without_suffix, format='svg', view=False)
+            
+            # verify the generated file is valid
+            if not Path(svg_file_path).exists() or Path(svg_file_path).stat().st_size == 0:
+                # if file doesn't exist or is empty, create a simple error SVG
+                with open(svg_file_path, 'w') as f:
+                    f.write('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="100"><text x="10" y="30" font-family="Arial" font-size="14">Error: Failed to generate subgraph visualization</text></svg>')
 
         data['subgraph_id'] = subgraph_id
         data['num_task_tries'] = len(task_tries)
         
-        # check if SVG file exists before reading
+        # check if SVG file exists and has valid content before reading
         if Path(svg_file_path).exists():
-            data['subgraph_svg_content'] = open(svg_file_path, 'r').read()
+            with open(svg_file_path, 'r') as f:
+                svg_content = f.read().strip()
+                # check if the content is valid SVG (starts with <?xml or <svg)
+                if svg_content and (svg_content.startswith('<?xml') or svg_content.startswith('<svg')):
+                    data['subgraph_svg_content'] = svg_content
+                else:
+                    data['subgraph_svg_content'] = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="100"><text x="10" y="30" font-family="Arial" font-size="14">Error: Invalid SVG content generated</text></svg>'
         else:
-            data['subgraph_svg_content'] = '<svg><text x="10" y="20">Error: SVG file could not be generated</text></svg>'
+            data['subgraph_svg_content'] = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="100"><text x="10" y="30" font-family="Arial" font-size="14">Error: SVG file could not be generated</text></svg>'
 
         # legend: list of {'id': str(idx), 'label': ..., 'color': ..., 'checked': bool}, sorted by idx
         data['legend'] = [
