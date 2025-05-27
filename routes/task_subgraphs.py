@@ -33,10 +33,13 @@ def get_task_subgraphs():
             return jsonify({'error': 'Subgraph not found'}), 404
         task_tries = list(subgraph)
 
-        svg_file_path_without_suffix = os.path.join(
-            runtime_state.data_parser.svg_files_dir,
-            f'task-subgraph-{subgraph_id}-{plot_unsuccessful_task}-{plot_recovery_task}'
-        )
+        # ensure the SVG directory exists
+        svg_dir = runtime_state.data_parser.svg_files_dir
+        os.makedirs(svg_dir, exist_ok=True)
+        
+        # use a safer filename without special characters that might cause I/O issues
+        safe_filename = f'task-subgraph-{subgraph_id}-{str(plot_unsuccessful_task).lower()}-{str(plot_recovery_task).lower()}'
+        svg_file_path_without_suffix = os.path.join(svg_dir, safe_filename)
         svg_file_path = f'{svg_file_path_without_suffix}.svg'
 
         if not Path(svg_file_path).exists():
@@ -115,7 +118,12 @@ def get_task_subgraphs():
 
         data['subgraph_id'] = subgraph_id
         data['num_task_tries'] = len(task_tries)
-        data['subgraph_svg_content'] = open(svg_file_path, 'r').read()
+        
+        # check if SVG file exists before reading
+        if Path(svg_file_path).exists():
+            data['subgraph_svg_content'] = open(svg_file_path, 'r').read()
+        else:
+            data['subgraph_svg_content'] = '<svg><text x="10" y="20">Error: SVG file could not be generated</text></svg>'
 
         # legend: list of {'id': str(idx), 'label': ..., 'color': ..., 'checked': bool}, sorted by idx
         data['legend'] = [
