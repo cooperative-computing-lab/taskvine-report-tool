@@ -9,7 +9,7 @@ export class FileTransferredSizeModule extends BaseModule {
 
     plot() {
         if (!this.data) return;
-        this.initSVG();
+
         this.plotPath(this.data.points, {
             className: 'file-transferred-size-path',
         });

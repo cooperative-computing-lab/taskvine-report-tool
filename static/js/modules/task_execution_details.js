@@ -15,7 +15,10 @@ export class TaskExecutionDetailsModule extends BaseModule {
 
     legendOnToggle(id, visible) {
         this.checkboxStates[id] = visible;
-        this.plot();
+        
+        /* use selector to hide/show elements instead of replotting */
+        const elements = this.svg.selectAll(`.task-type-${id}`);
+        elements.style('display', visible ? null : 'none');
     }
 
     initLegend() {
@@ -36,9 +39,7 @@ export class TaskExecutionDetailsModule extends BaseModule {
    
         this.createLegendGroup(groups, {
             checkboxName: 'task-details',
-            onToggle: (id, visible) => {
-                this.legendOnToggle(id, visible);
-            }
+            onToggle: this.legendOnToggle.bind(this)
         });
 
         this.legendMap = {};
@@ -48,6 +49,8 @@ export class TaskExecutionDetailsModule extends BaseModule {
                     color: item.color,
                     label: item.label
                 };
+                /* initialize checkbox states */
+                this.checkboxStates[item.id] = item.checked;
             });
         });
     }
@@ -61,20 +64,22 @@ export class TaskExecutionDetailsModule extends BaseModule {
         if (!timeStart || !timeEnd) return;
         timeStart = +timeStart;
         timeEnd = +timeEnd;
-    
+
         const isRecovery = task.is_recovery_task;
         const recoveryChecked = isRecovery && this._isTaskTypeChecked(recoveryName);
         const primaryChecked = this._isTaskTypeChecked(primaryName);
     
         if (!recoveryChecked && !primaryChecked) return;
+
     
         const taskType = recoveryChecked ? recoveryName : primaryName;
         const fill = this._getLegendColor(taskType);
         const innerHTML = getTaskInnerHTML(task);
         
         const height = this.getScaleBandWidth(this.leftScale);
+        const className = `task-type-${taskType}`;
 
-        this.plotHorizontalRect(timeStart, timeEnd - timeStart, `${task.worker_id}-${task.core_id}`, height, fill, 1, innerHTML);
+        this.plotHorizontalRect(timeStart, timeEnd - timeStart, `${task.worker_id}-${task.core_id}`, height, fill, 1, innerHTML, className);
     }
 
     _plotWorker(worker) {
@@ -89,14 +94,13 @@ export class TaskExecutionDetailsModule extends BaseModule {
             const height = Math.max(0, this.getScaleBandWidth(this.leftScale) * worker.cores + 
                 (this.leftScale.step() - this.getScaleBandWidth(this.leftScale)) * (worker.cores - 1));
             
-            this.plotHorizontalRect(timeStart, timeEnd - timeStart, `${worker.id}-${worker.cores}`, height, fill, opacity, innerHTML);
+            const className = 'task-type-workers';
+            this.plotHorizontalRect(timeStart, timeEnd - timeStart, `${worker.id}-${worker.cores}`, height, fill, opacity, innerHTML, className);
         }
     }    
 
     async plot() {
         if (!this.data) return;
-
-        this.initSVG();
 
         /* plot workers */
         if (this._isTaskTypeChecked('workers') && this.data['workers']) {

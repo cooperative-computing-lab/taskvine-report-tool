@@ -34,7 +34,7 @@ export class WorkerWaitingRetrievalTasksModule extends BaseModule {
 
     plot() {
         if (!this.data) return;
-        this.initSVG();
+
         Object.entries(this.data.waiting_retrieval_tasks_data).forEach(([worker, points], idx) => {
             const color = getWorkerColor(worker, idx);
             this.plotPath(points, {

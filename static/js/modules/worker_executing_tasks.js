@@ -35,7 +35,6 @@ export class WorkerExecutinigTasksModule extends BaseModule {
 
     plot() {
         if (!this.data) return;
-        this.initSVG();
 
         Object.entries(this.data.executing_tasks_data).forEach(([worker, points], idx) => {
             const color = getWorkerColor(worker, idx);

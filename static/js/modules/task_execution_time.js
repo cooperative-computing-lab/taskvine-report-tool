@@ -43,7 +43,6 @@ export class TaskExecutionTimeModule extends BaseModule {
 
     plot() {
         if (!this.data) return;
-        this.initSVG();
 
         /** Split points into ran to completion and failed */
         const ranToCompletionPoints = this.data['points'].filter(p => p[4]);

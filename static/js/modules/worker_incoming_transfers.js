@@ -37,7 +37,6 @@ export class WorkerIncomingTransfersModule extends BaseModule {
 
     plot() {
         if (!this.data) return;
-        this.initSVG();
 
         Object.entries(this.data.transfers).forEach(([worker, points], idx) => {
             const color = getWorkerColor(worker, idx);

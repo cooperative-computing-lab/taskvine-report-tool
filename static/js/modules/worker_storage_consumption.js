@@ -31,7 +31,6 @@ export class WorkerStorageConsumptionModule extends BaseModule {
 
     plot() {
         if (!this.data) return;
-        this.initSVG();
         
         Object.entries(this.data.storage_data).forEach(([worker, points], idx) => {
             const safeId = escapeWorkerId(worker);

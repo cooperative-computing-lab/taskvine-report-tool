@@ -9,7 +9,6 @@ export class WorkerConcurrencyModule extends BaseModule {
 
     plot() {
         if (!this.data) return;
-        this.initSVG();
 
         this.plotPath(this.data.points, {
             stroke: '#2077B4',

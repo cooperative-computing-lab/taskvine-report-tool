@@ -11,8 +11,6 @@ export class TaskDependentsModule extends BaseModule {
     plot() {
         if (!this.data) return;
 
-        this.initSVG();
-
         this.plotPoints(this.data['points'], {
             tooltipFormatter: d => `Task ID: ${d[0]}<br>Dependencies: ${d[1]}`,
             className: 'task-dependents-point'

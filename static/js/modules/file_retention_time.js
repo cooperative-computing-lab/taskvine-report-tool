@@ -9,7 +9,6 @@ export class FileRetentionTimeModule extends BaseModule {
 
     plot() {
         if (!this.data) return;
-        this.initSVG();
 
         this.plotPoints(this.data.points, {
             tooltipFormatter: d => `File Name: ${this.data.file_idx_to_names[d[0]]}<br>Retention Time: ${d[1]}s`,

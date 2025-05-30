@@ -9,7 +9,6 @@ export class WorkerLifetimeModule extends BaseModule {
 
     async plot() {
         if (!this.data) return;
-        this.initSVG();
 
         const xWidth = this.bottomScale.bandwidth() * 0.8;
         const yFormatter = eval(this.data['y_tick_formatter']);

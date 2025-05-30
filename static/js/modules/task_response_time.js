@@ -43,7 +43,6 @@ export class TaskResponseTimeModule extends BaseModule {
 
     plot() {
         if (!this.data) return;
-        this.initSVG();
 
         /** Split points into dispatched and undispatched */
         const dispatchedPoints = this.data['points'].filter(p => p[4]);

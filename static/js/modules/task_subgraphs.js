@@ -19,10 +19,12 @@ export class TaskSubgraphsModule extends BaseModule {
         );
         this.data = await response.json();
         this._current_subgraph_id = subgraph_id;
+
+        this._setAxesFromFetchedData();
     }
 
-    resetSVG() {
-        super.resetSVG();
+    resetPlot() {
+        super.resetPlot();
 
         this.data = null;
         this._current_subgraph_id = 1;

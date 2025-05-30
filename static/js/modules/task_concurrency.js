@@ -47,8 +47,6 @@ export class TaskConcurrencyModule extends BaseModule {
     plot() {
         if (!this.data) return;
 
-        this.initSVG();
-
         for (const [type, config] of Object.entries(this.taskConfigs)) {
             if (this.data[type] && this.data[type].length > 0) {
                 this.plotPath(this.data[type], {

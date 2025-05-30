@@ -24,22 +24,17 @@ async function fetchAllModulesData(folder) {
         const tasks = moduleConfigs.map(({ id }) => {
             const module = moduleObjects[id];
             return (async () => {
+                /* clear and init plot */
+                module.clearPlot();
+
+                /* plot the spinner */
+                module.plotSpinner();
+
                 /* fetch data */
                 await module.fetchData(folder);
-                /* set domain and tick values from fetched data */
-                module.setDomainFromFetchedData();
-                module.setTickValuesFromFetchedData();
-                
-                /* legend should be initialized before plot */
-                module.clearLegend();
-                module.initLegend();
-                
+
                 /* plot */
                 module.plot();
-
-                /* avoid multiple toolbox initialization */
-                module.clearToolbox();
-                module.initToolbox();
             })();
         });
 

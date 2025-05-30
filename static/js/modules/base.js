@@ -127,7 +127,7 @@ export class BaseModule {
     }
 
     createToolboxItemReset() {
-        return this.toolbox.createButtonItem(`${this.id}-reset`, 'Reset Plot', () => this.resetSVG());
+        return this.toolbox.createButtonItem(`${this.id}-reset`, 'Reset Plot', () => this.resetPlot());
     }
 
     createToolboxItemExport() {
@@ -183,7 +183,6 @@ export class BaseModule {
         this.setBottomDomain([newMin, newMax]);
     
         const oldTicks = this.bottomTickValues;
-        const tickCount = oldTicks?.length || 5;
     
         const oldRange = oldMax - oldMin;
         const newRange = newMax - newMin;
@@ -197,6 +196,9 @@ export class BaseModule {
         });
     
         this.setBottomTickValues(newTicks);
+        
+        this.clearSVG();
+        this._plotAxes();
         this.plot();
     }      
 
@@ -259,6 +261,10 @@ export class BaseModule {
         });
     
         this.setLeftTickValues(newTicks);
+        
+        // Clear the SVG and replot axes before calling plot()
+        this.clearSVG();
+        this._plotAxes();
         this.plot();
     }    
 
@@ -327,7 +333,7 @@ export class BaseModule {
         this.toolbox.mount(this.toolboxContainer);
     }
 
-    initToolbox() {
+    _initToolbox() {
         const items = [
             this.createToolboxItemExport(),
         ];
@@ -348,18 +354,91 @@ export class BaseModule {
         this._setToolboxItems(items);
     }
 
+    clearLegend() {
+        if (this.legendContainer && this.legendContainer.node()) {
+            this.legendContainer.html('');
+        }
+        this.legendCheckboxName = null;
+    }
+
     clearSVG() {
+        /* remove the node from the DOM */
         while (this.svgNode.firstChild) {
             this.svgNode.removeChild(this.svgNode.firstChild);
         }
 
+        /* remove the width and height attributes */
         this.svgNode.removeAttribute('width');
         this.svgNode.removeAttribute('height');
-    
-        this.svgNode.style.width = '';
-        this.svgNode.style.height = '';
-
         this.svg = null;
+
+        /* remove the spinner */
+        const existingSpinner = document.getElementById(`${this.id}-spinner`);
+        if (existingSpinner) {
+            existingSpinner.remove();
+        }
+    }
+
+    plotSpinner() {
+        /* remove the existing spinner */
+        const existingSpinner = document.getElementById(`${this.id}-spinner`);
+        if (existingSpinner) {
+            existingSpinner.remove();
+        }
+        
+        /* create the spinner container */
+        const spinnerContainer = document.createElement('div');
+        spinnerContainer.className = 'vine-spinner-container';
+        spinnerContainer.id = `${this.id}-spinner`;
+        
+        /* create the spinner element */
+        const spinner = document.createElement('div');
+        spinner.className = 'vine-spinner';
+        
+        /* add the spinner styles */
+        const style = document.createElement('style');
+        if (!document.getElementById('vine-spinner-styles')) {
+            style.id = 'vine-spinner-styles';
+            style.textContent = `
+                .vine-spinner-container {
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    background-color: rgba(255, 255, 255, 0.8);
+                    z-index: 1000;
+                }
+                
+                .vine-spinner {
+                    width: 40px;
+                    height: 40px;
+                    border: 4px solid #f3f3f3;
+                    border-top: 4px solid #3498db;
+                    border-radius: 50%;
+                    animation: vine-spin 1s linear infinite;
+                }
+                
+                @keyframes vine-spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+        
+        spinnerContainer.appendChild(spinner);
+        
+        /* ensure the svg container has relative positioning */
+        if (getComputedStyle(this.svgContainer).position === 'static') {
+            this.svgContainer.style.position = 'relative';
+        }
+        
+        /* add the spinner to the container */
+        this.svgContainer.appendChild(spinnerContainer);
     }
 
     clearToolbox() {
@@ -388,41 +467,22 @@ export class BaseModule {
         }
 
         this.data = data;
-    }
 
-    setDomainFromFetchedData() {
-        if (this.bottomScaleType) {
-            this.setBottomDomain(this.data['x_domain']);
-            this.setBottomTickValues(this.data['x_tick_values']);
-            this.setBottomFormatter(eval(this.data['x_tick_formatter']));
-        } else if (this.topScaleType) {
-            this.setTopDomain(this.data['x_domain']);
-            this.setTopTickValues(this.data['x_tick_values']);
-            this.setTopFormatter(eval(this.data['x_tick_formatter']));
-        } else {
-            /* some modules do not require setting domains */
-            return;
-        }
-    }
+        this._setAxesFromFetchedData();
 
-    setTickValuesFromFetchedData() {
-        if (this.leftScaleType) {
-            this.setLeftDomain(this.data['y_domain']);
-            this.setLeftTickValues(this.data['y_tick_values']);
-            this.setLeftFormatter(eval(this.data['y_tick_formatter']));
-        } else if (this.rightScaleType) {
-            this.setRightDomain(this.data['y_domain']);
-            this.setRightTickValues(this.data['y_tick_values']);
-            this.setRightFormatter(eval(this.data['y_tick_formatter']));
-        } else {
-            /* some modules do not require setting domains */
-            return;
-        }
+        /* legend and toolbox must be set after data is fetched */
+        this._initToolbox();
+        this._plotAxes();
+        this._setupZoomAndScroll();
+        this._initResizeHandler();
+
+        /* legend must be set after axes are plotted */
+        this.initLegend();
     }
 
     plot() {}
 
-    initZoomTrackingAfterRender() {
+    _initZoomTrackingAfterRender() {
         const scrollbarAllowance = 4;
         this.originalWidth = Math.floor(this.svgContainer.clientWidth - scrollbarAllowance);
         this.originalHeight = Math.floor(this.svgContainer.clientHeight - scrollbarAllowance);
@@ -434,7 +494,9 @@ export class BaseModule {
         this.currentHeight = this.originalHeight;
     }
     
-    setupZoomAndScroll() {
+    _setupZoomAndScroll() {
+        this._initZoomTrackingAfterRender();
+        
         /* do not bind the handler multiple times */
         if (this._zoomHandlerInitialized) return;
         this._zoomHandlerInitialized = true;
@@ -659,7 +721,8 @@ export class BaseModule {
     }
 
     /* plot all axes */
-    plotAxes() {
+    _plotAxes() {
+
         /* create the scales */
         this.createScales();
 
@@ -786,7 +849,7 @@ export class BaseModule {
             });
     }
 
-    plotHorizontalRect(x_start, x_width, y_start, y_height, fill, opacity, tooltipInnerHTML) {
+    plotHorizontalRect(x_start, x_width, y_start, y_height, fill, opacity, tooltipInnerHTML, className = '') {
         const tooltip = document.getElementById('vine-tooltip');
     
         const [xmin, xmax] = this.bottomDomain ?? [null, null];
@@ -817,6 +880,7 @@ export class BaseModule {
             .attr('height', height)
             .attr('fill', fill)
             .attr('opacity', opacity)
+            .attr('class', className)
             .on('mouseover', (event) => {
                 d3.select(event.currentTarget)
                     .attr('fill', this.highlightColor);
@@ -833,7 +897,7 @@ export class BaseModule {
             });
     }
 
-    plotVerticalRect(xStart, xWidth, yHeight, fill = 'steelblue', opacity = 1, tooltipInnerHTML = null) {
+    plotVerticalRect(xStart, xWidth, yHeight, fill = 'steelblue', opacity = 1, tooltipInnerHTML = null, className = '') {
         const tooltip = document.getElementById('vine-tooltip');
     
         const [ymin, ymax] = this.leftDomain ?? [null, null];
@@ -863,6 +927,7 @@ export class BaseModule {
             .attr('height', height)
             .attr('fill', fill)
             .attr('opacity', opacity)
+            .attr('class', className)
             .on('mouseover', (event) => {
                 d3.select(event.currentTarget)
                     .attr('fill', this.highlightColor);
@@ -1125,7 +1190,7 @@ export class BaseModule {
         document.body.removeChild(link);
     }
     
-    initResizeHandler() {
+    _initResizeHandler() {
         if (this._boundResize) {
             window.removeEventListener('resize', this._boundResize);
         }
@@ -1133,20 +1198,16 @@ export class BaseModule {
         window.addEventListener('resize', this._boundResize);
     }
 
-    initSVG() {
-        if (!this.data) {
-            return;
-        }
 
+    clearPlot() {
+        /* clear legend */
+        this.clearLegend();
+
+        /* clear toolbox */
+        this.clearToolbox();
+
+        /* clear SVG */
         this.clearSVG();
-
-        this.plotAxes();
-
-        this.initZoomTrackingAfterRender();
-
-        this.setupZoomAndScroll();
-
-        this.initResizeHandler();
     }
 
     initLegend() {}
@@ -1222,26 +1283,55 @@ export class BaseModule {
     
                 tooltip.style.visibility = 'hidden';
             });
-    }    
+    }
     
     _queryAllLegendCheckboxes() {
         return this.legendContainer.selectAll(`input[name="${this.legendCheckboxName}"]`)
     }
 
-    clearLegend() {
-        if (this.legendContainer && this.legendContainer.node()) {
-            this.legendContainer.html('');
-        }
-        this.legendCheckboxName = null;
+    resetPlot() {
+        /** 1. clear the existing svg */
+        this.clearSVG();
+
+        /** 2. plot the axes from the fetched data */
+        this._setAxesFromFetchedData();
+        this._plotAxes();
+
+        /** 3. check all checkboxes */
+        this._queryAllLegendCheckboxes().each(function () {
+            this.checked = true;
+        });
+
+        /** 4. plot the data */
+        this.plot();
     }
 
-    resetSVG() {
-        this.setDomainFromFetchedData();
-        this.setTickValuesFromFetchedData();
+    _setAxesFromFetchedData() {
+        if (this.bottomScaleType) {
+            this.setBottomDomain(this.data['x_domain']);
+            this.setBottomTickValues(this.data['x_tick_values']);
+            this.setBottomFormatter(eval(this.data['x_tick_formatter']));
+        } else if (this.topScaleType) {
+            this.setTopDomain(this.data['x_domain']);
+            this.setTopTickValues(this.data['x_tick_values']);
+            this.setTopFormatter(eval(this.data['x_tick_formatter']));
+        } else {
+            /* some modules do not require setting domains */
+            return;
+        }
 
-        this.clearLegend();
-        this.initLegend();
-        this.plot();
+        if (this.leftScaleType) {
+            this.setLeftDomain(this.data['y_domain']);
+            this.setLeftTickValues(this.data['y_tick_values']);
+            this.setLeftFormatter(eval(this.data['y_tick_formatter']));
+        } else if (this.rightScaleType) {
+            this.setRightDomain(this.data['y_domain']);
+            this.setRightTickValues(this.data['y_tick_values']);
+            this.setRightFormatter(eval(this.data['y_tick_formatter']));
+        } else {
+            /* some modules do not require setting domains */
+            return;
+        }
     }
 
     _getUniqueLegendCheckboxId(id) {

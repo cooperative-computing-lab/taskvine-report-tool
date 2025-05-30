@@ -10,7 +10,6 @@ export class TaskRetrievalTimeModule extends BaseModule {
 
     plot() {
         if (!this.data) return;
-        this.initSVG();
 
         this.plotPoints(this.data.points, {
             tooltipFormatter: d => `Global Index: ${d[0]}<br>Task ID: ${d[2]}<br>Try ID: ${d[3]}<br>Retrieval Time: ${eval(this.data.y_tick_formatter)(d[1])}`,
