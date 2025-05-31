@@ -4,60 +4,13 @@ Setup script for TaskVine Report Tool
 """
 
 from setuptools import setup, find_packages
-import os
-
-# Read version from the package
-def get_version():
-    """Get version from package __init__.py"""
-    version_file = os.path.join(os.path.dirname(__file__), 'taskvine_report', '__init__.py')
-    with open(version_file, 'r') as f:
-        for line in f:
-            if line.startswith('__version__'):
-                return line.split('=')[1].strip().strip('"').strip("'")
-    return '0.1.0'
-
-# Read long description from README
-def get_long_description():
-    """Get long description from README.md"""
-    readme_file = os.path.join(os.path.dirname(__file__), 'README.md')
-    if os.path.exists(readme_file):
-        with open(readme_file, 'r', encoding='utf-8') as f:
-            return f.read()
-    return ""
-
-# Read requirements from requirements.txt
-def get_requirements():
-    """Get requirements from requirements.txt"""
-    requirements_file = os.path.join(os.path.dirname(__file__), 'requirements.txt')
-    requirements = []
-    if os.path.exists(requirements_file):
-        with open(requirements_file, 'r') as f:
-            for line in f:
-                line = line.strip()
-                # Skip empty lines and comments
-                if line and not line.startswith('#'):
-                    requirements.append(line)
-    
-    # Default requirements if file doesn't exist or is empty
-    if not requirements:
-        requirements = [
-            'Flask>=2.0.0',
-            'pandas>=1.3.0',
-            'cloudpickle>=2.0.0',
-            'tqdm>=4.60.0',
-            'bitarray>=2.0.0',
-            'pytz>=2021.1',
-            'graphviz>=0.17',
-        ]
-    
-    return requirements
 
 setup(
     # Package metadata
-    name='taskvine-report',
-    version=get_version(),
+    name='taskvine-report-tool',
+    version='3.0.0',
     description='Visualization and analysis tool for TaskVine execution logs',
-    long_description=get_long_description(),
+    long_description=open('README.md', 'r', encoding='utf-8').read(),
     long_description_content_type='text/markdown',
     
     # Author information
@@ -87,7 +40,15 @@ setup(
     },
     
     # Dependencies
-    install_requires=get_requirements(),
+    install_requires=[
+        'flask>=2.0.0',
+        'pandas>=1.3.0',
+        'cloudpickle>=2.0.0',
+        'tqdm>=4.60.0',
+        'bitarray>=2.0.0',
+        'pytz>=2021.1',
+        'graphviz>=0.17',
+    ],
     
     # Python version requirement
     python_requires='>=3.7',
