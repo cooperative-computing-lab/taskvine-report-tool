@@ -32,9 +32,13 @@ def get_requirements():
     requirements = []
     if os.path.exists(requirements_file):
         with open(requirements_file, 'r') as f:
-            requirements = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+            for line in f:
+                line = line.strip()
+                # Skip empty lines and comments
+                if line and not line.startswith('#'):
+                    requirements.append(line)
     
-    # Default requirements if file doesn't exist
+    # Default requirements if file doesn't exist or is empty
     if not requirements:
         requirements = [
             'Flask>=2.0.0',
