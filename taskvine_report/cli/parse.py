@@ -10,12 +10,25 @@ import os
 import sys
 from pathlib import Path
 
+# Check for version argument early to avoid logger initialization
+if len(sys.argv) == 2 and sys.argv[1] in ['-v', '--version']:
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+        from taskvine_report import __version__
+        print(f'vine_parse {__version__}')
+        sys.exit(0)
+    except ImportError:
+        print("Error: Could not determine version")
+        sys.exit(1)
+
 try:
     from ..src.data_parse import DataParser
+    from .. import __version__
 except ImportError:
     # Handle direct execution
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
     from taskvine_report.src.data_parse import DataParser
+    from taskvine_report import __version__
 
 
 def remove_duplicates_preserve_order(seq):
@@ -35,6 +48,12 @@ def main():
     parser = argparse.ArgumentParser(
         prog='vine_parse',
         description='Parse TaskVine execution logs and generate analysis data'
+    )
+    
+    parser.add_argument(
+        '-v', '--version',
+        action='version',
+        version=f'%(prog)s {__version__}'
     )
     
     parser.add_argument(

@@ -14,6 +14,17 @@ import logging
 import socket
 from flask import Flask, render_template, request
 
+# Check for version argument early to avoid logger initialization
+if len(sys.argv) == 2 and sys.argv[1] in ['-v', '--version']:
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+        from taskvine_report import __version__
+        print('vine_report ' + str(__version__))
+        sys.exit(0)
+    except ImportError:
+        print("Error: Could not determine version")
+        sys.exit(1)
+
 # Suppress Flask development server warning
 warnings.filterwarnings('ignore', message='This is a development server.*')
 # Also suppress Werkzeug warnings
@@ -44,6 +55,7 @@ try:
     from ..routes.task_dependencies import task_dependencies_bp
     from ..routes.lock import lock_bp
     from ..routes.task_subgraphs import task_subgraphs_bp
+    from .. import __version__
 except ImportError:
     # Handle direct execution
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -70,6 +82,7 @@ except ImportError:
     from taskvine_report.routes.task_dependencies import task_dependencies_bp
     from taskvine_report.routes.lock import lock_bp
     from taskvine_report.routes.task_subgraphs import task_subgraphs_bp
+    from taskvine_report import __version__
 
 
 def create_app(logs_dir):
@@ -188,6 +201,12 @@ def main():
     parser = argparse.ArgumentParser(
         prog='vine_report',
         description='Start TaskVine Report web server for log visualization'
+    )
+    
+    parser.add_argument(
+        '-v', '--version',
+        action='version',
+        version=f'%(prog)s {__version__}'
     )
     
     parser.add_argument(
