@@ -52,8 +52,8 @@ def main():
     
     parser.add_argument(
         '--logs-dir',
-        default='logs',
-        help='Base directory containing log folders (default: logs)'
+        default=os.getcwd(),
+        help='Base directory containing log folders (default: current directory)'
     )
     
     args = parser.parse_args()
