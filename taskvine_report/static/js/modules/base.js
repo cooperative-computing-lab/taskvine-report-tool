@@ -355,9 +355,9 @@ export class BaseModule {
     }
 
     _initToolbox() {
-        /* if the toolbox is already initialized, do not initialize it again */
+        /* if the toolbox is already initialized, clear it and initialize it again */
         if (this.toolbox) {
-            return;
+            this.clearToolbox();
         }
 
         const items = [
