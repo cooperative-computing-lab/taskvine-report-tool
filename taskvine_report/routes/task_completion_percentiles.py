@@ -7,7 +7,7 @@ from .utils import (
     compute_discrete_tick_values
 )
 from flask import Blueprint, jsonify, make_response
-import numpy as np
+import math
 import pandas as pd
 from io import StringIO
 
@@ -30,7 +30,7 @@ def get_completion_percentile_points():
 
     points = []
     for p in range(1, 101):
-        idx = int(np.ceil(p / 100 * n)) - 1
+        idx = int(math.ceil(p / 100 * n)) - 1
         idx = max(0, min(idx, n - 1))
         points.append([p, finish_times[idx]])
 

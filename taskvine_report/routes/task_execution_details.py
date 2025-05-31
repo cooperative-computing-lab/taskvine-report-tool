@@ -10,7 +10,6 @@ import pandas as pd
 from collections import defaultdict
 from flask import Blueprint, jsonify, make_response
 from io import StringIO
-from numpy import linspace
 
 task_execution_details_bp = Blueprint(
     'task_execution_details', __name__, url_prefix='/api')
@@ -210,7 +209,9 @@ def get_task_execution_details():
         if len(y_domain) <= 5:
             y_tick_values = y_domain
         else:
-            indices = [round(i) for i in linspace(0, len(y_domain) - 1, 5)]
+            num_ticks = 5
+            step = (len(y_domain) - 1) / (num_ticks - 1)
+            indices = [round(i * step) for i in range(num_ticks)]
             y_tick_values = [y_domain[i] for i in indices]
 
         data = {
