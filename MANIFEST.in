@@ -1,0 +1,26 @@
+# Include documentation and configuration files
+include README.md
+include requirements.txt
+include MANIFEST.in
+
+# Include static web assets
+recursive-include taskvine_report/static *
+recursive-include taskvine_report/templates *
+
+# Include Python files
+recursive-include taskvine_report *.py
+
+# Exclude development and build artifacts
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude *.pyd
+global-exclude __pycache__
+global-exclude .DS_Store
+global-exclude *.so
+global-exclude .git*
+prune logs
+prune test
+prune imgs
+prune pyplot
+prune .ruff_cache
+prune __pycache__ 

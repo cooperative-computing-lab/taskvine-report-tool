@@ -1,9 +1,9 @@
 import platform
 import subprocess
-from src.worker_info import WorkerInfo
-from src.task_info import TaskInfo
-from src.file_info import FileInfo
-from src.manager_info import ManagerInfo
+from .worker_info import WorkerInfo
+from .task_info import TaskInfo
+from .file_info import FileInfo
+from .manager_info import ManagerInfo
 
 import os
 from functools import lru_cache
@@ -14,7 +14,7 @@ from collections import defaultdict
 import cloudpickle
 from datetime import timezone, timedelta
 import pytz
-from src.utils import floor_decimal, get_unit_and_scale_by_max_file_size_mb
+from .utils import floor_decimal, get_unit_and_scale_by_max_file_size_mb
 
 
 def count_lines(file_name):

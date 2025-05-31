@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from src.data_parse import DataParser
+from ..src.data_parse import DataParser
 import functools
 from .logger import Logger
 from .utils import (
