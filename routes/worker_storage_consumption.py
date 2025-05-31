@@ -6,7 +6,9 @@ from .utils import (
     d3_percentage_formatter,
     get_unit_and_scale_by_max_file_size_mb,
     floor_decimal,
-    compress_time_based_critical_points
+    compress_time_based_critical_points,
+    get_worker_time_boundary_points,
+    prefer_zero_else_max
 )
 
 import pandas as pd
@@ -37,7 +39,7 @@ def get_worker_storage_points(show_percentage=False):
     raw_points_array = []
     worker_keys = []
 
-    for worker, events in all_worker_storage.items():
+    for worker_entry, events in all_worker_storage.items():
         if not events:
             continue
 
@@ -45,25 +47,33 @@ def get_worker_storage_points(show_percentage=False):
         df['storage'] = df['size'].cumsum().clip(lower=0)
 
         if show_percentage:
-            disk = workers[worker].disk_mb
+            disk = workers[worker_entry].disk_mb
             if disk > 0:
                 df['storage'] = df['storage'] / disk * 100
 
         df['time'] = df['time'].map(lambda x: floor_decimal(x, 2))
-        df = df.groupby('time', as_index=False)['storage'].last()
+        df = df.groupby('time', as_index=False)['storage'].agg(prefer_zero_else_max)
 
-        t0s = workers[worker].time_connected
-        t1s = workers[worker].time_disconnected
-        boundary = [(floor_decimal(float(t - base_time), 2), 0.0) for t in t0s + t1s]
+        # the base_time might be the time when the first task is dispatched, but workers might be
+        # connected before that, so we need to skip those points
+        time_boundary_points = None
+        if workers[worker_entry]:
+            time_boundary_points = get_worker_time_boundary_points(workers[worker_entry], base_time)
 
-        boundary_df = pd.DataFrame(boundary, columns=['time', 'storage'])
-        full_df = pd.concat([df, boundary_df], ignore_index=True).sort_values('time')
-        full_df = full_df.groupby('time', as_index=False)['storage'].max()
+        if time_boundary_points:
+            boundary_df = pd.DataFrame(time_boundary_points, columns=['time', 'storage'])
+            full_df = pd.concat([df, boundary_df], ignore_index=True).sort_values('time')
+        else:
+            full_df = df
+
+        # we need to use .max() for most of the points to reflect the maximum storage consumption
+        # however, we also need to ensure that the first point is 0 and the last point is 0
+        full_df = full_df.groupby('time', as_index=False)['storage'].agg(prefer_zero_else_max).sort_values('time')
 
         if full_df['storage'].isna().all():
             continue
 
-        worker_keys.append(worker)
+        worker_keys.append(worker_entry)
         compressed_points = compress_time_based_critical_points(full_df.values.tolist())
         raw_points_array.append(compressed_points)
 

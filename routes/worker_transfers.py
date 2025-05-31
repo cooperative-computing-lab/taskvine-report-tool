@@ -9,7 +9,8 @@ from .utils import (
     d3_time_formatter,
     d3_int_formatter,
     floor_decimal,
-    compress_time_based_critical_points
+    compress_time_based_critical_points,
+    get_worker_time_boundary_points
 )
 
 worker_transfers_bp = Blueprint('worker_transfers', __name__, url_prefix='/api')
@@ -48,12 +49,11 @@ def get_worker_transfer_raw_points(role):
             continue
 
         w = runtime_state.workers.get(worker_entry)
-        boundary_events = []
+        time_boundary_points = []
         if w:
-            boundary_times = [floor_decimal(t - base_time, 2) for t in w.time_connected + w.time_disconnected]
-            boundary_events = [(t, 0) for t in boundary_times]
+            time_boundary_points = get_worker_time_boundary_points(w, base_time)
 
-        all_events = events + boundary_events
+        all_events = events + time_boundary_points
         df = pd.DataFrame(all_events, columns=['time', 'delta'])
         df = df.groupby('time', as_index=False)['delta'].sum()
         df['cumulative'] = df['delta'].cumsum().clip(lower=0)

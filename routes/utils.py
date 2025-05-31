@@ -2,6 +2,7 @@ import os
 import hashlib
 import math
 import random
+import bisect
 
 def floor_decimal(x, decimal_places):
     factor = 10 ** decimal_places
@@ -221,58 +222,73 @@ def get_files_fingerprint(files):
 def get_worker_ip_port_from_key(key):
     return ':'.join(key.split(':')[:-1])
 
+def get_worker_time_boundary_points(worker, base_time):
+    t_connected = floor_decimal(worker.time_connected[0] - base_time, 2)
+    t_disconnected = floor_decimal(worker.time_disconnected[0] - base_time, 2)
+    boundary = []
+    if t_connected > 0:
+        boundary.append((t_connected, 0))
+    if t_disconnected > 0:
+        boundary.append((t_disconnected, 0))
+    return boundary
+
 def compress_time_based_critical_points(points, max_points=5000):
+    n = len(points)
+    if n <= max_points:
+        return [tuple(p) for p in points]
+
     points = [tuple(p) for p in points]
+    peak_indices = []
+    valley_indices = []
 
-    if len(points) <= max_points:
-        return points
-
-    peak_indices = set()
-    valley_indices = set()
-    for i in range(1, len(points) - 1):
+    for i in range(1, n - 1):
         prev_y, curr_y, next_y = points[i - 1][1], points[i][1], points[i + 1][1]
         if curr_y > prev_y and curr_y >= next_y:
-            peak_indices.add(i)
+            peak_indices.append(i)
         elif curr_y < prev_y and curr_y <= next_y:
-            valley_indices.add(i)
+            valley_indices.append(i)
 
-    keep_indices = set(peak_indices | valley_indices)
+    keep_indices = set(peak_indices + valley_indices)
 
-    def add_nearest_opposite(current_set, opposite_set):
-        for idx in current_set:
-            prev = max((j for j in opposite_set if j < idx), default=None)
-            next = min((j for j in opposite_set if j > idx), default=None)
-            if prev is not None:
-                keep_indices.add(prev)
-            if next is not None:
-                keep_indices.add(next)
+    def add_nearest_opposite(from_list, to_list):
+        to_list_sorted = sorted(to_list)
+        for idx in from_list:
+            pos = bisect.bisect_right(to_list_sorted, idx)
+            if pos > 0:
+                keep_indices.add(to_list_sorted[pos - 1])
+            if pos < len(to_list_sorted):
+                keep_indices.add(to_list_sorted[pos])
 
     add_nearest_opposite(peak_indices, valley_indices)
     add_nearest_opposite(valley_indices, peak_indices)
 
-    keep_indices.add(0)
-    keep_indices.add(len(points) - 1)
+    keep_indices.update([0, n - 1])
 
     sorted_indices = sorted(keep_indices)
     meaningful_indices = [sorted_indices[0]]
+
     for i in range(1, len(sorted_indices) - 1):
-        prev = points[sorted_indices[i - 1]]
-        curr = points[sorted_indices[i]]
-        next_ = points[sorted_indices[i + 1]]
-        if not (prev[1] <= curr[1] <= next_[1] or prev[1] >= curr[1] >= next_[1]):
+        a = points[sorted_indices[i - 1]][1]
+        b = points[sorted_indices[i]][1]
+        c = points[sorted_indices[i + 1]][1]
+        if not (a <= b <= c or a >= b >= c):
             meaningful_indices.append(sorted_indices[i])
+
     meaningful_indices.append(sorted_indices[-1])
+    selected_set = set(meaningful_indices)
 
-    selected_indices = sorted(set(meaningful_indices))
-    selected = [points[i] for i in selected_indices]
+    if len(selected_set) < max_points:
+        remaining = max_points - len(selected_set)
+        all_indices = set(range(n))
+        candidates = list(all_indices - selected_set)
+        if candidates:
+            extra = random.sample(candidates, min(remaining, len(candidates)))
+            selected_set.update(extra)
 
-    if len(selected) < max_points:
-        remaining_budget = max_points - len(selected)
-        candidate_indices = list(set(range(len(points))) - set(selected_indices))
-        if candidate_indices:
-            extra_indices = random.sample(candidate_indices, min(remaining_budget, len(candidate_indices)))
-            combined_indices = sorted(set(selected_indices) | set(extra_indices))
-            selected = [points[i] for i in combined_indices]
+    final_indices = sorted(selected_set)
+    return [points[i] for i in final_indices]
 
-    return selected
-
+def prefer_zero_else_max(series):
+    if (series == 0).any():
+        return 0.0
+    return series.max()

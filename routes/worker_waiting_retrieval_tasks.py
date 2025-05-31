@@ -4,7 +4,8 @@ from .utils import (
     d3_time_formatter,
     d3_int_formatter,
     floor_decimal,
-    compress_time_based_critical_points
+    compress_time_based_critical_points,
+    get_worker_time_boundary_points
 )
 from flask import Blueprint, jsonify, Response
 from collections import defaultdict
@@ -34,11 +35,12 @@ def get_worker_waiting_retrieval_task_points():
 
     for worker_entry, events in all_worker_events.items():
         w = workers.get(worker_entry)
+        time_boundary_points = None
         if w:
-            boundary_times = [floor_decimal(t - base_time, 2) for t in w.time_connected + w.time_disconnected]
-            events += [(t, 0) for t in boundary_times]
+            time_boundary_points = get_worker_time_boundary_points(w, base_time)
+        all_events = events + time_boundary_points
 
-        df = pd.DataFrame(events, columns=['time', 'delta'])
+        df = pd.DataFrame(all_events, columns=['time', 'delta'])
         df = df.groupby('time', as_index=False)['delta'].sum()
         df['cumulative'] = df['delta'].cumsum()
         df['cumulative'] = df['cumulative'].clip(lower=0)

@@ -4,7 +4,8 @@ from .utils import (
     d3_time_formatter,
     d3_int_formatter,
     compress_time_based_critical_points,
-    floor_decimal
+    floor_decimal,
+    prefer_zero_else_max
 )
 
 import pandas as pd
@@ -157,7 +158,7 @@ def export_task_concurrency_csv():
                 continue
             column_title = PHASE_COLUMN_TITLES.get(phase_key, phase_key.capitalize())
             df = pd.DataFrame(points, columns=["time", column_title])
-            df = df.groupby("time")[column_title].max().reset_index()
+            df = df.groupby("time")[column_title].agg(prefer_zero_else_max).reset_index()
             df = df.set_index("time")
             df_list.append(df)
 

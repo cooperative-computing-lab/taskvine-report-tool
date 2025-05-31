@@ -4,7 +4,8 @@ from .utils import (
     d3_time_formatter,
     d3_int_formatter,
     floor_decimal,
-    compress_time_based_critical_points
+    compress_time_based_critical_points,
+    get_worker_time_boundary_points
 )
 from flask import Blueprint, jsonify, Response
 from collections import defaultdict
@@ -36,8 +37,8 @@ def get_worker_executing_task_points():
         
         w = workers.get(worker_entry)
         if w:
-            boundary_times = [floor_decimal(t - base_time, 2) for t in w.time_connected + w.time_disconnected]
-            events += [(t, 0) for t in boundary_times]
+            time_boundary_points = get_worker_time_boundary_points(w, base_time)
+            events += time_boundary_points
 
         if not events:
             continue
