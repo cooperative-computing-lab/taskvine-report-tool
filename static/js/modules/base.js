@@ -10,6 +10,7 @@ export class BaseModule {
         this.api_url = api_url;
 
         this._folder = null;
+        this._fetchDataParams = {}; // Parameters for fetchData calls
 
         this.svgContainer = null;
         this.svgElement = null;
@@ -69,6 +70,9 @@ export class BaseModule {
 
     switchFolder(folder) {
         this._folder = folder;
+
+        /* if the folder is switched, clear the plot */
+        this.clearPlot();
     }
 
     renderSkeleton() {
@@ -129,7 +133,7 @@ export class BaseModule {
     }
 
     async fetchDataAndPlot() {
-        this.clearPlot();
+        this.clearSVG();
         this.plotSpinner();
         await this.fetchData();
         this.plot();
@@ -351,6 +355,11 @@ export class BaseModule {
     }
 
     _initToolbox() {
+        /* if the toolbox is already initialized, do not initialize it again */
+        if (this.toolbox) {
+            return;
+        }
+
         const items = [
             this.createToolboxItemExport(),
         ];
@@ -472,7 +481,25 @@ export class BaseModule {
 
     legendOnToggle(id, visible) {}
     
+    defineFetchDataParams(params = {}) {
+        this._fetchDataParams = { ...params };
+    }
+
+    updateFetchDataParam(key, value) {
+        this._fetchDataParams[key] = value;
+    }
+
+    _parseFetchDataParams() {
+        return { ...this._fetchDataParams };
+    }
+    
     async fetchData(extraParams = {}) {
+        // Parse parameters from the module-specific parameter definition
+        const moduleParams = this._parseFetchDataParams();
+        
+        // Merge module params with any extra params (extra params take precedence)
+        const allParams = { ...moduleParams, ...extraParams };
+        
         // Build query parameters starting with folder
         const params = new URLSearchParams({
             folder: this._folder
@@ -480,7 +507,7 @@ export class BaseModule {
         
         // Add any extra parameters passed by subclasses
         // Support both simple key-value pairs and JSON-style objects
-        Object.entries(extraParams).forEach(([key, value]) => {
+        Object.entries(allParams).forEach(([key, value]) => {
             if (value !== undefined && value !== null) {
                 if (Array.isArray(value)) {
                     // Handle arrays by appending each value

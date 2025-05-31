@@ -8,6 +8,8 @@ from io import StringIO
 import csv
 import pandas as pd
 from flask import make_response
+import hashlib
+import json
 
 task_subgraphs_bp = Blueprint('task_subgraphs', __name__, url_prefix='/api')
 
@@ -19,6 +21,88 @@ def sanitize_filename(filename):
     if len(filename) > 200:
         filename = filename[:200]
     return filename
+
+def calculate_subgraph_hash(subgraph_id, task_tries, plot_unsuccessful_task, plot_recovery_task):
+    hash_data = {
+        'subgraph_id': subgraph_id,
+        'plot_unsuccessful_task': plot_unsuccessful_task,
+        'plot_recovery_task': plot_recovery_task,
+        'tasks': []
+    }
+    
+    # Add task information to hash data
+    for (tid, try_id) in sorted(task_tries):
+        if (tid, try_id) not in runtime_state.tasks:
+            continue
+        task = runtime_state.tasks[(tid, try_id)]
+        
+        task_info = {
+            'task_id': tid,
+            'task_try_id': try_id,
+            'is_recovery_task': getattr(task, 'is_recovery_task', False),
+            'when_failure_happens': getattr(task, 'when_failure_happens', False),
+            'input_files': sorted(list(getattr(task, 'input_files', []))),
+            'output_files': sorted(list(getattr(task, 'output_files', []))),
+            'time_worker_start': getattr(task, 'time_worker_start', None),
+            'time_worker_end': getattr(task, 'time_worker_end', None)
+        }
+        hash_data['tasks'].append(task_info)
+    
+    # Add file information that affects the graph
+    hash_data['files'] = {}
+    for (tid, try_id) in task_tries:
+        if (tid, try_id) not in runtime_state.tasks:
+            continue
+        task = runtime_state.tasks[(tid, try_id)]
+        
+        # Handle both list and set types for input_files and output_files
+        input_files = getattr(task, 'input_files', [])
+        output_files = getattr(task, 'output_files', [])
+        
+        # Convert to lists if they are sets, then combine
+        if isinstance(input_files, set):
+            input_files = list(input_files)
+        if isinstance(output_files, set):
+            output_files = list(output_files)
+            
+        all_files = input_files + output_files
+        
+        for file_name in all_files:
+            if file_name in runtime_state.files and file_name not in hash_data['files']:
+                file = runtime_state.files[file_name]
+                hash_data['files'][file_name] = {
+                    'filename': file.filename,
+                    'producers': sorted(getattr(file, 'producers', [])),
+                    'num_transfers': len(getattr(file, 'transfers', []))
+                }
+    
+    # Convert to JSON string and hash
+    json_str = json.dumps(hash_data, sort_keys=True, default=str)
+    return hashlib.sha256(json_str.encode('utf-8')).hexdigest()
+
+def check_subgraph_cache(svg_file_path, current_hash):
+    """Check if cached subgraph is still valid based on hash"""
+    hash_file_path = svg_file_path.replace('.svg', '.hash')
+    
+    # Check if both SVG and hash files exist
+    if not (Path(svg_file_path).exists() and Path(hash_file_path).exists()):
+        return False
+    
+    try:
+        with open(hash_file_path, 'r') as f:
+            cached_hash = f.read().strip()
+        return cached_hash == current_hash
+    except Exception:
+        return False
+
+def save_subgraph_hash(svg_file_path, current_hash):
+    """Save the hash for the generated subgraph"""
+    hash_file_path = svg_file_path.replace('.svg', '.hash')
+    try:
+        with open(hash_file_path, 'w') as f:
+            f.write(current_hash)
+    except Exception as e:
+        runtime_state.logger.warning(f"Failed to save subgraph hash: {e}")
 
 @task_subgraphs_bp.route('/task-subgraphs')
 @check_and_reload_data()
@@ -56,7 +140,14 @@ def get_task_subgraphs():
         svg_file_path_without_suffix = os.path.normpath(os.path.join(svg_dir, safe_filename))
         svg_file_path = f'{svg_file_path_without_suffix}.svg'
 
-        if not Path(svg_file_path).exists():
+        # Calculate hash for current subgraph configuration
+        current_hash = calculate_subgraph_hash(subgraph_id, task_tries, plot_unsuccessful_task, plot_recovery_task)
+        
+        # Check if we can use cached version
+        use_cache = check_subgraph_cache(svg_file_path, current_hash)
+        
+        if not use_cache:
+            runtime_state.logger.info(f"Generating new subgraph {subgraph_id} (hash mismatch or missing cache)")
             # check if graphviz is available on the system
             import shutil
             if not shutil.which('dot'):
@@ -169,6 +260,10 @@ def get_task_subgraphs():
                     fallback_svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="500" height="150"><rect width="500" height="150" fill="#f8f9fa" stroke="#dee2e6"/><text x="10" y="30" font-family="Arial" font-size="14" fill="#dc3545">Error: Failed to generate subgraph visualization</text><text x="10" y="50" font-family="Arial" font-size="12" fill="#6c757d">Reason: {error_message}</text><text x="10" y="80" font-family="Arial" font-size="12" fill="#6c757d">Subgraph ID: {subgraph_id}</text><text x="10" y="100" font-family="Arial" font-size="12" fill="#6c757d">Tasks: {len(task_tries)}</text><text x="10" y="130" font-family="Arial" font-size="10" fill="#6c757d">Please check graphviz installation and permissions</text></svg>'
                     with open(svg_file_path, 'w', encoding='utf-8') as f:
                         f.write(fallback_svg)
+                
+                save_subgraph_hash(svg_file_path, current_hash)
+        else:
+            runtime_state.logger.info(f"Using cached subgraph {subgraph_id} (hash match)")
 
         data['subgraph_id'] = subgraph_id
         data['num_task_tries'] = len(task_tries)

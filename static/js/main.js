@@ -30,7 +30,6 @@ async function fetchAllModulesData(folder) {
                     await module.fetchDataAndPlot();
                 } catch (err) {
                     console.error('Error during module data fetch:', err);
-                    module.clearPlot();
                 }
             })();
         });

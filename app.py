@@ -1,3 +1,12 @@
+import argparse
+import os
+import time
+from flask import Flask, render_template, request
+
+# global configuration - can be overridden via command line arguments
+LOGS_DIR = os.getcwd()  # Default to current directory
+
+# Import routes after setting LOGS_DIR
 from routes.runtime_template import runtime_template_bp
 from routes.worker_storage_consumption import worker_storage_consumption_bp
 from routes.file_sizes import file_sizes_bp
@@ -21,11 +30,6 @@ from routes.task_completion_percentiles import task_completion_percentiles_bp
 from routes.task_dependencies import task_dependencies_bp
 from routes.lock import lock_bp
 from routes.task_subgraphs import task_subgraphs_bp
-
-import argparse
-import os
-import time
-from flask import Flask, render_template, request
 
 app = Flask(__name__)
 
@@ -93,7 +97,7 @@ app.register_blueprint(lock_bp)
 @app.route('/')
 def index():
     log_folders = [name for name in os.listdir(
-        LOGS_DIR) if os.path.isdir(os.path.join(LOGS_DIR, name))]
+        runtime_state.logs_dir) if os.path.isdir(os.path.join(runtime_state.logs_dir, name))]
     log_folders_sorted = sorted(log_folders)
     return render_template('index.html', log_folders=log_folders_sorted)
 
@@ -101,7 +105,16 @@ def index():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', default=9122, help='Port number')
+    parser.add_argument('--logs-dir', default=None, help='Directory containing log folders (default: current directory)')
     args = parser.parse_args()
 
+    # Set global LOGS_DIR from command line argument or keep default
+    if args.logs_dir:
+        LOGS_DIR = os.path.abspath(args.logs_dir)
+    
+    # Initialize runtime_state with the LOGS_DIR
+    runtime_state.set_logs_dir(LOGS_DIR)
+
     runtime_state.log_info(f"Starting application on port {args.port}")
+    runtime_state.log_info(f"Using logs directory: {LOGS_DIR}")
     app.run(host='0.0.0.0', port=args.port, debug=True, use_reloader=False)

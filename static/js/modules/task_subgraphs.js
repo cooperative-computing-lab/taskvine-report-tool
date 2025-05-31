@@ -3,28 +3,19 @@ import { BaseModule } from './base.js';
 export class TaskSubgraphsModule extends BaseModule {
     constructor(id, title, api_url) {
         super(id, title, api_url);
-        this._current_subgraph_id = 1;
-    }
-
-    async fetchDataAndPlot() {
-        this.clearPlot();
-        this.plotSpinner();
         
-        // Call parent fetchData with default parameters for TaskSubgraphs
-        await this.fetchData({
-            subgraph_id: this._current_subgraph_id,
+        this.defineFetchDataParams({
+            subgraph_id: 1,
             plot_failed_task: true,
             plot_recovery_task: true
         });
-        
-        this.plot();
     }
 
     resetPlot() {
         super.resetPlot();
 
         this.data = null;
-        this._current_subgraph_id = 1;
+        this.updateFetchDataParam('subgraph_id', 1);
     }
 
     legendOnToggle(id, visible) {
@@ -38,16 +29,12 @@ export class TaskSubgraphsModule extends BaseModule {
             }
         });
 
-        /* if the current checkbox is checked, fetch data and plot */
         if (visible) {
-            this.fetchData({
-                subgraph_id: id,
-                plot_failed_task: true,
-                plot_recovery_task: true
-            }).then(() => {
-                this._current_subgraph_id = id;
-                this.plot();
-            });
+            this.updateFetchDataParam('subgraph_id', id);
+            this.fetchDataAndPlot();
+        } else {
+            /* if the current checkbox is unchecked, clear the SVG */
+            this.clearSVG();
         }
     }
 

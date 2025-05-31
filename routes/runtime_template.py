@@ -1,4 +1,4 @@
-from .runtime_state import runtime_state, LOGS_DIR
+from .runtime_state import runtime_state
 
 import os
 from pathlib import Path
@@ -18,12 +18,12 @@ def all_subfolders_exists(parent: str, folder_names: list[str]) -> bool:
 
 @runtime_template_bp.route('/runtime-template-list')
 def get_runtime_template_list():
-    log_folders = [name for name in os.listdir(LOGS_DIR)
-                   if os.path.isdir(os.path.join(LOGS_DIR, name))]
+    log_folders = [name for name in os.listdir(runtime_state.logs_dir)
+                   if os.path.isdir(os.path.join(runtime_state.logs_dir, name))]
 
     valid_runtime_templates = [
         name for name in sorted(log_folders)
-        if all_subfolders_exists(os.path.join(LOGS_DIR, name), ['vine-logs', 'pkl-files'])
+        if all_subfolders_exists(os.path.join(runtime_state.logs_dir, name), ['vine-logs', 'pkl-files'])
     ]
 
     return jsonify(valid_runtime_templates), 200

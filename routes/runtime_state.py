@@ -15,7 +15,6 @@ import traceback
 import threading
 
 
-LOGS_DIR = 'logs'
 SAMPLING_POINTS = 100000  # at lease 3: the beginning, the end, and the global peak
 SAMPLING_TASK_BARS = 100000   # how many task bars to show
 
@@ -100,6 +99,9 @@ def check_and_reload_data():
 
 class RuntimeState:
     def __init__(self):
+        # logs directory - will be set by app.py
+        self.logs_dir = None
+        
         # full path to the runtime template
         self.runtime_template = None
         self.data_parser = None
@@ -128,6 +130,9 @@ class RuntimeState:
         # for preventing multiple reloads of the data
         self._pkl_files_fingerprint = None
         self.reload_lock = LeaseLock(lease_duration_sec=180)
+
+    def set_logs_dir(self, logs_dir):
+        self.logs_dir = logs_dir
 
     @property
     def log_prefix(self):
@@ -262,7 +267,7 @@ class RuntimeState:
 
     def reload_template(self, runtime_template):
         # init template and data parser
-        self.runtime_template = os.path.join(os.getcwd(), LOGS_DIR, Path(runtime_template).name)
+        self.runtime_template = os.path.join(self.logs_dir, Path(runtime_template).name)
         self.data_parser = DataParser(self.runtime_template)
 
         # load data
