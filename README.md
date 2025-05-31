@@ -4,13 +4,18 @@ An interactive visualization tool for [TaskVine](https://github.com/cooperative-
 
 ## Quick Install
 
-Install required Python packages via conda:
-
 ```bash
-conda install -y flask pandas tqdm bitarray python-graphviz
+git clone https://github.com/cooperative-computing-lab/taskvine-report-tool.git
+cd taskvine-report-tool
+pip install .
 ```
 
 ## Usage Guide
+
+The tool provides two main commands:
+
+### 🔍 `vine_parse` - Parse TaskVine logs
+### 🌐 `vine_report` - Start web visualization server
 
 Follow these steps to use the visualization tool:
 
@@ -30,134 +35,135 @@ workflow_name/
 
 To use these logs with the visualization tool:
 
-1. Copy the entire workflow directory to the tool's `logs` directory:
+1. Copy the entire workflow directory to a logs directory:
 ```bash
+mkdir -p logs
 cp -r /path/to/workflow_name logs/
 ```
 
-2. Generate the visualization data:
+2. Parse the logs and generate visualization data:
 ```bash
-python3 generate_data.py logs/your_workflow_name
+vine_parse logs/your_workflow_name
 ```
 
 3. Start the visualization server:
 ```bash
-python3 app.py
+vine_report
 ```
 
 4. View the report in your browser at `http://localhost:9122`
 
-Note: In the web interface, you'll only see log collections that have been successfully processed by `generate_data.py`. You can process multiple log collections at once by providing multiple paths:
+Note: In the web interface, you'll only see log collections that have been successfully processed by `vine_parse`. You can process multiple log collections at once:
 
 ```bash
-python3 generate_data.py logs/log1 logs/log2 logs/log3
+vine_parse logs/log1 logs/log2 logs/log3
 ```
 
-### 2. Alternative: Configure TaskVine Log Location
+### 2. Command Reference
+
+#### `vine_parse` - Parse TaskVine Logs
+
+```bash
+# Basic usage
+vine_parse experiment1 experiment2
+
+# Specify custom logs directory
+vine_parse --logs-dir /path/to/logs experiment1
+
+# Get help
+vine_parse --help
+```
+
+#### `vine_report` - Start Web Server
+
+```bash
+# Basic usage (serves current directory)
+vine_report
+
+# Specify custom port and logs directory
+vine_report --port 8080 --logs-dir /path/to/logs
+
+# Allow remote access
+vine_report --host 0.0.0.0 --port 9122
+
+# Get help
+vine_report --help
+```
+
+### 3. Alternative: Configure TaskVine Log Location
 
 Instead of manually copying logs, you can configure TaskVine to generate logs directly in the correct location. When creating your TaskVine manager, set these parameters:
 
 ```python
 manager = vine.Manager(
     9123,
-    run_info_path="~/taskvine-report-tool",   # Path to this tool's directory
-    run_info_template="your_workflow_name"    # Name for this run's logs
+    run_info_path="~/my_analysis_directory",     # Path to your analysis directory
+    run_info_template="your_workflow_name"       # Name for this run's logs
 )
 ```
 
 This will automatically create the correct directory structure:
 ```
-~/taskvine-report-tool/
-└── logs/
-    └── your_workflow_name/
-        └── vine-logs/
-            ├── debug
-            └── transactions
+~/my_analysis_directory/
+└── your_workflow_name/
+    └── vine-logs/
+        ├── debug
+        └── transactions
 ```
 
 After your workflow completes, simply:
-1. Navigate to the tool directory: `cd ~/taskvine-report-tool`
-2. Generate the visualization data: `python3 generate_data.py logs/your_workflow_name`
-3. Refresh your browser to see the new log collection
+1. Navigate to your analysis directory: `cd ~/my_analysis_directory`
+2. Parse the logs: `vine_parse your_workflow_name`
+3. Start the server: `vine_report`
+4. View at `http://localhost:9122`
 
-### 3. Multiple Log Collections
+### 4. Multiple Log Collections
 
-You can have multiple log collections in your `logs` directory. For example:
+You can have multiple log collections. For example:
 
 ```
 logs/
 ├── experiment1/
 │   └── vine-logs/
-│       ├── debug
-│       └── transactions
 ├── large_workflow/
 │   └── vine-logs/
-│       ├── debug
-│       └── transactions
 └── test_run/
     └── vine-logs/
-        ├── debug
-        ├── performance
-        ├── taskgraph
-        └── transactions
 ```
 
-### 4. Generate Visualization Data
+Parse all of them at once:
+```bash
+vine_parse experiment1 large_workflow test_run
+```
 
-For each log collection, generate the visualization data by running:
+### 5. Complete Workflow Example
 
 ```bash
-python3 generate_data.py logs/your_log_folder_name
+# 1. Parse your logs
+vine_parse --logs-dir ~/my_logs experiment1 experiment2
+
+# 2. Start the web server
+vine_report --logs-dir ~/my_logs --port 9122
+
+# 3. Open browser to http://localhost:9122
 ```
 
-Example:
-```bash
-python3 generate_data.py logs/experiment1
-```
+### 6. Generated Data Structure
 
-This will create a `pkl-files` directory under your log folder containing the processed data:
+After parsing, each log collection will have a `pkl-files` directory:
 ```
 logs/
 └── experiment1/
     ├── vine-logs/
     │   ├── debug
     │   └── transactions
-    └── pkl-files/          # Generated data directory
+    └── pkl-files/          # Generated by vine_parse
         ├── manager.pkl     # Manager information
         ├── workers.pkl     # Worker statistics
         ├── tasks.pkl       # Task execution details
         ├── files.pkl       # File transfer information
         └── subgraphs.pkl   # Task dependency graphs
 ```
-
-### 5. Start Visualization Server
-
-After generating the data, start the web server:
-
-```bash
-python3 app.py
-```
-
-By default, the server runs on port 9122. You can specify a different port using the `--port` argument:
-
-```bash
-python3 app.py --port 8080
-```
-
-### 6. View Visualization Report
-
-Once the server is running, access the visualization in your browser at:
-
-```
-http://localhost:9122
-```
-
-On the web interface, you can:
-- Switch between different log collections
-- View task execution time distributions
-- Analyze file transfer patterns
-- Monitor resource utilization
-- Export visualization charts
 
 ## Important Notes
 
