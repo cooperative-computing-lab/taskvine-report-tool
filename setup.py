@@ -37,10 +37,11 @@ def get_requirements():
     # Default requirements if file doesn't exist
     if not requirements:
         requirements = [
-            'flask>=2.0.0',
+            'Flask>=2.0.0',
             'pandas>=1.3.0',
             'cloudpickle>=2.0.0',
             'tqdm>=4.60.0',
+            'plotly>=5.0.0',
             'pytz>=2021.1',
             'graphviz>=0.17',
         ]

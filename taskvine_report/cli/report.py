@@ -9,7 +9,14 @@ import argparse
 import os
 import sys
 import time
+import warnings
+import logging
 from flask import Flask, render_template, request
+
+# Suppress Flask development server warning
+warnings.filterwarnings('ignore', message='This is a development server.*')
+# Also suppress Werkzeug warnings
+logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
 # Handle imports for both package and direct execution
 try:
@@ -171,12 +178,6 @@ def main():
         help='Host address to bind to (default: 0.0.0.0)'
     )
     
-    parser.add_argument(
-        '--debug',
-        action='store_true',
-        help='Run in debug mode'
-    )
-    
     args = parser.parse_args()
 
     # Set logs directory in runtime state
@@ -192,14 +193,13 @@ def main():
     print(f"🚀 Starting TaskVine Report server...")
     print(f"   📁 Logs directory: {logs_dir}")
     print(f"   🌐 Server URL: http://localhost:{args.port}")
-    print(f"   ⚙️  Debug mode: {'ON' if args.debug else 'OFF'}")
     print(f"\nPress Ctrl+C to stop the server")
 
     try:
         app.run(
             host=args.host, 
             port=args.port, 
-            debug=args.debug, 
+            debug=False, 
             use_reloader=False
         )
     except KeyboardInterrupt:

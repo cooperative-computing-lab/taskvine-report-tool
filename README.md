@@ -77,7 +77,7 @@ vine_parse --help
 #### `vine_report` - Start Web Server
 
 ```bash
-# Basic usage (serves current directory)
+# Basic usage
 vine_report
 
 # Specify custom port and logs directory
@@ -255,7 +255,9 @@ The tool provides various visualization modules to analyze different aspects of 
 
 ## Troubleshooting
 
-If you encounter issues:
+### Common Issues
+
+If you encounter other issues:
 1. Verify the log folder structure is correct
 2. Confirm all required Python packages are properly installed
 3. Check if log files are complete and not corrupted. Note that this tool can usually parse logs from abnormally terminated runs (e.g., due to system crashes or manual interruption), but in some special cases, parsing might fail if the logs are severely corrupted or truncated
