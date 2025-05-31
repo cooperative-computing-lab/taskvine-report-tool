@@ -15,9 +15,6 @@ pytz>=2021.1
 # Graph visualization
 graphviz>=0.17
 
-# Plotly for interactive visualizations
-plotly==5.17.0
-
 # Optional: Enhanced development experience
 # pytest>=6.0
 # pytest-cov>=2.0
