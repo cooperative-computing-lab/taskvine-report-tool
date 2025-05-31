@@ -40,10 +40,16 @@ def main():
     parser.add_argument(
         'runtime_templates', 
         type=str, 
-        nargs='+',
-        help='List of log directories (e.g., log1 log2 log3)'
+        nargs='*',  # changed from '+' to '*' to make it optional
+        help='List of log directories (e.g., log1 log2 log3). Required unless --all is specified.'
     )
-    
+
+    parser.add_argument(
+        '--all', 
+        action='store_true',
+        help='Process all log directories found in --logs-dir'
+    )
+
     parser.add_argument(
         '--subgraphs-only', 
         action='store_true',
@@ -58,11 +64,46 @@ def main():
     
     args = parser.parse_args()
 
-    # Remove duplicates while preserving order
-    deduped_names = remove_duplicates_preserve_order(args.runtime_templates)
+    # Validate arguments
+    if args.all and args.runtime_templates:
+        print("❌ Cannot specify both --all and runtime_templates. Choose one.")
+        sys.exit(1)
+    
+    if not args.all and not args.runtime_templates:
+        print("❌ Must specify either --all or provide runtime_templates.")
+        sys.exit(1)
+
+    root_dir = os.path.abspath(args.logs_dir)
+
+    if args.all:
+        # Find all directories in logs_dir that contain vine-logs subdirectory
+        try:
+            potential_dirs = [d for d in os.listdir(root_dir) 
+                            if os.path.isdir(os.path.join(root_dir, d))]
+            runtime_templates = []
+            for d in potential_dirs:
+                vine_logs_path = os.path.join(root_dir, d, 'vine-logs')
+                if os.path.exists(vine_logs_path):
+                    runtime_templates.append(d)
+            
+            if not runtime_templates:
+                print(f"❌ No log directories with 'vine-logs' subdirectory found in {root_dir}")
+                sys.exit(1)
+                
+            print(f"🔍 Found {len(runtime_templates)} log directories with 'vine-logs' subdirectory:")
+            for template in sorted(runtime_templates):
+                print(f"  - {template}")
+            
+            # Remove duplicates while preserving order
+            deduped_names = remove_duplicates_preserve_order(runtime_templates)
+        except Exception as e:
+            print(f"❌ Error scanning directory {root_dir}: {e}")
+            sys.exit(1)
+    else:
+        # Use provided runtime_templates
+        deduped_names = remove_duplicates_preserve_order(args.runtime_templates)
 
     # Construct full paths
-    root_dir = os.path.abspath(args.logs_dir)
     full_paths = [os.path.join(root_dir, name) for name in deduped_names]
 
     # Check if all directories exist

@@ -46,6 +46,11 @@ cp -r /path/to/workflow_name logs/
 vine_parse logs/your_workflow_name
 ```
 
+Or parse all log collections at once:
+```bash
+vine_parse --all --logs-dir logs
+```
+
 3. Start the visualization server:
 ```bash
 vine_report
@@ -64,10 +69,16 @@ vine_parse logs/log1 logs/log2 logs/log3
 #### `vine_parse` - Parse TaskVine Logs
 
 ```bash
-# Basic usage
+# Basic usage - specify individual log directories
 vine_parse experiment1 experiment2
 
-# Specify custom logs directory
+# Process all log directories in current directory
+vine_parse --all
+
+# Process all log directories in a specific directory
+vine_parse --all --logs-dir /path/to/logs
+
+# Specify custom logs directory for individual directories
 vine_parse --logs-dir /path/to/logs experiment1
 
 # Get help
@@ -134,6 +145,11 @@ logs/
 Parse all of them at once:
 ```bash
 vine_parse experiment1 large_workflow test_run
+```
+
+Or use the --all option:
+```bash
+vine_parse --all
 ```
 
 ### 5. Complete Workflow Example
