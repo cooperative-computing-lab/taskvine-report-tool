@@ -147,7 +147,6 @@ Thumbs.db
 # Application specific
 logs/
 *.log
-taskvine.log
 
 # Generated files
 svg-files/

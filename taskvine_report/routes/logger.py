@@ -5,7 +5,7 @@ import logging
 class Logger:
     _instance = None
 
-    def __new__(cls, log_file_name='taskvine.log'):
+    def __new__(cls, log_file_name='taskvine_report.log'):
         if cls._instance is None:
             cls._instance = super(Logger, cls).__new__(cls)
             cls._instance._initialize(log_file_name)
