@@ -14,8 +14,8 @@ pip install .
 
 The tool provides two main commands:
 
-### 🔍 `vine_parse` - Parse TaskVine logs
-### 🌐 `vine_report` - Start web visualization server
+- 🔍 `vine_parse` - Parse TaskVine logs
+- 🌐 `vine_report` - Start web visualization server
 
 Follow these steps to use the visualization tool:
 
