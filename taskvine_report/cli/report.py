@@ -11,6 +11,7 @@ import sys
 import time
 import warnings
 import logging
+import socket
 from flask import Flask, render_template, request
 
 # Suppress Flask development server warning
@@ -152,6 +153,36 @@ def create_app(logs_dir):
     return app
 
 
+def get_local_ip_addresses():
+    """Get all available local IP addresses"""
+    ip_addresses = ['127.0.0.1']  # Always include localhost
+    
+    try:
+        # Get hostname
+        hostname = socket.gethostname()
+        
+        # Get all IP addresses for this host
+        for addr_info in socket.getaddrinfo(hostname, None):
+            ip = addr_info[4][0]
+            # Filter out IPv6 and localhost duplicates
+            if ':' not in ip and ip != '127.0.0.1' and ip not in ip_addresses:
+                ip_addresses.append(ip)
+    except Exception:
+        pass
+    
+    try:
+        # Alternative method: connect to external address to find local IP
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            local_ip = s.getsockname()[0]
+            if local_ip not in ip_addresses:
+                ip_addresses.append(local_ip)
+    except Exception:
+        pass
+    
+    return ip_addresses
+
+
 def main():
     """Main entry point for vine_report command"""
     parser = argparse.ArgumentParser(
@@ -192,7 +223,19 @@ def main():
     
     print(f"🚀 Starting TaskVine Report server...")
     print(f"   📁 Logs directory: {logs_dir}")
-    print(f"   🌐 Server URL: http://localhost:{args.port}")
+    print(f"   🌐 Server accessible at:")
+    
+    # Show all available URLs
+    if args.host == '0.0.0.0':
+        ip_addresses = get_local_ip_addresses()
+        for ip in ip_addresses:
+            if ip == '127.0.0.1':
+                print(f"      -> http://localhost:{args.port}")
+            else:
+                print(f"      -> http://{ip}:{args.port}")
+    else:
+        print(f"      -> http://{args.host}:{args.port}")
+    
     print(f"\nPress Ctrl+C to stop the server")
 
     try:
