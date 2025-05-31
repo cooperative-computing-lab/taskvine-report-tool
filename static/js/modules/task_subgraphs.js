@@ -4,15 +4,13 @@ export class TaskSubgraphsModule extends BaseModule {
     constructor(id, title, api_url) {
         super(id, title, api_url);
         this._current_subgraph_id = 1;
-        this.folder = null;
     }
 
-    async fetchData(folder, subgraph_id = 1, plot_failed_task = true, plot_recovery_task = true) {
+    async fetchData(subgraph_id = 1, plot_failed_task = true, plot_recovery_task = true) {
         if (!subgraph_id) return;
-        this.folder = folder;
         const response = await fetch(
             `${this.api_url}?` +
-            `folder=${folder}` +
+            `folder=${this._folder}` +
             `&subgraph_id=${subgraph_id}` +
             `&plot_failed_task=${plot_failed_task}` +
             `&plot_recovery_task=${plot_recovery_task}`
@@ -28,7 +26,6 @@ export class TaskSubgraphsModule extends BaseModule {
 
         this.data = null;
         this._current_subgraph_id = 1;
-        this.folder = null;
     }
 
     legendOnToggle(id, visible) {
@@ -44,7 +41,7 @@ export class TaskSubgraphsModule extends BaseModule {
 
         /* if the current checkbox is checked, fetch data and plot */
         if (visible) {
-            this.fetchData(this.folder, id);
+            this.fetchData(id);
             this.plot();
         }
     }

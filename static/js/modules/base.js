@@ -9,6 +9,8 @@ export class BaseModule {
         this.title = title;
         this.api_url = api_url;
 
+        this._folder = null;
+
         this.svgContainer = null;
         this.svgElement = null;
         this.svgNode = null;
@@ -63,6 +65,10 @@ export class BaseModule {
 
         this.xScale = null;
         this.yScale = null;
+    }
+
+    switchFolder(folder) {
+        this._folder = folder;
     }
 
     renderSkeleton() {
@@ -122,8 +128,19 @@ export class BaseModule {
         this.toolbox = new Toolbox({ id: `${this.id}-toolbox` });
     }
 
+    async fetchDataAndPlot() {
+        this.clearPlot();
+        this.plotSpinner();
+        await this.fetchData();
+        this.plot();
+    }
+
     createToolboxItemDownloadSVG() {
         return this.toolbox.createButtonItem(`${this.id}-download-svg`, 'Download SVG', () => this.downloadSVG());
+    }
+
+    createToolboxItemRefetch() {
+        return this.toolbox.createButtonItem(`${this.id}-refetch`, 'Reload and Plot', () => this.fetchDataAndPlot());
     }
 
     createToolboxItemReset() {
@@ -349,6 +366,7 @@ export class BaseModule {
             items.push(this.createToolboxItemSelectAll());
             items.push(this.createToolboxItemClearAll());
         }
+        items.push(this.createToolboxItemRefetch());
         items.push(this.createToolboxItemReset());
 
         this._setToolboxItems(items);
@@ -454,10 +472,10 @@ export class BaseModule {
 
     legendOnToggle(id, visible) {}
     
-    async fetchData(folder) {
+    async fetchData() {
         const response = await fetch(
             `${this.api_url}?` +
-            `folder=${folder}`
+            `folder=${this._folder}`
         );
         const data = await response.json();
         

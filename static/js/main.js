@@ -24,17 +24,9 @@ async function fetchAllModulesData(folder) {
         const tasks = moduleConfigs.map(({ id }) => {
             const module = moduleObjects[id];
             return (async () => {
-                /* clear and init plot */
-                module.clearPlot();
+                module.switchFolder(folder);
 
-                /* plot the spinner */
-                module.plotSpinner();
-
-                /* fetch data */
-                await module.fetchData(folder);
-
-                /* plot */
-                module.plot();
+                await module.fetchDataAndPlot();
             })();
         });
 
