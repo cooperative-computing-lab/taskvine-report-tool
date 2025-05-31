@@ -26,7 +26,12 @@ async function fetchAllModulesData(folder) {
             return (async () => {
                 module.switchFolder(folder);
 
-                await module.fetchDataAndPlot();
+                try {
+                    await module.fetchDataAndPlot();
+                } catch (err) {
+                    console.error('Error during module data fetch:', err);
+                    module.clearPlot();
+                }
             })();
         });
 

@@ -44,6 +44,8 @@ def get_task_subgraphs():
 
         # ensure the SVG directory exists
         svg_dir = runtime_state.data_parser.svg_files_dir
+        if not svg_dir:
+            return jsonify({'error': 'SVG directory not configured'}), 500
         os.makedirs(svg_dir, exist_ok=True)
         
         # use a safer filename without special characters that might cause I/O issues
@@ -68,93 +70,99 @@ def get_task_subgraphs():
                 dot.format = 'svg'
                 dot.engine = 'dot'
 
-            def plot_task_node(dot, task):
-                node_id = f'{task.task_id}-{task.task_try_id}'
-                node_label = f'{task.task_id}'
+                def plot_task_node(dot, task):
+                    node_id = f'{task.task_id}-{task.task_try_id}'
+                    node_label = f'{task.task_id}'
 
-                if task.when_failure_happens:
-                    node_label = f'{node_label} (unsuccessful)'
-                    style = 'dashed'
-                    color = '#FF0000'
-                    fontcolor = '#FF0000'
-                else:
-                    style = 'solid'
-                    color = '#000000'
-                    fontcolor = '#000000'
+                    if task.when_failure_happens:
+                        node_label = f'{node_label} (unsuccessful)'
+                        style = 'dashed'
+                        color = '#FF0000'
+                        fontcolor = '#FF0000'
+                    else:
+                        style = 'solid'
+                        color = '#000000'
+                        fontcolor = '#000000'
 
-                if task.is_recovery_task:
-                    node_label = f'{node_label} (recovery)'
-                    style = 'filled,dashed'
-                    fillcolor = '#FF69B4'
-                else:
-                    fillcolor = '#FFFFFF'
+                    if task.is_recovery_task:
+                        node_label = f'{node_label} (recovery)'
+                        style = 'filled,dashed'
+                        fillcolor = '#FF69B4'
+                    else:
+                        fillcolor = '#FFFFFF'
 
-                dot.node(node_id, node_label, shape='ellipse', style=style, color=color, fontcolor=fontcolor, fillcolor=fillcolor)
+                    dot.node(node_id, node_label, shape='ellipse', style=style, color=color, fontcolor=fontcolor, fillcolor=fillcolor)
 
-            def plot_file_node(dot, file):
-                if len(file.producers) == 0:
-                    return
-                file_name = file.filename
-                dot.node(file_name, file_name, shape='box')
+                def plot_file_node(dot, file):
+                    if len(file.producers) == 0:
+                        return
+                    file_name = file.filename
+                    dot.node(file_name, file_name, shape='box')
 
-            def plot_task2file_edge(dot, task, file):
-                if len(file.producers) == 0:
-                    return
-                if task.when_failure_happens:
-                    return
-                else:
-                    task_execution_time = task.time_worker_end - task.time_worker_start
-                    dot.edge(f'{task.task_id}-{task.task_try_id}', file.filename, label=f'{task_execution_time:.2f}s')
+                def plot_task2file_edge(dot, task, file):
+                    if len(file.producers) == 0:
+                        return
+                    if task.when_failure_happens:
+                        return
+                    else:
+                        task_execution_time = task.time_worker_end - task.time_worker_start
+                        dot.edge(f'{task.task_id}-{task.task_try_id}', file.filename, label=f'{task_execution_time:.2f}s')
 
-            def plot_file2task_edge(dot, file, task):
-                if len(file.producers) == 0:
-                    return
-                file_creation_time = float('inf')
-                for producer_task_id, producer_task_try_id in file.producers:
-                    producer_task = runtime_state.tasks[(producer_task_id, producer_task_try_id)]
-                    if producer_task.time_worker_end:
-                        file_creation_time = min(file_creation_time, producer_task.time_worker_end)
-                file_creation_time = file_creation_time - runtime_state.MIN_TIME
+                def plot_file2task_edge(dot, file, task):
+                    if len(file.producers) == 0:
+                        return
+                    file_creation_time = float('inf')
+                    for producer_task_id, producer_task_try_id in file.producers:
+                        producer_task = runtime_state.tasks[(producer_task_id, producer_task_try_id)]
+                        if producer_task.time_worker_end:
+                            file_creation_time = min(file_creation_time, producer_task.time_worker_end)
+                    file_creation_time = file_creation_time - runtime_state.MIN_TIME
 
-                dot.edge(file.filename, f'{task.task_id}-{task.task_try_id}', label=f'{file_creation_time:.2f}s')
+                    dot.edge(file.filename, f'{task.task_id}-{task.task_try_id}', label=f'{file_creation_time:.2f}s')
 
-            for (tid, try_id) in task_tries:
-                task = runtime_state.tasks[(tid, try_id)]
-                if task.is_recovery_task and not plot_recovery_task:
-                    continue
-                if task.when_failure_happens and not plot_unsuccessful_task:
-                    continue
-                plot_task_node(dot, task)
-                for file_name in getattr(task, 'input_files', []):
-                    file = runtime_state.files[file_name]
-                    plot_file_node(dot, file)
-                    plot_file2task_edge(dot, file, task)
-                for file_name in getattr(task, 'output_files', []):
-                    file = runtime_state.files[file_name]
-                    if len(file.transfers) == 0:
-                        continue
-                    plot_file_node(dot, file)
-                    plot_task2file_edge(dot, task, file)
+                # set graph attributes before adding nodes and edges
                 dot.attr(rankdir='TB')
+
+                # add all tasks, files, and edges to the graph
+                for (tid, try_id) in task_tries:
+                    task = runtime_state.tasks[(tid, try_id)]
+                    if task.is_recovery_task and not plot_recovery_task:
+                        continue
+                    if task.when_failure_happens and not plot_unsuccessful_task:
+                        continue
+                    plot_task_node(dot, task)
+                    for file_name in getattr(task, 'input_files', []):
+                        file = runtime_state.files[file_name]
+                        plot_file_node(dot, file)
+                        plot_file2task_edge(dot, file, task)
+                    for file_name in getattr(task, 'output_files', []):
+                        file = runtime_state.files[file_name]
+                        if len(file.transfers) == 0:
+                            continue
+                        plot_file_node(dot, file)
+                        plot_task2file_edge(dot, task, file)
                 
                 # generate SVG with better error handling for cross-platform compatibility
                 svg_generated = False
                 error_message = ""
                 
-                # attempt to render the SVG
-                dot.render(svg_file_path_without_suffix, format='svg', view=False, cleanup=True)
-                
-                # verify the generated file is valid
-                if Path(svg_file_path).exists() and Path(svg_file_path).stat().st_size > 0:
-                    # check if the content is actually valid SVG
-                    with open(svg_file_path, 'r') as f:
-                        content = f.read().strip()
-                        if content and (content.startswith('<?xml') or content.startswith('<svg')):
-                            svg_generated = True
-                        else:
-                            error_message = "Generated file is not valid SVG"
-                else:
-                    error_message = "SVG file was not generated or is empty"
+                try:
+                    # attempt to render the SVG
+                    dot.render(svg_file_path_without_suffix, format='svg', view=False, cleanup=True)
+                    
+                    # verify the generated file is valid
+                    if Path(svg_file_path).exists() and Path(svg_file_path).stat().st_size > 0:
+                        # check if the content is actually valid SVG
+                        with open(svg_file_path, 'r') as f:
+                            content = f.read().strip()
+                            if content and (content.startswith('<?xml') or content.startswith('<svg')):
+                                svg_generated = True
+                            else:
+                                error_message = "Generated file is not valid SVG"
+                    else:
+                        error_message = "SVG file was not generated or is empty"
+                except Exception as e:
+                    error_message = f"Exception during SVG generation: {str(e)}"
                 
                 # if generation failed, create a fallback SVG
                 if not svg_generated:
@@ -191,7 +199,8 @@ def get_task_subgraphs():
             )
         ]
         # check the current subgraph (subgraph_id is 1-based)
-        data['legend'][subgraph_id - 1]['checked'] = True
+        if subgraph_id <= len(data['legend']) and subgraph_id > 0:
+            data['legend'][subgraph_id - 1]['checked'] = True
 
         return jsonify(data)
     except Exception as e:

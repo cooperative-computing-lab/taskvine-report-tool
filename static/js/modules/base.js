@@ -472,11 +472,32 @@ export class BaseModule {
 
     legendOnToggle(id, visible) {}
     
-    async fetchData() {
-        const response = await fetch(
-            `${this.api_url}?` +
-            `folder=${this._folder}`
-        );
+    async fetchData(extraParams = {}) {
+        // Build query parameters starting with folder
+        const params = new URLSearchParams({
+            folder: this._folder
+        });
+        
+        // Add any extra parameters passed by subclasses
+        // Support both simple key-value pairs and JSON-style objects
+        Object.entries(extraParams).forEach(([key, value]) => {
+            if (value !== undefined && value !== null) {
+                if (Array.isArray(value)) {
+                    // Handle arrays by appending each value
+                    value.forEach(item => {
+                        params.append(key, String(item));
+                    });
+                } else if (typeof value === 'object') {
+                    // Handle objects by converting to JSON string
+                    params.append(key, JSON.stringify(value));
+                } else {
+                    // Handle primitive values
+                    params.append(key, String(value));
+                }
+            }
+        });
+        
+        const response = await fetch(`${this.api_url}?${params.toString()}`);
         const data = await response.json();
         
         if (!data) {

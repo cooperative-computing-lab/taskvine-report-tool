@@ -6,19 +6,18 @@ export class TaskSubgraphsModule extends BaseModule {
         this._current_subgraph_id = 1;
     }
 
-    async fetchData(subgraph_id = 1, plot_failed_task = true, plot_recovery_task = true) {
-        if (!subgraph_id) return;
-        const response = await fetch(
-            `${this.api_url}?` +
-            `folder=${this._folder}` +
-            `&subgraph_id=${subgraph_id}` +
-            `&plot_failed_task=${plot_failed_task}` +
-            `&plot_recovery_task=${plot_recovery_task}`
-        );
-        this.data = await response.json();
-        this._current_subgraph_id = subgraph_id;
-
-        this._setAxesFromFetchedData();
+    async fetchDataAndPlot() {
+        this.clearPlot();
+        this.plotSpinner();
+        
+        // Call parent fetchData with default parameters for TaskSubgraphs
+        await this.fetchData({
+            subgraph_id: this._current_subgraph_id,
+            plot_failed_task: true,
+            plot_recovery_task: true
+        });
+        
+        this.plot();
     }
 
     resetPlot() {
@@ -41,8 +40,14 @@ export class TaskSubgraphsModule extends BaseModule {
 
         /* if the current checkbox is checked, fetch data and plot */
         if (visible) {
-            this.fetchData(id);
-            this.plot();
+            this.fetchData({
+                subgraph_id: id,
+                plot_failed_task: true,
+                plot_recovery_task: true
+            }).then(() => {
+                this._current_subgraph_id = id;
+                this.plot();
+            });
         }
     }
 
