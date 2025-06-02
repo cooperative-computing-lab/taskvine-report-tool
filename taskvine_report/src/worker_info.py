@@ -8,7 +8,7 @@ class WorkerInfo:
         self.ip = ip
         self.port = port
         self.connect_id = connect_id
-        
+
         self.id = None
         self.hash = None
         self.machine_name = None
@@ -77,8 +77,7 @@ class WorkerInfo:
                 cores_found += 1
                 if cores_found == task.cores_requested:
                     return i
-        print(
-            f"Warning: not enough cores available for task {task.task_id}, {cores_found} != {task.cores_requested}")
+        print(f"Warning: not enough cores available for task {task.task_id}, {cores_found} != {task.cores_requested}")
         # more detailed information about the coremap
         print(self.coremap)
         return -1

@@ -82,12 +82,6 @@ def main():
         help='List of log directory names/patterns. Use shell glob expansion without quotes: '
              '--templates exp* test* checkpoint_*. Quotes will be automatically removed if provided. Required.'
     )
-
-    parser.add_argument(
-        '--subgraphs-only', 
-        action='store_true',
-        help='Only generate subgraphs (assumes debug file was previously parsed)'
-    )
     
     parser.add_argument(
         '--logs-dir',
@@ -143,11 +137,8 @@ def main():
         print(f"\n=== Start parsing: {template}")
         try:
             data_parser = DataParser(template)
-            if args.subgraphs_only:
-                data_parser.generate_subgraphs()
-            else:
-                data_parser.parse_logs()
-                data_parser.generate_subgraphs()
+            data_parser.parse_logs()
+            data_parser.generate_subgraphs()
             print(f"✅ Successfully processed: {template}")
         except Exception as e:
             print(f"❌ Error processing {template}: {e}")

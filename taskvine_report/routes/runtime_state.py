@@ -1,7 +1,6 @@
 import os
 from pathlib import Path
 from ..src.data_parse import DataParser
-import functools
 from .logger import Logger
 from .utils import (
     build_response_info_string,
@@ -9,11 +8,9 @@ from .utils import (
     get_files_fingerprint,
     floor_decimal
 )
-import json
 import time
 import traceback
 import threading
-from flask import current_app
 
 
 class LeaseLock:
@@ -128,7 +125,7 @@ class RuntimeState:
     def reload_data_if_needed(self):
         if not self.data_parser:
             return False
-        
+
         if not self.data_parser.pkl_files:
             return False
 
