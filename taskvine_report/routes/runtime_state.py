@@ -105,7 +105,7 @@ class RuntimeState:
         if self.runtime_template:
             return f"[{Path(self.runtime_template).name}]"
         else:
-            return ""
+            return "APP"
 
     def log_info(self, message):
         self.logger.info(f"{self.log_prefix} {message}")

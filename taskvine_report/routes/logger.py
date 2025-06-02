@@ -13,17 +13,17 @@ class Logger:
 
     def _initialize(self, log_file_name):
         self.log_file = os.path.join(os.getcwd(), log_file_name)
+        self.logger = logging.getLogger('taskvine-report-tool')
+        self.logger.setLevel(logging.INFO)
 
         try:
             if os.path.exists(self.log_file):
                 os.remove(self.log_file)
-                print(f"Removed existing log file: {self.log_file}")
+                self.info(f"Removed existing log file: {self.log_file}")
         except Exception as e:
-            print(f"Warning: Could not remove existing log file: {e}")
+            self.warning(f"Could not remove existing log file: {e}")
 
-        print(f"Initializing logger with log file: {self.log_file}")
-        self.logger = logging.getLogger('taskvine')
-        self.logger.setLevel(logging.INFO)
+        self.info(f"Initializing logger with log file: {self.log_file}")
 
         if self.logger.handlers:
             self.logger.handlers.clear()
