@@ -9,20 +9,13 @@ import argparse
 import os
 import sys
 import fnmatch
-from pathlib import Path
 
-try:
-    from ..src.data_parse import DataParser
-    from .. import __version__
-except ImportError:
-    # Handle direct execution
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
-    from taskvine_report.src.data_parse import DataParser
-    from taskvine_report import __version__
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+from taskvine_report.src.data_parse import DataParser
+from taskvine_report import __version__
 
 
 def remove_duplicates_preserve_order(seq):
-    """Remove duplicate items while preserving order"""
     seen = set()
     result = []
     for item in seq:
@@ -62,16 +55,15 @@ def find_matching_directories(root_dir, patterns):
 
 
 def main():
-    """Main entry point for vine_parse command"""
     parser = argparse.ArgumentParser(
         prog='vine_parse',
         description='Parse TaskVine execution logs and generate analysis data'
     )
-    
+
     parser.add_argument(
-        '-v', '--version',
-        action='version',
-        version=f'%(prog)s {__version__}'
+        '--logs-dir',
+        default=os.getcwd(),
+        help='Base directory containing log folders (default: current directory)'
     )
     
     parser.add_argument(
@@ -82,11 +74,11 @@ def main():
         help='List of log directory names/patterns. Use shell glob expansion without quotes: '
              '--templates exp* test* checkpoint_*. Quotes will be automatically removed if provided. Required.'
     )
-    
+
     parser.add_argument(
-        '--logs-dir',
-        default=os.getcwd(),
-        help='Base directory containing log folders (default: current directory)'
+        '-v', '--version',
+        action='version',
+        version=f'%(prog)s {__version__}'
     )
     
     args = parser.parse_args()

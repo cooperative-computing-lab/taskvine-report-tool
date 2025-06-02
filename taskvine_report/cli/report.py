@@ -166,9 +166,9 @@ def main():
     )
     
     parser.add_argument(
-        '-v', '--version',
-        action='version',
-        version=f'%(prog)s {__version__}'
+        '--logs-dir', 
+        default=os.getcwd(),
+        help='Directory containing log folders (default: current directory)'
     )
     
     parser.add_argument(
@@ -179,15 +179,15 @@ def main():
     )
     
     parser.add_argument(
-        '--logs-dir', 
-        default=os.getcwd(),
-        help='Directory containing log folders (default: current directory)'
-    )
-    
-    parser.add_argument(
         '--host',
         default='0.0.0.0',
         help='Host address to bind to (default: 0.0.0.0)'
+    )
+
+    parser.add_argument(
+        '-v', '--version',
+        action='version',
+        version=f'%(prog)s {__version__}'
     )
     
     args = parser.parse_args()
