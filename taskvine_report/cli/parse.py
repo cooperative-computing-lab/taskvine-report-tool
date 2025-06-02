@@ -8,6 +8,7 @@ This command parses TaskVine execution logs and generates analysis data.
 import argparse
 import os
 import sys
+import fnmatch
 from pathlib import Path
 
 try:
@@ -25,11 +26,39 @@ def remove_duplicates_preserve_order(seq):
     seen = set()
     result = []
     for item in seq:
-        name = Path(item).name
-        if name not in seen:
-            seen.add(name)
-            result.append(name)
+        if item not in seen:
+            seen.add(item)
+            result.append(item)
     return result
+
+
+def find_matching_directories(root_dir, patterns):
+    try:
+        all_dirs = [d for d in os.listdir(root_dir) 
+                   if os.path.isdir(os.path.join(root_dir, d))]
+        
+        matched_dirs = []
+        for pattern in patterns:
+            # remove quotes if user accidentally included them
+            cleaned_pattern = pattern.strip('\'"')
+            
+            # check for glob pattern matching
+            pattern_matches = [d for d in all_dirs if fnmatch.fnmatch(d, cleaned_pattern)]
+            
+            if pattern_matches:
+                matched_dirs.extend(pattern_matches)
+            else:
+                print(f"⚠️  Pattern '{cleaned_pattern}' matched no directories")
+        
+        if not matched_dirs:
+            print(f"❌ No directories matched any of the provided patterns in {root_dir}")
+            sys.exit(1)
+            
+        return matched_dirs
+        
+    except Exception as e:
+        print(f"❌ Error scanning directory {root_dir}: {e}")
+        sys.exit(1)
 
 
 def main():
@@ -46,16 +75,12 @@ def main():
     )
     
     parser.add_argument(
-        'templates', 
+        '--templates', 
         type=str, 
-        nargs='*',  # changed from '+' to '*' to make it optional
-        help='List of log directories (e.g., log1 log2 log3). Required unless --all is specified.'
-    )
-
-    parser.add_argument(
-        '--all', 
-        action='store_true',
-        help='Process all log directories found in --logs-dir'
+        nargs='+',
+        required=True,
+        help='List of log directory names/patterns. Use shell glob expansion without quotes: '
+             '--templates exp* test* checkpoint_*. Quotes will be automatically removed if provided. Required.'
     )
 
     parser.add_argument(
@@ -72,61 +97,48 @@ def main():
     
     args = parser.parse_args()
 
-    # Validate arguments
-    if args.all and args.templates:
-        print("❌ Cannot specify both --all and templates. Choose one.")
-        sys.exit(1)
-    
-    if not args.all and not args.templates:
-        print("❌ Must specify either --all or provide templates.")
-        sys.exit(1)
-
     root_dir = os.path.abspath(args.logs_dir)
 
-    if args.all:
-        # Find all directories in logs_dir that contain vine-logs subdirectory
-        try:
-            potential_dirs = [d for d in os.listdir(root_dir) 
-                            if os.path.isdir(os.path.join(root_dir, d))]
-            templates = []
-            for d in potential_dirs:
-                vine_logs_path = os.path.join(root_dir, d, 'vine-logs')
-                if os.path.exists(vine_logs_path):
-                    templates.append(d)
-            
-            if not templates:
-                print(f"❌ No log directories with 'vine-logs' subdirectory found in {root_dir}")
-                sys.exit(1)
-                
-            print(f"🔍 Found {len(templates)} log directories with 'vine-logs' subdirectory:")
-            for template in sorted(templates):
-                print(f"  - {template}")
-            
-            # Remove duplicates while preserving order
-            deduped_names = remove_duplicates_preserve_order(templates)
-        except Exception as e:
-            print(f"❌ Error scanning directory {root_dir}: {e}")
-            sys.exit(1)
-    else:
-        # Use provided templates
-        deduped_names = remove_duplicates_preserve_order(args.templates)
+    # find directories matching the regex patterns
+    matched_dirs = find_matching_directories(root_dir, args.templates)
+    
+    # remove duplicates while preserving order
+    deduped_names = remove_duplicates_preserve_order(matched_dirs)
 
-    # Construct full paths
+    # construct full paths
     full_paths = [os.path.join(root_dir, name) for name in deduped_names]
 
-    # Check if all directories exist
-    missing = [p for p in full_paths if not os.path.exists(p)]
+    # check if all directories exist and have vine-logs subdirectory
+    missing = []
+    no_vine_logs = []
+    for path in full_paths:
+        if not os.path.exists(path):
+            missing.append(path)
+        elif not os.path.exists(os.path.join(path, 'vine-logs')):
+            no_vine_logs.append(path)
+    
     if missing:
-        print("❌ The following log directories do not exist:")
+        print("❌ The following directories do not exist:")
         for m in missing:
             print(f"  - {m}")
         sys.exit(1)
+    
+    if no_vine_logs:
+        print("⚠️  The following directories do not contain 'vine-logs' subdirectory:")
+        for m in no_vine_logs:
+            print(f"  - {m}")
+        # filter out directories without vine-logs
+        full_paths = [p for p in full_paths if p not in no_vine_logs]
+        
+    if not full_paths:
+        print("❌ No valid log directories found to process")
+        sys.exit(1)
 
-    print("✅ The following log directories will be processed:")
+    print(f"\n✅ The following {len(full_paths)} log directories will be processed:")
     for path in full_paths:
         print(f"  - {path}")
 
-    # Process each directory
+    # process each directory
     for template in full_paths:
         print(f"\n=== Start parsing: {template}")
         try:

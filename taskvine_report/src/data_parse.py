@@ -9,7 +9,7 @@ import os
 from functools import lru_cache
 from datetime import datetime
 import time
-from tqdm import tqdm
+from rich.progress import Progress, SpinnerColumn, TimeElapsedColumn, TimeRemainingColumn, MofNCompleteColumn, BarColumn
 from collections import defaultdict
 import cloudpickle
 from datetime import timezone, timedelta
@@ -767,20 +767,30 @@ class DataParser:
         unit, scale = get_unit_and_scale_by_max_file_size_mb(debug_file_size_mb)
 
         print(f"Debug file size: {floor_decimal(debug_file_size_mb * scale, 2)} {unit}")
-        with open(self.debug, 'rb') as file:
-            pbar = tqdm(total=total_lines, desc="Parsing debug")
-            for raw_line in file:
-                pbar.update(1)
-                try:
-                    line = raw_line.decode('utf-8').strip()
-                    self.parse_debug_line(line)
-                except UnicodeDecodeError:
-                    print(f"Error decoding line to utf-8: {raw_line}")
-                except Exception as e:
-                    print(f"Error parsing line: {line}")
-                    raise e
-
-            pbar.close()
+        
+        with Progress(
+            SpinnerColumn(),
+            "[progress.description]{task.description}",
+            BarColumn(),
+            MofNCompleteColumn(),
+            "[progress.percentage]{task.percentage:>3.0f}%",
+            TimeElapsedColumn(),
+            TimeRemainingColumn(),
+            refresh_per_second=10,
+        ) as progress:
+            task_id = progress.add_task("Parsing debug", total=total_lines)
+            
+            with open(self.debug, 'rb') as file:
+                for raw_line in file:
+                    progress.update(task_id, advance=1)
+                    try:
+                        line = raw_line.decode('utf-8').strip()
+                        self.parse_debug_line(line)
+                    except UnicodeDecodeError:
+                        print(f"Error decoding line to utf-8: {raw_line}")
+                    except Exception as e:
+                        print(f"Error parsing line: {line}")
+                        raise e
 
         time_end = time.time()
         print(f"Parsing debug took {round(time_end - time_start, 4)} seconds")
@@ -826,19 +836,31 @@ class DataParser:
                 parent[root_y] = root_x
                 rank[root_x] += 1
 
-        pbar = tqdm(self.files.values(), desc="Parsing subgraphs")
-        for file in pbar:
-            if not file.producers:
-                continue
-            # use set operations to quickly get the tasks involved
-            tasks_involved = (set(file.producers) | set(
-                file.consumers)) & tasks_keys
-            if len(tasks_involved) <= 1:
-                continue
-            tasks_involved = list(tasks_involved)
-            first_task = tasks_involved[0]
-            for other_task in tasks_involved[1:]:
-                union(first_task, other_task)
+        with Progress(
+            SpinnerColumn(),
+            "[progress.description]{task.description}",
+            BarColumn(),
+            MofNCompleteColumn(),
+            "[progress.percentage]{task.percentage:>3.0f}%",
+            TimeElapsedColumn(),
+            TimeRemainingColumn(),
+            refresh_per_second=10,
+        ) as progress:
+            task_id = progress.add_task("Parsing subgraphs", total=len(self.files))
+            
+            for file in self.files.values():
+                progress.update(task_id, advance=1)
+                if not file.producers:
+                    continue
+                # use set operations to quickly get the tasks involved
+                tasks_involved = (set(file.producers) | set(
+                    file.consumers)) & tasks_keys
+                if len(tasks_involved) <= 1:
+                    continue
+                tasks_involved = list(tasks_involved)
+                first_task = tasks_involved[0]
+                for other_task in tasks_involved[1:]:
+                    union(first_task, other_task)
 
         # group tasks by the root, forming subgraphs
         subgraphs = defaultdict(set)
