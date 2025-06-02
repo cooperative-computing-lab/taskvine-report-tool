@@ -14,81 +14,38 @@ import logging
 import socket
 from flask import Flask, render_template, request
 
-# Check for version argument early to avoid logger initialization
-if len(sys.argv) == 2 and sys.argv[1] in ['-v', '--version']:
-    try:
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
-        from taskvine_report import __version__
-        print('vine_report ' + str(__version__))
-        sys.exit(0)
-    except ImportError:
-        print("Error: Could not determine version")
-        sys.exit(1)
-
-# Suppress Flask development server warning
+# Suppress Flask development server warnings
 warnings.filterwarnings('ignore', message='This is a development server.*')
-# Also suppress Werkzeug warnings
+# Suppress Werkzeug warnings
 logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
-# Handle imports for both package and direct execution
-try:
-    from ..routes.runtime_template import runtime_template_bp
-    from ..routes.worker_storage_consumption import worker_storage_consumption_bp
-    from ..routes.file_sizes import file_sizes_bp
-    from ..routes.file_concurrent_replicas import file_concurrent_replicas_bp
-    from ..routes.task_concurrency import task_concurrency_bp
-    from ..routes.task_execution_time import task_execution_time_bp
-    from ..routes.task_execution_details import task_execution_details_bp
-    from ..routes.task_response_time import task_response_time_bp
-    from ..routes.task_retrieval_time import task_retrieval_time_bp
-    from ..routes.task_dependents import task_dependents_bp
-    from ..routes.worker_concurrency import worker_concurrency_bp
-    from ..routes.worker_executing_tasks import worker_executing_tasks_bp
-    from ..routes.worker_waiting_retrieval_tasks import worker_waiting_retrieval_tasks_bp
-    from ..routes.worker_lifetime import worker_lifetime_bp
-    from ..routes.file_transferred_size import file_transferred_size_bp
-    from ..routes.file_created_size import file_created_size_bp
-    from ..routes.file_retention_time import file_retention_time_bp
-    from ..routes.runtime_state import runtime_state
-    from ..routes.worker_transfers import worker_transfers_bp
-    from ..routes.task_completion_percentiles import task_completion_percentiles_bp
-    from ..routes.task_dependencies import task_dependencies_bp
-    from ..routes.lock import lock_bp
-    from ..routes.task_subgraphs import task_subgraphs_bp
-    from .. import __version__
-except ImportError:
-    # Handle direct execution
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
-    from taskvine_report.routes.runtime_template import runtime_template_bp
-    from taskvine_report.routes.worker_storage_consumption import worker_storage_consumption_bp
-    from taskvine_report.routes.file_sizes import file_sizes_bp
-    from taskvine_report.routes.file_concurrent_replicas import file_concurrent_replicas_bp
-    from taskvine_report.routes.task_concurrency import task_concurrency_bp
-    from taskvine_report.routes.task_execution_time import task_execution_time_bp
-    from taskvine_report.routes.task_execution_details import task_execution_details_bp
-    from taskvine_report.routes.task_response_time import task_response_time_bp
-    from taskvine_report.routes.task_retrieval_time import task_retrieval_time_bp
-    from taskvine_report.routes.task_dependents import task_dependents_bp
-    from taskvine_report.routes.worker_concurrency import worker_concurrency_bp
-    from taskvine_report.routes.worker_executing_tasks import worker_executing_tasks_bp
-    from taskvine_report.routes.worker_waiting_retrieval_tasks import worker_waiting_retrieval_tasks_bp
-    from taskvine_report.routes.worker_lifetime import worker_lifetime_bp
-    from taskvine_report.routes.file_transferred_size import file_transferred_size_bp
-    from taskvine_report.routes.file_created_size import file_created_size_bp
-    from taskvine_report.routes.file_retention_time import file_retention_time_bp
-    from taskvine_report.routes.runtime_state import runtime_state
-    from taskvine_report.routes.worker_transfers import worker_transfers_bp
-    from taskvine_report.routes.task_completion_percentiles import task_completion_percentiles_bp
-    from taskvine_report.routes.task_dependencies import task_dependencies_bp
-    from taskvine_report.routes.lock import lock_bp
-    from taskvine_report.routes.task_subgraphs import task_subgraphs_bp
-    from taskvine_report import __version__
-
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+from taskvine_report.routes.runtime_template import runtime_template_bp
+from taskvine_report.routes.worker_storage_consumption import worker_storage_consumption_bp
+from taskvine_report.routes.file_sizes import file_sizes_bp
+from taskvine_report.routes.file_concurrent_replicas import file_concurrent_replicas_bp
+from taskvine_report.routes.task_concurrency import task_concurrency_bp
+from taskvine_report.routes.task_execution_time import task_execution_time_bp
+from taskvine_report.routes.task_execution_details import task_execution_details_bp
+from taskvine_report.routes.task_response_time import task_response_time_bp
+from taskvine_report.routes.task_retrieval_time import task_retrieval_time_bp
+from taskvine_report.routes.task_dependents import task_dependents_bp
+from taskvine_report.routes.worker_concurrency import worker_concurrency_bp
+from taskvine_report.routes.worker_executing_tasks import worker_executing_tasks_bp
+from taskvine_report.routes.worker_waiting_retrieval_tasks import worker_waiting_retrieval_tasks_bp
+from taskvine_report.routes.worker_lifetime import worker_lifetime_bp
+from taskvine_report.routes.file_transferred_size import file_transferred_size_bp
+from taskvine_report.routes.file_created_size import file_created_size_bp
+from taskvine_report.routes.file_retention_time import file_retention_time_bp
+from taskvine_report.routes.runtime_state import RuntimeState
+from taskvine_report.routes.worker_transfers import worker_transfers_bp
+from taskvine_report.routes.task_completion_percentiles import task_completion_percentiles_bp
+from taskvine_report.routes.task_dependencies import task_dependencies_bp
+from taskvine_report.routes.lock import lock_bp
+from taskvine_report.routes.task_subgraphs import task_subgraphs_bp
+from taskvine_report import __version__
 
 def create_app(logs_dir):
-    """Create and configure the Flask application"""
-    
-    # Set the package directory for templates and static files
     package_dir = os.path.dirname(os.path.dirname(__file__))
     template_dir = os.path.join(package_dir, 'templates')
     static_dir = os.path.join(package_dir, 'static')
@@ -97,29 +54,29 @@ def create_app(logs_dir):
                 template_folder=template_dir,
                 static_folder=static_dir)
 
-    def setup_request_logging(app, runtime_state):
+    def setup_request_logging(app):
         @app.before_request
         def log_request_info():
-            runtime_state.template_lock.renew()
+            app.config["RUNTIME_STATE"].template_lock.renew()
             request_folder = request.args.get('folder')
-            runtime_state.log_request(request)
+            app.config["RUNTIME_STATE"].log_request(request)
             request._start_time = time.time()
             
-            runtime_state.ensure_runtime_template(request_folder)
+            app.config["RUNTIME_STATE"].ensure_runtime_template(request_folder)
 
         @app.after_request
         def log_response_info(response):
-            runtime_state.template_lock.renew()
+            app.config["RUNTIME_STATE"].template_lock.renew()
             if hasattr(request, '_start_time'):
                 duration = time.time() - request._start_time
-                runtime_state.log_response(response, request, duration)
+                app.config["RUNTIME_STATE"].log_response(response, request, duration)
             else:
-                runtime_state.log_response(response, request)
+                app.config["RUNTIME_STATE"].log_response(response, request)
             return response
 
         return app
 
-    setup_request_logging(app, runtime_state)
+    setup_request_logging(app)
 
     # Register blueprints
     # Tasks
@@ -156,10 +113,20 @@ def create_app(logs_dir):
     # Lock
     app.register_blueprint(lock_bp)
 
+    # Set sampling parameters
+    app.config["SAMPLING_POINTS"] = 100000
+    app.config["SAMPLING_TASK_BARS"] = 100000
+
+    # Set logger and logs directory
+    app.config["RUNTIME_STATE"] = RuntimeState()
+    app.config["RUNTIME_STATE"].set_logger()
+    app.config["RUNTIME_STATE"].set_logs_dir(logs_dir)
+    app.config["RUNTIME_STATE"].log_info(f"Using logs directory: {logs_dir}")
+
     @app.route('/')
     def index():
         log_folders = [name for name in os.listdir(
-            runtime_state.logs_dir) if os.path.isdir(os.path.join(runtime_state.logs_dir, name))]
+            app.config["RUNTIME_STATE"].logs_dir) if os.path.isdir(os.path.join(app.config["RUNTIME_STATE"].logs_dir, name))]
         log_folders_sorted = sorted(log_folders)
         return render_template('index.html', log_folders=log_folders_sorted)
 
@@ -167,24 +134,19 @@ def create_app(logs_dir):
 
 
 def get_local_ip_addresses():
-    """Get all available local IP addresses"""
-    ip_addresses = ['127.0.0.1']  # Always include localhost
+    ip_addresses = ['127.0.0.1']
     
     try:
-        # Get hostname
         hostname = socket.gethostname()
         
-        # Get all IP addresses for this host
         for addr_info in socket.getaddrinfo(hostname, None):
             ip = addr_info[4][0]
-            # Filter out IPv6 and localhost duplicates
             if ':' not in ip and ip != '127.0.0.1' and ip not in ip_addresses:
                 ip_addresses.append(ip)
     except Exception:
         pass
     
     try:
-        # Alternative method: connect to external address to find local IP
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.connect(("8.8.8.8", 80))
             local_ip = s.getsockname()[0]
@@ -197,10 +159,10 @@ def get_local_ip_addresses():
 
 
 def main():
-    """Main entry point for vine_report command"""
     parser = argparse.ArgumentParser(
         prog='vine_report',
-        description='Start TaskVine Report web server for log visualization'
+        description='Start TaskVine Report web server for log visualization',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     
     parser.add_argument(
@@ -230,30 +192,22 @@ def main():
     
     args = parser.parse_args()
 
-    # Set logs directory in runtime state
     logs_dir = os.path.abspath(args.logs_dir)
-    runtime_state.set_logs_dir(logs_dir)
-
-    # Create Flask app
-    app = create_app(logs_dir)
-
-    runtime_state.log_info(f"Starting TaskVine Report server on {args.host}:{args.port}")
-    runtime_state.log_info(f"Using logs directory: {logs_dir}")
-    
     print(f"🚀 Starting TaskVine Report server...")
     print(f"   📁 Logs directory: {logs_dir}")
     print(f"   🌐 Server accessible at:")
+
+    app = create_app(logs_dir)
     
-    # Show all available URLs
     if args.host == '0.0.0.0':
         ip_addresses = get_local_ip_addresses()
         for ip in ip_addresses:
             if ip == '127.0.0.1':
-                print(f"      -> http://localhost:{args.port}")
+                print(f"      🔗 http://localhost:{args.port}")
             else:
-                print(f"      -> http://{ip}:{args.port}")
+                print(f"      🔗 http://{ip}:{args.port}")
     else:
-        print(f"      -> http://{args.host}:{args.port}")
+        print(f"      🔗 http://{args.host}:{args.port}")
     
     print(f"\nPress Ctrl+C to stop the server")
 

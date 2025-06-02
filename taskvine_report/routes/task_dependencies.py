@@ -1,8 +1,7 @@
-from flask import Blueprint, jsonify, make_response
+from flask import Blueprint, jsonify, make_response, current_app
 import pandas as pd
 from io import StringIO
 
-from .runtime_state import runtime_state
 from .utils import (
     compute_linear_tick_values,
     d3_int_formatter,
@@ -12,12 +11,12 @@ from .utils import (
 task_dependencies_bp = Blueprint('task_dependencies', __name__, url_prefix='/api')
 
 def get_dependency_points():
-    if not runtime_state.task_stats:
+    if not current_app.config["RUNTIME_STATE"].task_stats:
         return []
 
     return [
         [row['global_idx'], row['dependency_count']]
-        for row in runtime_state.task_stats
+        for row in current_app.config["RUNTIME_STATE"].task_stats
     ]
 
 
@@ -41,7 +40,7 @@ def get_task_dependencies():
             'y_tick_formatter': d3_int_formatter()
         })
     except Exception as e:
-        runtime_state.log_error(f"Error in get_task_dependencies: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in get_task_dependencies: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -64,5 +63,5 @@ def export_task_dependencies_csv():
         response.headers["Content-Type"] = "text/csv"
         return response
     except Exception as e:
-        runtime_state.log_error(f"Error in export_task_dependencies_csv: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in export_task_dependencies_csv: {e}")
         return jsonify({'error': str(e)}), 500

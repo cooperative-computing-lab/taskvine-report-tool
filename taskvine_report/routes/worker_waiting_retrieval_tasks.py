@@ -1,22 +1,14 @@
-from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
-from .utils import (
-    compute_linear_tick_values,
-    d3_time_formatter,
-    d3_int_formatter,
-    floor_decimal,
-    compress_time_based_critical_points,
-    get_worker_time_boundary_points
-)
-from flask import Blueprint, jsonify, Response
+from .utils import *
+from flask import Blueprint, jsonify, Response, current_app
 from collections import defaultdict
 import pandas as pd 
 
 worker_waiting_retrieval_tasks_bp = Blueprint('worker_waiting_retrieval_tasks', __name__, url_prefix='/api')
 
 def get_worker_waiting_retrieval_task_points():
-    base_time = runtime_state.MIN_TIME
-    tasks = runtime_state.tasks
-    workers = runtime_state.workers
+    base_time = current_app.config["RUNTIME_STATE"].MIN_TIME
+    tasks = current_app.config["RUNTIME_STATE"].tasks
+    workers = current_app.config["RUNTIME_STATE"].workers
 
     raw_points_array = []
     worker_keys = []
@@ -71,7 +63,7 @@ def get_worker_waiting_retrieval_tasks():
             data[wid] = points
             max_y = max(max_y, max(p[1] for p in points))
 
-        x_domain = [0, float(runtime_state.MAX_TIME - runtime_state.MIN_TIME)]
+        x_domain = [0, float(current_app.config["RUNTIME_STATE"].MAX_TIME - current_app.config["RUNTIME_STATE"].MIN_TIME)]
         y_domain = [0, max(1.0, max_y)]
 
         return jsonify({
@@ -84,7 +76,7 @@ def get_worker_waiting_retrieval_tasks():
             'y_tick_formatter': d3_int_formatter(),
         })
     except Exception as e:
-        runtime_state.log_error(f"Error in get_worker_waiting_retrieval_tasks: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in get_worker_waiting_retrieval_tasks: {e}")
         return jsonify({'error': str(e)}), 500
 
 @worker_waiting_retrieval_tasks_bp.route('/worker-waiting-retrieval-tasks/export-csv')
@@ -110,9 +102,9 @@ def export_worker_waiting_retrieval_tasks_csv():
                         col_map[t] = v
                         time_set.add(t)
                     else:
-                        runtime_state.log_error(f"Skipping malformed row at index {i} for {wid}: {row}")
+                        current_app.config["RUNTIME_STATE"].log_error(f"Skipping malformed row at index {i} for {wid}: {row}")
                 except Exception as e:
-                    runtime_state.log_error(f"Error parsing row {row} for {wid}: {e}")
+                    current_app.config["RUNTIME_STATE"].log_error(f"Error parsing row {row} for {wid}: {e}")
                     continue
 
             column_data[wid] = col_map
@@ -141,5 +133,5 @@ def export_worker_waiting_retrieval_tasks_csv():
         )
 
     except Exception as e:
-        runtime_state.log_error(f"Error in export_worker_waiting_retrieval_tasks_csv: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in export_worker_waiting_retrieval_tasks_csv: {e}")
         return jsonify({'error': str(e)}), 500

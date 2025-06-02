@@ -13,10 +13,7 @@ import json
 import time
 import traceback
 import threading
-
-
-SAMPLING_POINTS = 100000  # at lease 3: the beginning, the end, and the global peak
-SAMPLING_TASK_BARS = 100000   # how many task bars to show
+from flask import current_app
 
 
 class LeaseLock:
@@ -66,37 +63,6 @@ class LeaseLock:
         self.release()
 
 
-def check_and_reload_data():
-    def decorator(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            runtime_state.reload_data_if_needed()
-
-            response = func(*args, **kwargs)
-
-            if hasattr(response, 'get_json'):
-                try:
-                    response_data = response.get_json()
-                except Exception:
-                    response_data = None
-            else:
-                response_data = response
-
-            if isinstance(response_data, (dict, list)):
-                response_size = len(json.dumps(response_data)) if response_data else 0
-            elif hasattr(response, 'get_data'):
-                response_size = len(response.get_data())
-            else:
-                response_size = 0
-
-            route_name = func.__name__
-            runtime_state.log_info(f"Route {route_name} response size: {response_size/1024/1024:.2f} MB")
-
-            return response
-        return wrapper
-    return decorator
-
-
 class RuntimeState:
     def __init__(self):
         # logs directory - will be set by app.py
@@ -121,15 +87,15 @@ class RuntimeState:
 
         self.tick_size = 12
 
-        # set logger
-        self.logger = Logger()
-
         # for preventing multiple instances of the same runtime template
         self.template_lock = LeaseLock(lease_duration_sec=60)
 
         # for preventing multiple reloads of the data
         self._pkl_files_fingerprint = None
         self.reload_lock = LeaseLock(lease_duration_sec=180)
+
+    def set_logger(self):
+        self.logger = Logger()
 
     def set_logs_dir(self, logs_dir):
         self.logs_dir = logs_dir
@@ -293,6 +259,3 @@ class RuntimeState:
         self.log_info(f"Runtime template changed to: {runtime_template}")
 
         return True
-
-
-runtime_state = RuntimeState()

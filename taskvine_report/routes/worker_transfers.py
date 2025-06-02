@@ -1,17 +1,7 @@
-from flask import Blueprint, jsonify, make_response, Response
+from flask import Blueprint, jsonify, Response, current_app
 import pandas as pd
 from collections import defaultdict
-from io import StringIO
-
-from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
-from .utils import (
-    compute_linear_tick_values,
-    d3_time_formatter,
-    d3_int_formatter,
-    floor_decimal,
-    compress_time_based_critical_points,
-    get_worker_time_boundary_points
-)
+from .utils import *
 
 worker_transfers_bp = Blueprint('worker_transfers', __name__, url_prefix='/api')
 
@@ -22,10 +12,10 @@ def get_worker_transfer_raw_points(role):
     else:
         role = 'destination'
 
-    base_time = runtime_state.MIN_TIME
+    base_time = current_app.config["RUNTIME_STATE"].MIN_TIME
     transfers_by_worker = defaultdict(list)
 
-    for file in runtime_state.files.values():
+    for file in current_app.config["RUNTIME_STATE"].files.values():
         for transfer in file.transfers:
             worker_entry = getattr(transfer, role)
             if not isinstance(worker_entry, tuple) or len(worker_entry) != 3:
@@ -38,7 +28,7 @@ def get_worker_transfer_raw_points(role):
             elif transfer.time_stage_out:
                 t1 = floor_decimal(transfer.time_stage_out - base_time, 2)
             else:
-                runtime_state.log_error(f"========== {file.filename} has no stage_in or stage_out")
+                current_app.config["RUNTIME_STATE"].log_error(f"========== {file.filename} has no stage_in or stage_out")
             transfers_by_worker[worker_entry].append((t1, -1))
 
     raw_points_array = []
@@ -48,7 +38,7 @@ def get_worker_transfer_raw_points(role):
         if not events:
             continue
 
-        w = runtime_state.workers.get(worker_entry)
+        w = current_app.config["RUNTIME_STATE"].workers.get(worker_entry)
         time_boundary_points = []
         if w:
             time_boundary_points = get_worker_time_boundary_points(w, base_time)
@@ -85,16 +75,16 @@ def get_worker_incoming_transfers():
 
         return jsonify({
             'transfers': transfers,
-            'x_domain': [0, runtime_state.MAX_TIME - runtime_state.MIN_TIME],
+            'x_domain': [0, current_app.config["RUNTIME_STATE"].MAX_TIME - current_app.config["RUNTIME_STATE"].MIN_TIME],
             'y_domain': [0, int(max_y)],
-            'x_tick_values': compute_linear_tick_values([0, runtime_state.MAX_TIME - runtime_state.MIN_TIME]),
+            'x_tick_values': compute_linear_tick_values([0, current_app.config["RUNTIME_STATE"].MAX_TIME - current_app.config["RUNTIME_STATE"].MIN_TIME]),
             'y_tick_values': compute_linear_tick_values([0, int(max_y)]),
             'x_tick_formatter': d3_time_formatter(),
             'y_tick_formatter': d3_int_formatter(),
         })
 
     except Exception as e:
-        runtime_state.log_error(f"Error in get_worker_incoming_transfers: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in get_worker_incoming_transfers: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -115,16 +105,16 @@ def get_worker_outgoing_transfers():
 
         return jsonify({
             'transfers': transfers,
-            'x_domain': [0, runtime_state.MAX_TIME - runtime_state.MIN_TIME],
+            'x_domain': [0, current_app.config["RUNTIME_STATE"].MAX_TIME - current_app.config["RUNTIME_STATE"].MIN_TIME],
             'y_domain': [0, int(max_y)],
-            'x_tick_values': compute_linear_tick_values([0, runtime_state.MAX_TIME - runtime_state.MIN_TIME]),
+            'x_tick_values': compute_linear_tick_values([0, current_app.config["RUNTIME_STATE"].MAX_TIME - current_app.config["RUNTIME_STATE"].MIN_TIME]),
             'y_tick_values': compute_linear_tick_values([0, int(max_y)]),
             'x_tick_formatter': d3_time_formatter(),
             'y_tick_formatter': d3_int_formatter(),
         })
 
     except Exception as e:
-        runtime_state.log_error(f"Error in get_worker_outgoing_transfers: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in get_worker_outgoing_transfers: {e}")
         return jsonify({'error': str(e)}), 500
 
 def export_worker_transfer_csv(role):
@@ -159,7 +149,7 @@ def export_worker_transfer_csv(role):
             }
         )
     except Exception as e:
-        runtime_state.log_error(f"Error in export_worker_{role}_transfers_csv: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in export_worker_{role}_transfers_csv: {e}")
         return jsonify({'error': str(e)}), 500
 
 @worker_transfers_bp.route('/worker-incoming-transfers/export-csv')

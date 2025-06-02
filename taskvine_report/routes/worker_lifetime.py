@@ -1,12 +1,5 @@
-from .runtime_state import runtime_state, check_and_reload_data, SAMPLING_POINTS
-from .utils import (
-    compute_linear_tick_values,
-    d3_int_formatter,
-    compute_discrete_tick_values,
-    get_worker_ip_port_from_key,
-    d3_time_formatter
-)
-from flask import Blueprint, jsonify, make_response
+from .utils import *
+from flask import Blueprint, jsonify, make_response, current_app
 from io import StringIO
 import pandas as pd
 
@@ -14,17 +7,17 @@ worker_lifetime_bp = Blueprint('worker_lifetime', __name__, url_prefix='/api')
 
 def get_worker_lifetime_points():
     entries = []
-    for worker in runtime_state.workers.values():
+    for worker in current_app.config["RUNTIME_STATE"].workers.values():
         worker_key = worker.get_worker_key()
         worker_id = worker.id
         for i, t_start in enumerate(worker.time_connected):
             t_end = (
                 worker.time_disconnected[i]
                 if i < len(worker.time_disconnected)
-                else runtime_state.MAX_TIME
+                else current_app.config["RUNTIME_STATE"].MAX_TIME
             )
-            t0 = round(max(0, t_start - runtime_state.MIN_TIME), 2)
-            t1 = round(max(0, t_end - runtime_state.MIN_TIME), 2)
+            t0 = round(max(0, t_start - current_app.config["RUNTIME_STATE"].MIN_TIME), 2)
+            t1 = round(max(0, t_end - current_app.config["RUNTIME_STATE"].MIN_TIME), 2)
             duration = round(max(0, t1 - t0), 2)
             entries.append((t0, duration, worker_id, worker_key))
 
@@ -57,7 +50,7 @@ def get_worker_lifetime():
         })
 
     except Exception as e:
-        runtime_state.log_error(f"Error in get_worker_lifetime: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in get_worker_lifetime: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -85,5 +78,5 @@ def export_worker_lifetime_csv():
         return response
 
     except Exception as e:
-        runtime_state.log_error(f"Error in export_worker_lifetime_csv: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in export_worker_lifetime_csv: {e}")
         return jsonify({'error': str(e)}), 500

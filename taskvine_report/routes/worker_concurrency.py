@@ -1,17 +1,15 @@
-from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
-from .utils import compute_linear_tick_values, d3_time_formatter, d3_int_formatter, downsample_points
-from flask import Blueprint, jsonify, make_response, Response
+from .utils import *
+from flask import Blueprint, jsonify, Response, current_app
 import pandas as pd
-from io import StringIO
 
 worker_concurrency_bp = Blueprint('worker_concurrency', __name__, url_prefix='/api')
 
 def get_worker_concurrency_points():
-    base_time = runtime_state.MIN_TIME
+    base_time = current_app.config["RUNTIME_STATE"].MIN_TIME
     connect_times = []
     disconnect_times = []
 
-    for worker in runtime_state.workers.values():
+    for worker in current_app.config["RUNTIME_STATE"].workers.values():
         connect_times.extend([round(t - base_time, 2) for t in worker.time_connected])
         disconnect_times.extend([round(t - base_time, 2) for t in worker.time_disconnected])
 
@@ -34,7 +32,7 @@ def get_worker_concurrency_points():
     df["active"] = df["delta"].cumsum() + initial_active
     result = df[["time", "active"]].values.tolist()
 
-    max_time = round(runtime_state.MAX_TIME - runtime_state.MIN_TIME, 2)
+    max_time = round(current_app.config["RUNTIME_STATE"].MAX_TIME - current_app.config["RUNTIME_STATE"].MIN_TIME, 2)
     if result[-1][0] < max_time:
         result.append([max_time, result[-1][1]])
 
@@ -50,9 +48,9 @@ def get_worker_concurrency():
         if not points:
             return jsonify({'error': 'No worker concurrency data available'}), 404
 
-        points = downsample_points(points, SAMPLING_POINTS)
+        points = downsample_points(points)
         y_max = max(p[1] for p in points)
-        x_domain = [0, runtime_state.MAX_TIME - runtime_state.MIN_TIME]
+        x_domain = [0, current_app.config["RUNTIME_STATE"].MAX_TIME - current_app.config["RUNTIME_STATE"].MIN_TIME]
         y_domain = [0, y_max]
 
         return jsonify({
@@ -65,7 +63,7 @@ def get_worker_concurrency():
             'y_tick_formatter': d3_int_formatter()
         })
     except Exception as e:
-        runtime_state.log_error(f"Error in get_worker_concurrency: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in get_worker_concurrency: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -92,5 +90,5 @@ def export_worker_concurrency_csv():
         )
 
     except Exception as e:
-        runtime_state.log_error(f"Error in export_worker_concurrency_csv: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in export_worker_concurrency_csv: {e}")
         return jsonify({'error': str(e)}), 500

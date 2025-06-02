@@ -1,14 +1,8 @@
-from .runtime_state import runtime_state, SAMPLING_TASK_BARS, check_and_reload_data
-from .utils import (
-    compute_linear_tick_values,
-    d3_time_formatter,
-    d3_worker_core_formatter,
-    file_list_formatter,
-)
+from .utils import *
 
 import pandas as pd
 from collections import defaultdict
-from flask import Blueprint, jsonify, make_response
+from flask import Blueprint, jsonify, make_response, current_app
 from io import StringIO
 
 task_execution_details_bp = Blueprint(
@@ -112,14 +106,17 @@ def calculate_legend(successful_tasks, unsuccessful_tasks, workers):
 
     return legend
 
-def downsample_tasks(tasks, key="execution_time", max_tasks=SAMPLING_TASK_BARS):
+def downsample_tasks(tasks, key="execution_time", max_tasks=None):
+    if not max_tasks:
+        max_tasks = current_app.config["SAMPLING_TASK_BARS"]
+
     if len(tasks) <= max_tasks:
         return tasks
 
     # sort tasks by execution time
-    sorted_tasks = sorted(tasks, key=lambda x: x[key], reverse=True)
+    tasks = sorted(tasks, key=lambda x: x[key], reverse=True)
 
-    return sorted_tasks[:max_tasks]
+    return tasks[:max_tasks]
 
 @task_execution_details_bp.route('/task-execution-details')
 @check_and_reload_data()
@@ -129,13 +126,13 @@ def get_task_execution_details():
         unsuccessful_tasks = []
         workers = []
 
-        for task in runtime_state.tasks.values():
+        for task in current_app.config["RUNTIME_STATE"].tasks.values():
             if not task.core_id:
                 continue
             if not task.worker_entry:
                 continue
 
-            worker = runtime_state.workers[task.worker_entry]
+            worker = current_app.config["RUNTIME_STATE"].workers[task.worker_entry]
             worker_id = worker.id
 
             if task.task_status == 0:
@@ -155,14 +152,14 @@ def get_task_execution_details():
                     'num_output_files': len(task.output_files),
                     'task_status': task.task_status,
                     'category': task.category,
-                    'when_ready': task.when_ready - runtime_state.MIN_TIME,
-                    'when_running': task.when_running - runtime_state.MIN_TIME,
-                    'time_worker_start': task.time_worker_start - runtime_state.MIN_TIME,
-                    'time_worker_end': task.time_worker_end - runtime_state.MIN_TIME,
+                    'when_ready': task.when_ready - current_app.config["RUNTIME_STATE"].MIN_TIME,
+                    'when_running': task.when_running - current_app.config["RUNTIME_STATE"].MIN_TIME,
+                    'time_worker_start': task.time_worker_start - current_app.config["RUNTIME_STATE"].MIN_TIME,
+                    'time_worker_end': task.time_worker_end - current_app.config["RUNTIME_STATE"].MIN_TIME,
                     'execution_time': task.time_worker_end - task.time_worker_start,
-                    'when_waiting_retrieval': task.when_waiting_retrieval - runtime_state.MIN_TIME,
-                    'when_retrieved': task.when_retrieved - runtime_state.MIN_TIME,
-                    'when_done': task.when_done - runtime_state.MIN_TIME if task.when_done else 'N/A'
+                    'when_waiting_retrieval': task.when_waiting_retrieval - current_app.config["RUNTIME_STATE"].MIN_TIME,
+                    'when_retrieved': task.when_retrieved - current_app.config["RUNTIME_STATE"].MIN_TIME,
+                    'when_done': task.when_done - current_app.config["RUNTIME_STATE"].MIN_TIME if task.when_done else 'N/A'
                 })
             else:
                 unsuccessful_tasks.append({
@@ -178,27 +175,27 @@ def get_task_execution_details():
                     'num_output_files': len(task.output_files),
                     'task_status': task.task_status,
                     'category': task.category,
-                    'when_ready': task.when_ready - runtime_state.MIN_TIME,
-                    'when_running': task.when_running - runtime_state.MIN_TIME,
-                    'when_failure_happens': task.when_failure_happens - runtime_state.MIN_TIME,
+                    'when_ready': task.when_ready - current_app.config["RUNTIME_STATE"].MIN_TIME,
+                    'when_running': task.when_running - current_app.config["RUNTIME_STATE"].MIN_TIME,
+                    'when_failure_happens': task.when_failure_happens - current_app.config["RUNTIME_STATE"].MIN_TIME,
                     'execution_time': task.when_failure_happens - task.when_running,
                     'unsuccessful_checkbox_name': TASK_STATUS_TO_CHECKBOX_NAME.get(task.task_status, 'unknown'),
-                    'when_done': task.when_done - runtime_state.MIN_TIME if task.when_done else 'N/A'
+                    'when_done': task.when_done - current_app.config["RUNTIME_STATE"].MIN_TIME if task.when_done else 'N/A'
                 })
 
-        for w in runtime_state.workers.values():
+        for w in current_app.config["RUNTIME_STATE"].workers.values():
             if not w.hash:
                 continue
 
             if len(w.time_disconnected) != len(w.time_connected):
-                w.time_disconnected = [runtime_state.MAX_TIME] * (len(w.time_connected) - len(w.time_disconnected))
+                w.time_disconnected = [current_app.config["RUNTIME_STATE"].MAX_TIME] * (len(w.time_connected) - len(w.time_disconnected))
 
             workers.append({
                 'hash': w.hash,
                 'id': w.id,
                 'worker_entry': f"{w.ip}:{w.port}:{w.connect_id}",
-                'time_connected': [max(t - runtime_state.MIN_TIME, 0) for t in w.time_connected],
-                'time_disconnected': [max(t - runtime_state.MIN_TIME, 0) for t in w.time_disconnected],
+                'time_connected': [max(t - current_app.config["RUNTIME_STATE"].MIN_TIME, 0) for t in w.time_connected],
+                'time_disconnected': [max(t - current_app.config["RUNTIME_STATE"].MIN_TIME, 0) for t in w.time_disconnected],
                 'cores': w.cores,
                 'memory_mb': w.memory_mb,
                 'disk_mb': w.disk_mb,
@@ -219,8 +216,8 @@ def get_task_execution_details():
             'successful_tasks': downsample_tasks(successful_tasks),
             'unsuccessful_tasks': downsample_tasks(unsuccessful_tasks),
             'workers': workers,
-            'x_domain': [0, runtime_state.MAX_TIME - runtime_state.MIN_TIME],
-            'x_tick_values': compute_linear_tick_values([0, runtime_state.MAX_TIME - runtime_state.MIN_TIME]),
+            'x_domain': [0, current_app.config["RUNTIME_STATE"].MAX_TIME - current_app.config["RUNTIME_STATE"].MIN_TIME],
+            'x_tick_values': compute_linear_tick_values([0, current_app.config["RUNTIME_STATE"].MAX_TIME - current_app.config["RUNTIME_STATE"].MIN_TIME]),
             'x_tick_formatter': d3_time_formatter(),
             'y_domain': y_domain,
             'y_tick_values': y_tick_values,
@@ -230,7 +227,7 @@ def get_task_execution_details():
         return jsonify(data)
 
     except Exception as e:
-        runtime_state.log_error(f"Error in get_task_execution_details: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in get_task_execution_details: {e}")
         return jsonify({'error': str(e)}), 500
 
 @task_execution_details_bp.route('/task-execution-details/export-csv')
@@ -239,7 +236,7 @@ def export_task_execution_details_csv():
     try:
         rows = []
 
-        for task in runtime_state.tasks.values():
+        for task in current_app.config["RUNTIME_STATE"].tasks.values():
             if not task.core_id:
                 continue
 
@@ -249,46 +246,46 @@ def export_task_execution_details_csv():
 
                 rows.append({
                     'type': 'Task Committing',
-                    'start_time(s)': round(task.when_running - runtime_state.MIN_TIME, 2),
-                    'end_time(s)': round(task.time_worker_start - runtime_state.MIN_TIME, 2),
+                    'start_time(s)': round(task.when_running - current_app.config["RUNTIME_STATE"].MIN_TIME, 2),
+                    'end_time(s)': round(task.time_worker_start - current_app.config["RUNTIME_STATE"].MIN_TIME, 2),
                     'task_id': task.task_id,
                     'task_try_id': task.task_try_id
                 })
                 rows.append({
                     'type': 'Task Executing',
-                    'start_time(s)': round(task.time_worker_start - runtime_state.MIN_TIME, 2),
-                    'end_time(s)': round(task.time_worker_end - runtime_state.MIN_TIME, 2),
+                    'start_time(s)': round(task.time_worker_start - current_app.config["RUNTIME_STATE"].MIN_TIME, 2),
+                    'end_time(s)': round(task.time_worker_end - current_app.config["RUNTIME_STATE"].MIN_TIME, 2),
                     'task_id': task.task_id,
                     'task_try_id': task.task_try_id
                 })
                 rows.append({
                     'type': 'Task Retrieving',
-                    'start_time(s)': round(task.time_worker_end - runtime_state.MIN_TIME, 2),
-                    'end_time(s)': round(task.when_retrieved - runtime_state.MIN_TIME, 2),
+                    'start_time(s)': round(task.time_worker_end - current_app.config["RUNTIME_STATE"].MIN_TIME, 2),
+                    'end_time(s)': round(task.when_retrieved - current_app.config["RUNTIME_STATE"].MIN_TIME, 2),
                     'task_id': task.task_id,
                     'task_try_id': task.task_try_id
                 })
             else:
                 rows.append({
                     'type': 'Task Failed',
-                    'start_time(s)': round(task.when_running - runtime_state.MIN_TIME, 2),
-                    'end_time(s)': round(task.when_failure_happens - runtime_state.MIN_TIME, 2),
+                    'start_time(s)': round(task.when_running - current_app.config["RUNTIME_STATE"].MIN_TIME, 2),
+                    'end_time(s)': round(task.when_failure_happens - current_app.config["RUNTIME_STATE"].MIN_TIME, 2),
                     'task_id': task.task_id,
                     'task_try_id': task.task_try_id
                 })
 
-        for w in runtime_state.workers.values():
+        for w in current_app.config["RUNTIME_STATE"].workers.values():
             if not w.hash:
                 continue
 
             if len(w.time_disconnected) != len(w.time_connected):
-                w.time_disconnected = [runtime_state.MAX_TIME] * (len(w.time_connected) - len(w.time_disconnected))
+                w.time_disconnected = [current_app.config["RUNTIME_STATE"].MAX_TIME] * (len(w.time_connected) - len(w.time_disconnected))
 
             for idx, (t0, t1) in enumerate(zip(w.time_connected, w.time_disconnected)):
                 rows.append({
                     'type': 'Worker',
-                    'start_time(s)': round(t0 - runtime_state.MIN_TIME, 2),
-                    'end_time(s)': round(t1 - runtime_state.MIN_TIME, 2),
+                    'start_time(s)': round(t0 - current_app.config["RUNTIME_STATE"].MIN_TIME, 2),
+                    'end_time(s)': round(t1 - current_app.config["RUNTIME_STATE"].MIN_TIME, 2),
                     'worker_entry': f"{w.ip}:{w.port}:{w.connect_id}",
                 })
 
@@ -303,5 +300,5 @@ def export_task_execution_details_csv():
         return response
 
     except Exception as e:
-        runtime_state.log_error(f"Error in export_task_execution_details_csv: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in export_task_execution_details_csv: {e}")
         return jsonify({'error': str(e)}), 500

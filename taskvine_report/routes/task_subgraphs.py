@@ -1,15 +1,13 @@
-from .runtime_state import runtime_state, check_and_reload_data
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, current_app
 import graphviz
 import os
 from pathlib import Path
-from collections import defaultdict
 from io import StringIO
 import csv
-import pandas as pd
 from flask import make_response
 import hashlib
 import json
+from .utils import *
 
 task_subgraphs_bp = Blueprint('task_subgraphs', __name__, url_prefix='/api')
 
@@ -32,9 +30,9 @@ def calculate_subgraph_hash(subgraph_id, task_tries, plot_unsuccessful_task, plo
     
     # Add task information to hash data
     for (tid, try_id) in sorted(task_tries):
-        if (tid, try_id) not in runtime_state.tasks:
+        if (tid, try_id) not in current_app.config["RUNTIME_STATE"].tasks:
             continue
-        task = runtime_state.tasks[(tid, try_id)]
+        task = current_app.config["RUNTIME_STATE"].tasks[(tid, try_id)]
         
         task_info = {
             'task_id': tid,
@@ -51,9 +49,9 @@ def calculate_subgraph_hash(subgraph_id, task_tries, plot_unsuccessful_task, plo
     # Add file information that affects the graph
     hash_data['files'] = {}
     for (tid, try_id) in task_tries:
-        if (tid, try_id) not in runtime_state.tasks:
+        if (tid, try_id) not in current_app.config["RUNTIME_STATE"].tasks:
             continue
-        task = runtime_state.tasks[(tid, try_id)]
+        task = current_app.config["RUNTIME_STATE"].tasks[(tid, try_id)]
         
         # Handle both list and set types for input_files and output_files
         input_files = getattr(task, 'input_files', [])
@@ -68,8 +66,8 @@ def calculate_subgraph_hash(subgraph_id, task_tries, plot_unsuccessful_task, plo
         all_files = input_files + output_files
         
         for file_name in all_files:
-            if file_name in runtime_state.files and file_name not in hash_data['files']:
-                file = runtime_state.files[file_name]
+            if file_name in current_app.config["RUNTIME_STATE"].files and file_name not in hash_data['files']:
+                file = current_app.config["RUNTIME_STATE"].files[file_name]
                 hash_data['files'][file_name] = {
                     'filename': file.filename,
                     'producers': sorted(getattr(file, 'producers', [])),
@@ -102,7 +100,7 @@ def save_subgraph_hash(svg_file_path, current_hash):
         with open(hash_file_path, 'w') as f:
             f.write(current_hash)
     except Exception as e:
-        runtime_state.logger.warning(f"Failed to save subgraph hash: {e}")
+        current_app.config["RUNTIME_STATE"].logger.warning(f"Failed to save subgraph hash: {e}")
 
 @task_subgraphs_bp.route('/task-subgraphs')
 @check_and_reload_data()
@@ -121,13 +119,13 @@ def get_task_subgraphs():
         plot_unsuccessful_task = request.args.get('plot_failed_task', 'true').lower() == 'true'
         plot_recovery_task = request.args.get('plot_recovery_task', 'true').lower() == 'true'
 
-        subgraph = runtime_state.subgraphs.get(subgraph_id)
+        subgraph = current_app.config["RUNTIME_STATE"].subgraphs.get(subgraph_id)
         if not subgraph:
             return jsonify({'error': 'Subgraph not found'}), 404
         task_tries = list(subgraph)
 
         # ensure the SVG directory exists
-        svg_dir = runtime_state.data_parser.svg_files_dir
+        svg_dir = current_app.config["RUNTIME_STATE"].data_parser.svg_files_dir
         if not svg_dir:
             return jsonify({'error': 'SVG directory not configured'}), 500
         os.makedirs(svg_dir, exist_ok=True)
@@ -147,7 +145,7 @@ def get_task_subgraphs():
         use_cache = check_subgraph_cache(svg_file_path, current_hash)
         
         if not use_cache:
-            runtime_state.logger.info(f"Generating new subgraph {subgraph_id} (hash mismatch or missing cache)")
+            current_app.config["RUNTIME_STATE"].logger.info(f"Generating new subgraph {subgraph_id} (hash mismatch or missing cache)")
             # check if graphviz is available on the system
             import shutil
             if not shutil.which('dot'):
@@ -204,10 +202,10 @@ def get_task_subgraphs():
                         return
                     file_creation_time = float('inf')
                     for producer_task_id, producer_task_try_id in file.producers:
-                        producer_task = runtime_state.tasks[(producer_task_id, producer_task_try_id)]
+                        producer_task = current_app.config["RUNTIME_STATE"].tasks[(producer_task_id, producer_task_try_id)]
                         if producer_task.time_worker_end:
                             file_creation_time = min(file_creation_time, producer_task.time_worker_end)
-                    file_creation_time = file_creation_time - runtime_state.MIN_TIME
+                    file_creation_time = file_creation_time - current_app.config["RUNTIME_STATE"].MIN_TIME
 
                     dot.edge(file.filename, f'{task.task_id}-{task.task_try_id}', label=f'{file_creation_time:.2f}s')
 
@@ -216,18 +214,18 @@ def get_task_subgraphs():
 
                 # add all tasks, files, and edges to the graph
                 for (tid, try_id) in task_tries:
-                    task = runtime_state.tasks[(tid, try_id)]
+                    task = current_app.config["RUNTIME_STATE"].tasks[(tid, try_id)]
                     if task.is_recovery_task and not plot_recovery_task:
                         continue
                     if task.when_failure_happens and not plot_unsuccessful_task:
                         continue
                     plot_task_node(dot, task)
                     for file_name in getattr(task, 'input_files', []):
-                        file = runtime_state.files[file_name]
+                        file = current_app.config["RUNTIME_STATE"].files[file_name]
                         plot_file_node(dot, file)
                         plot_file2task_edge(dot, file, task)
                     for file_name in getattr(task, 'output_files', []):
-                        file = runtime_state.files[file_name]
+                        file = current_app.config["RUNTIME_STATE"].files[file_name]
                         if len(file.transfers) == 0:
                             continue
                         plot_file_node(dot, file)
@@ -263,7 +261,7 @@ def get_task_subgraphs():
                 
                 save_subgraph_hash(svg_file_path, current_hash)
         else:
-            runtime_state.logger.info(f"Using cached subgraph {subgraph_id} (hash match)")
+            current_app.config["RUNTIME_STATE"].logger.info(f"Using cached subgraph {subgraph_id} (hash match)")
 
         data['subgraph_id'] = subgraph_id
         data['num_task_tries'] = len(task_tries)
@@ -289,7 +287,7 @@ def get_task_subgraphs():
                 'checked': False
             }
             for idx, count in sorted(
-                [(k, len(v)) for k, v in runtime_state.subgraphs.items()],
+                [(k, len(v)) for k, v in current_app.config["RUNTIME_STATE"].subgraphs.items()],
                 key=lambda x: x[0]
             )
         ]
@@ -299,7 +297,7 @@ def get_task_subgraphs():
 
         return jsonify(data)
     except Exception as e:
-        runtime_state.logger.error(f'Error in get_task_subgraphs: {e}')
+        current_app.config["RUNTIME_STATE"].logger.error(f'Error in get_task_subgraphs: {e}')
         return jsonify({'error': str(e)}), 500
 
 
@@ -309,10 +307,10 @@ def export_task_subgraph_csv():
     try:
         rows = []
 
-        for (tid, try_id), task in runtime_state.tasks.items():
+        for (tid, try_id), task in current_app.config["RUNTIME_STATE"].tasks.items():
             dependent_ids = set()
             for file_name in task.output_files:
-                file = runtime_state.files.get(file_name)
+                file = current_app.config["RUNTIME_STATE"].files.get(file_name)
                 if not file:
                     continue
                 for consumer_task_id, _ in file.consumers:
@@ -332,5 +330,5 @@ def export_task_subgraph_csv():
         return response
 
     except Exception as e:
-        runtime_state.logger.error(f'Error in export_task_subgraph_csv: {e}')
+        current_app.config["RUNTIME_STATE"].logger.error(f'Error in export_task_subgraph_csv: {e}')
         return jsonify({'error': str(e)}), 500

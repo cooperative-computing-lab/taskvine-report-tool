@@ -1,18 +1,7 @@
-from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
-from .utils import (
-    compute_linear_tick_values,
-    d3_time_formatter,
-    d3_size_formatter,
-    d3_percentage_formatter,
-    get_unit_and_scale_by_max_file_size_mb,
-    floor_decimal,
-    compress_time_based_critical_points,
-    get_worker_time_boundary_points,
-    prefer_zero_else_max
-)
+from .utils import *
 
 import pandas as pd
-from flask import Blueprint, jsonify, request, Response
+from flask import Blueprint, jsonify, request, Response, current_app
 from collections import defaultdict
 
 worker_storage_consumption_bp = Blueprint(
@@ -20,9 +9,9 @@ worker_storage_consumption_bp = Blueprint(
 )
 
 def get_worker_storage_points(show_percentage=False):
-    base_time = runtime_state.MIN_TIME
-    files = runtime_state.files
-    workers = runtime_state.workers
+    base_time = current_app.config["RUNTIME_STATE"].MIN_TIME
+    files = current_app.config["RUNTIME_STATE"].files
+    workers = current_app.config["RUNTIME_STATE"].workers
 
     all_worker_storage = defaultdict(list)
     for file in files.values():
@@ -98,7 +87,7 @@ def get_worker_storage_consumption():
             wid = f"{worker[0]}:{worker[1]}"
             storage_data[wid] = points
             max_storage = max(max_storage, max(p[1] for p in points))
-            w = runtime_state.workers[worker]
+            w = current_app.config["RUNTIME_STATE"].workers[worker]
             worker_resources[wid] = {
                 'cores': w.cores,
                 'memory_mb': w.memory_mb,
@@ -117,7 +106,7 @@ def get_worker_storage_consumption():
                 max_storage *= scale
             y_tick_formatter = d3_size_formatter(unit)
 
-        x_domain = [0, float(runtime_state.MAX_TIME - runtime_state.MIN_TIME)]
+        x_domain = [0, float(current_app.config["RUNTIME_STATE"].MAX_TIME - current_app.config["RUNTIME_STATE"].MIN_TIME)]
         y_domain = [0, max(1.0, max_storage)]
 
         return jsonify({
@@ -132,7 +121,7 @@ def get_worker_storage_consumption():
         })
 
     except Exception as e:
-        runtime_state.log_error(f"Error in get_worker_storage_consumption: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in get_worker_storage_consumption: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -179,5 +168,5 @@ def export_worker_storage_consumption_csv():
                         })
 
     except Exception as e:
-        runtime_state.log_error(f"Error in export_worker_storage_consumption_csv: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in export_worker_storage_consumption_csv: {e}")
         return jsonify({'error': str(e)}), 500

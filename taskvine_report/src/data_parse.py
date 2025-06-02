@@ -795,7 +795,7 @@ class DataParser:
 
     def generate_subgraphs(self):
         time_start = time.time()
-        # exclude library tasks from subgraph generation to match runtime_state filtering
+        # exclude library tasks from subgraph generation to match RUNTIME_STATE filtering
         tasks_keys = set(key for key, task in self.tasks.items() if not task.is_library_task)
         parent = {key: key for key in tasks_keys}
         rank = {key: 0 for key in tasks_keys}

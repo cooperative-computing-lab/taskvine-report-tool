@@ -1,12 +1,5 @@
-from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
-from .utils import (
-    compute_linear_tick_values,
-    d3_time_formatter,
-    d3_int_formatter,
-    d3_percentage_formatter,
-    compute_discrete_tick_values
-)
-from flask import Blueprint, jsonify, make_response
+from .utils import *
+from flask import Blueprint, jsonify, make_response, current_app
 import math
 import pandas as pd
 from io import StringIO
@@ -14,9 +7,9 @@ from io import StringIO
 task_completion_percentiles_bp = Blueprint('task_completion_percentiles', __name__, url_prefix='/api')
 
 def get_completion_percentile_points():
-    tasks = runtime_state.tasks.values()
+    tasks = current_app.config["RUNTIME_STATE"].tasks.values()
     finish_times = [
-        (task.when_done or task.when_retrieved) - runtime_state.MIN_TIME
+        (task.when_done or task.when_retrieved) - current_app.config["RUNTIME_STATE"].MIN_TIME
         for task in tasks
         if (task.when_done or task.when_retrieved)
     ]
@@ -66,7 +59,7 @@ def get_task_completion_percentiles():
             'y_tick_formatter': d3_time_formatter()
         })
     except Exception as e:
-        runtime_state.log_error(f"Error in get_task_completion_percentiles: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in get_task_completion_percentiles: {e}")
         return jsonify({'error': str(e)}), 500
 
 @task_completion_percentiles_bp.route('/task-completion-percentiles/export-csv')
@@ -91,5 +84,5 @@ def export_task_completion_percentiles_csv():
         response.headers["Content-Type"] = "text/csv"
         return response
     except Exception as e:
-        runtime_state.log_error(f"Error in export_task_completion_percentiles_csv: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in export_task_completion_percentiles_csv: {e}")
         return jsonify({'error': str(e)}), 500

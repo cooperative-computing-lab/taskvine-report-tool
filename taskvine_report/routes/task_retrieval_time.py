@@ -1,24 +1,17 @@
-from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
-from .utils import (
-    compute_linear_tick_values,
-    d3_time_formatter,
-    d3_int_formatter,
-    downsample_points,
-    compute_points_domain
-)
-from flask import Blueprint, jsonify, make_response
+from .utils import *
+from flask import Blueprint, jsonify, make_response, current_app
 import pandas as pd
 from io import StringIO
 
 task_retrieval_time_bp = Blueprint('task_retrieval_time', __name__, url_prefix='/api')
 
 def get_retrieval_time_points():
-    if not runtime_state.task_stats:
+    if not current_app.config["RUNTIME_STATE"].task_stats:
         return []
 
     return [
         [row['global_idx'], row['task_waiting_retrieval_time'], row['task_id'], row['task_try_id']]
-        for row in runtime_state.task_stats
+        for row in current_app.config["RUNTIME_STATE"].task_stats
     ]
 
 
@@ -34,7 +27,7 @@ def get_task_retrieval_time():
         x_domain, y_domain = compute_points_domain(raw_points)
 
         return jsonify({
-            'points': downsample_points(raw_points, SAMPLING_POINTS),
+            'points': downsample_points(raw_points),
             'x_domain': x_domain,
             'y_domain': y_domain,
             'x_tick_values': compute_linear_tick_values(x_domain),
@@ -43,7 +36,7 @@ def get_task_retrieval_time():
             'y_tick_formatter': d3_time_formatter()
         })
     except Exception as e:
-        runtime_state.log_error(f"Error in get_task_retrieval_time: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in get_task_retrieval_time: {e}")
         return jsonify({'error': str(e)}), 500
 
 @task_retrieval_time_bp.route('/task-retrieval-time/export-csv')
@@ -67,5 +60,5 @@ def export_task_retrieval_time_csv():
         return response
 
     except Exception as e:
-        runtime_state.log_error(f"Error in export_task_retrieval_time_csv: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in export_task_retrieval_time_csv: {e}")
         return jsonify({'error': str(e)}), 500

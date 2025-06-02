@@ -1,14 +1,5 @@
-from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
-from .utils import (
-    get_unit_and_scale_by_max_file_size_mb,
-    d3_size_formatter,
-    compute_linear_tick_values,
-    d3_int_formatter,
-    downsample_points,
-    compute_points_domain,
-    get_task_produced_files
-)
-from flask import Blueprint, jsonify, make_response
+from .utils import *
+from flask import Blueprint, jsonify, make_response, current_app
 from io import StringIO
 import pandas as pd
 
@@ -49,7 +40,7 @@ def get_file_size_points(files, base_time):
 @check_and_reload_data()
 def get_file_sizes():
     try:
-        points, file_idx_to_names, unit, _ = get_file_size_points(runtime_state.files, runtime_state.MIN_TIME)
+        points, file_idx_to_names, unit, _ = get_file_size_points(current_app.config["RUNTIME_STATE"].files, current_app.config["RUNTIME_STATE"].MIN_TIME)
         # round points to 2 decimal places
         points = [[x, round(y, 2)] for x, y in points]
 
@@ -66,7 +57,7 @@ def get_file_sizes():
             })
 
         x_domain, y_domain = compute_points_domain(points)
-        downsampled_points = downsample_points(points, SAMPLING_POINTS)
+        downsampled_points = downsample_points(points)
 
         return jsonify({
             'points': downsampled_points,
@@ -80,14 +71,14 @@ def get_file_sizes():
         })
 
     except Exception as e:
-        runtime_state.log_error(f"Error in get_file_sizes: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in get_file_sizes: {e}")
         return jsonify({'error': str(e)}), 500
 
 @file_sizes_bp.route('/file-sizes/export-csv')
 @check_and_reload_data()
 def export_file_sizes_csv():
     try:
-        points, file_idx_to_names, unit, _ = get_file_size_points(runtime_state.files, runtime_state.MIN_TIME)
+        points, file_idx_to_names, unit, _ = get_file_size_points(current_app.config["RUNTIME_STATE"].files, current_app.config["RUNTIME_STATE"].MIN_TIME)
         if not points:
             return jsonify({'error': 'No file size data available'}), 404
 
@@ -105,5 +96,5 @@ def export_file_sizes_csv():
         return response
 
     except Exception as e:
-        runtime_state.log_error(f"Error in export_file_sizes_csv: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in export_file_sizes_csv: {e}")
         return jsonify({'error': str(e)}), 500

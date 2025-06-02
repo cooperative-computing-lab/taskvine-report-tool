@@ -1,15 +1,7 @@
-from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
-from .utils import (
-    compute_linear_tick_values,
-    d3_time_formatter,
-    d3_int_formatter,
-    compress_time_based_critical_points,
-    floor_decimal,
-    prefer_zero_else_max
-)
+from .utils import *
 
 import pandas as pd
-from flask import Blueprint, jsonify, make_response
+from flask import Blueprint, jsonify, make_response, current_app
 from io import StringIO
 
 task_concurrency_bp = Blueprint(
@@ -33,9 +25,9 @@ def compute_task_concurrency_points():
         'tasks_done': [],
     }
 
-    base_time = runtime_state.MIN_TIME
+    base_time = current_app.config["RUNTIME_STATE"].MIN_TIME
 
-    for task in runtime_state.tasks.values():
+    for task in current_app.config["RUNTIME_STATE"].tasks.values():
         if task.when_ready:
             # ready tasks can happen before the base time
             t0 = floor_decimal(max(task.when_ready - base_time, 0), 2)
@@ -70,7 +62,7 @@ def compute_task_concurrency_points():
         if task.time_worker_start:
             t0 = floor_decimal(task.time_worker_start - base_time, 2)
             if t0 < 0:
-                runtime_state.log_error(f"Task {task.task_id} has negative time_worker_start: {task.time_worker_start} - {base_time} = {t0}")
+                current_app.config["RUNTIME_STATE"].log_error(f"Task {task.task_id} has negative time_worker_start: {task.time_worker_start} - {base_time} = {t0}")
                 task.print_info()
             task_phases['tasks_executing'].append((t0, 1))
             time_executing_end = None
@@ -110,7 +102,7 @@ def compute_task_concurrency_points():
         df = pd.DataFrame(events, columns=['time', 'event']).sort_values('time')
         df = df.groupby('time')['event'].sum().reset_index()
         df['cumulative'] = df['event'].cumsum().clip(lower=0)
-        raw_points_array.append(compress_time_based_critical_points(df[['time', 'cumulative']].values.tolist(), max_points=10000))
+        raw_points_array.append(compress_time_based_critical_points(df[['time', 'cumulative']].values.tolist()))
 
     return dict(zip(phase_keys, raw_points_array))
 
@@ -129,9 +121,9 @@ def get_task_concurrency():
 
         data = {
             **downsampled_dict,
-            'x_domain': [0, runtime_state.MAX_TIME - runtime_state.MIN_TIME],
+            'x_domain': [0, current_app.config["RUNTIME_STATE"].MAX_TIME - current_app.config["RUNTIME_STATE"].MIN_TIME],
             'y_domain': [0, max_y],
-            'x_tick_values': compute_linear_tick_values([0, runtime_state.MAX_TIME - runtime_state.MIN_TIME]),
+            'x_tick_values': compute_linear_tick_values([0, current_app.config["RUNTIME_STATE"].MAX_TIME - current_app.config["RUNTIME_STATE"].MIN_TIME]),
             'y_tick_values': compute_linear_tick_values([0, max_y]),
             'x_tick_formatter': d3_time_formatter(),
             'y_tick_formatter': d3_int_formatter(),
@@ -140,7 +132,7 @@ def get_task_concurrency():
         return jsonify(data)
 
     except Exception as e:
-        runtime_state.log_error(f"Error in get_task_concurrency: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in get_task_concurrency: {e}")
         return jsonify({'error': str(e)}), 500
 
 @task_concurrency_bp.route('/task-concurrency/export-csv')
@@ -180,5 +172,5 @@ def export_task_concurrency_csv():
         return response
 
     except Exception as e:
-        runtime_state.log_error(f"Error in export_task_concurrency_csv: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in export_task_concurrency_csv: {e}")
         return jsonify({'error': str(e)}), 500

@@ -3,6 +3,9 @@ import hashlib
 import math
 import random
 import bisect
+import functools
+import json
+from flask import current_app
 
 def floor_decimal(x, decimal_places):
     factor = 10 ** decimal_places
@@ -75,7 +78,9 @@ def d3_percentage_formatter(digits=2):
 def d3_worker_core_formatter():
     return '(d) => d.split("-")[0]'
 
-def downsample_points(points, target_point_count=10000):
+def downsample_points(points, target_point_count=None):
+    if not target_point_count:
+        target_point_count=current_app.config["SAMPLING_POINTS"]
     if len(points) <= target_point_count:
         return points
 
@@ -232,7 +237,10 @@ def get_worker_time_boundary_points(worker, base_time):
         boundary.append((t_disconnected, 0))
     return boundary
 
-def compress_time_based_critical_points(points, max_points=5000):
+def compress_time_based_critical_points(points, max_points=None):
+    if not max_points:
+        max_points=current_app.config["SAMPLING_TASK_BARS"]
+
     n = len(points)
     if n <= max_points:
         return [tuple(p) for p in points]
@@ -292,3 +300,33 @@ def prefer_zero_else_max(series):
     if (series == 0).any():
         return 0.0
     return series.max()
+
+def check_and_reload_data():
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            current_app.config["RUNTIME_STATE"].reload_data_if_needed()
+
+            response = func(*args, **kwargs)
+
+            if hasattr(response, 'get_json'):
+                try:
+                    response_data = response.get_json()
+                except Exception:
+                    response_data = None
+            else:
+                response_data = response
+
+            if isinstance(response_data, (dict, list)):
+                response_size = len(json.dumps(response_data)) if response_data else 0
+            elif hasattr(response, 'get_data'):
+                response_size = len(response.get_data())
+            else:
+                response_size = 0
+
+            route_name = func.__name__
+            current_app.config["RUNTIME_STATE"].log_info(f"Route {route_name} response size: {response_size/1024/1024:.2f} MB")
+
+            return response
+        return wrapper
+    return decorator

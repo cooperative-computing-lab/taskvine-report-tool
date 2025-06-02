@@ -1,23 +1,16 @@
-from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
-from .utils import (
-    compute_linear_tick_values,
-    d3_int_formatter,
-    downsample_points,
-    compute_points_domain,
-    get_task_produced_files
-)
-from flask import Blueprint, jsonify, make_response
+from .utils import *
+from flask import Blueprint, jsonify, make_response, current_app
 from io import StringIO
 import pandas as pd
 
 file_concurrent_replicas_bp = Blueprint('file_concurrent_replicas', __name__, url_prefix='/api')
 
 def get_file_max_concurrent_replica_points():
-    base_rows = get_task_produced_files(runtime_state.files, runtime_state.MIN_TIME)
+    base_rows = get_task_produced_files(current_app.config["RUNTIME_STATE"].files, current_app.config["RUNTIME_STATE"].MIN_TIME)
     rows = []
 
     for file_idx, fname, created_time in base_rows:
-        file = runtime_state.files[fname]
+        file = current_app.config["RUNTIME_STATE"].files[fname]
         intervals = [
             (t.time_stage_in, t.time_stage_out)
             for t in file.transfers
@@ -72,7 +65,7 @@ def get_file_concurrent_replicas():
                 'y_tick_formatter': d3_int_formatter()
             })
 
-        downsampled_points = downsample_points(points, SAMPLING_POINTS)
+        downsampled_points = downsample_points(points)
 
         return jsonify({
             'points': downsampled_points,
@@ -86,7 +79,7 @@ def get_file_concurrent_replicas():
         })
 
     except Exception as e:
-        runtime_state.log_error(f"Error in get_file_concurrent_replicas: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in get_file_concurrent_replicas: {e}")
         return jsonify({'error': str(e)}), 500
 
 @file_concurrent_replicas_bp.route('/file-concurrent-replicas/export-csv')
@@ -110,5 +103,5 @@ def export_file_concurrent_replicas_csv():
         return response
 
     except Exception as e:
-        runtime_state.log_error(f"Error in export_file_concurrent_replicas_csv: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in export_file_concurrent_replicas_csv: {e}")
         return jsonify({'error': str(e)}), 500

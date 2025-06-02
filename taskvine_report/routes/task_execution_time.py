@@ -1,13 +1,6 @@
-from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
-from .utils import (
-    compute_linear_tick_values,
-    d3_time_formatter,
-    d3_int_formatter,
-    downsample_points,
-    compute_points_domain
-)
+from .utils import *
 
-from flask import Blueprint, jsonify, make_response
+from flask import Blueprint, jsonify, make_response, current_app
 import pandas as pd
 from io import StringIO
 
@@ -16,12 +9,12 @@ task_execution_time_bp = Blueprint(
 )
 
 def get_execution_points():
-    if not runtime_state.task_stats:
+    if not current_app.config["RUNTIME_STATE"].task_stats:
         return []
 
     return [
         [row['global_idx'], row['task_execution_time'], row['task_id'], row['task_try_id'], row['ran_to_completion']]
-        for row in runtime_state.task_stats
+        for row in current_app.config["RUNTIME_STATE"].task_stats
     ]
 
 @task_execution_time_bp.route('/task-execution-time')
@@ -40,7 +33,7 @@ def get_task_execution_time():
         x_domain, y_domain = compute_points_domain(raw_points)
 
         return jsonify({
-            'points': downsample_points(raw_points, SAMPLING_POINTS),
+            'points': downsample_points(raw_points),
             'x_domain': x_domain,
             'y_domain': y_domain,
             'x_tick_values': compute_linear_tick_values(x_domain),
@@ -52,7 +45,7 @@ def get_task_execution_time():
         })
 
     except Exception as e:
-        runtime_state.log_error(f"Error in get_task_execution_time: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in get_task_execution_time: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -77,5 +70,5 @@ def export_task_execution_time_csv():
         return response
 
     except Exception as e:
-        runtime_state.log_error(f"Error in export_task_execution_time_csv: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in export_task_execution_time_csv: {e}")
         return jsonify({'error': str(e)}), 500

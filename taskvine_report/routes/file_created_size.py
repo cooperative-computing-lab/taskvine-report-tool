@@ -1,21 +1,14 @@
-from .runtime_state import runtime_state, SAMPLING_POINTS, check_and_reload_data
-from .utils import (
-    compute_linear_tick_values,
-    d3_time_formatter,
-    d3_size_formatter,
-    downsample_points,
-    get_unit_and_scale_by_max_file_size_mb
-)
-from flask import Blueprint, jsonify, Response
+from .utils import *
+from flask import Blueprint, jsonify, Response, current_app
 import pandas as pd
 
 file_created_size_bp = Blueprint('file_created_size', __name__, url_prefix='/api')
 
 def get_file_created_size_points():
-    base_time = runtime_state.MIN_TIME
+    base_time = current_app.config["RUNTIME_STATE"].MIN_TIME
     events = []
 
-    for file in runtime_state.files.values():
+    for file in current_app.config["RUNTIME_STATE"].files.values():
         if not file.producers:
             continue
 
@@ -61,7 +54,7 @@ def get_file_created_size():
         points, x_domain, y_domain, unit, _, _ = get_file_created_size_points()
 
         return jsonify({
-            'points': downsample_points(points, SAMPLING_POINTS),
+            'points': downsample_points(points),
             'x_domain': x_domain,
             'y_domain': y_domain,
             'x_tick_values': compute_linear_tick_values(x_domain),
@@ -70,7 +63,7 @@ def get_file_created_size():
             'y_tick_formatter': d3_size_formatter(unit)
         })
     except Exception as e:
-        runtime_state.log_error(f"Error in get_file_created_size: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in get_file_created_size: {e}")
         return jsonify({'error': str(e)}), 500
 
 @file_created_size_bp.route('/file-created-size/export-csv')
@@ -94,5 +87,5 @@ def export_file_created_size_csv():
             }
         )
     except Exception as e:
-        runtime_state.log_error(f"Error in export_file_created_size_csv: {e}")
+        current_app.config["RUNTIME_STATE"].log_error(f"Error in export_file_created_size_csv: {e}")
         return jsonify({'error': str(e)}), 500
