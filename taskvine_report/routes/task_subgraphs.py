@@ -125,7 +125,7 @@ def get_task_subgraphs():
         task_tries = list(subgraph)
 
         # ensure the SVG directory exists
-        svg_dir = current_app.config["RUNTIME_STATE"].data_parser.svg_files_dir
+        svg_dir = current_app.config["RUNTIME_STATE"].svg_files_dir
         if not svg_dir:
             return jsonify({'error': 'SVG directory not configured'}), 500
         os.makedirs(svg_dir, exist_ok=True)

@@ -6,6 +6,7 @@ from .file_info import FileInfo
 from .manager_info import ManagerInfo
 
 import os
+import pandas as pd
 from functools import lru_cache
 from datetime import datetime
 import time
@@ -36,6 +37,9 @@ class DataParser:
         self.port = None
         self.transfer_port = None
 
+        if not self.runtime_template:
+            return
+
         # log files
         self.vine_logs_dir = os.path.join(self.runtime_template, 'vine-logs')
         self.csv_files_dir = os.path.join(self.runtime_template, 'csv-files')
@@ -46,6 +50,9 @@ class DataParser:
         os.makedirs(self.json_files_dir, exist_ok=True)
         os.makedirs(self.pkl_files_dir, exist_ok=True)
         os.makedirs(self.svg_files_dir, exist_ok=True)
+
+        # csv files
+        self.csv_file_concurrent_replicas = os.path.join(self.csv_files_dir, 'file_concurrent_replicas.csv')
 
         self.debug = os.path.join(self.vine_logs_dir, 'debug')
         self.transactions = os.path.join(self.vine_logs_dir, 'transactions')
@@ -155,9 +162,9 @@ class DataParser:
         unix_timestamp = float(equivalent_datestring.timestamp())
         return unix_timestamp
 
-    def ensure_file_info_entry(self, file_name: str, size_mb: float):
+    def ensure_file_info_entry(self, file_name, size_mb, timestamp):
         if file_name not in self.files:
-            self.files[file_name] = FileInfo(file_name, size_mb)
+            self.files[file_name] = FileInfo(file_name, size_mb, timestamp)
         file = self.files[file_name]
         if size_mb > 0:
             file.set_size_mb(size_mb)
@@ -254,7 +261,7 @@ class DataParser:
             else:
                 raise ValueError(f"pending file type: {file_name}")
 
-            file = self.ensure_file_info_entry(file_name, file_size_mb)
+            file = self.ensure_file_info_entry(file_name, file_size_mb, timestamp)
             transfer = file.add_transfer('manager', worker_entry, 'manager_put', file_type, file_cache_level)
             transfer.start_stage_in(timestamp, "pending")
             assert worker_entry not in self.putting_transfers
@@ -326,7 +333,7 @@ class DataParser:
             size_in_mb = int(parts[puturl_id + 4]) / 2**20
 
             # the file name is the name on the worker's side
-            file = self.ensure_file_info_entry(file_name, size_in_mb)
+            file = self.ensure_file_info_entry(file_name, size_in_mb, timestamp)
 
             # the destination is definitely an ip:port worker
             dest_ip, dest_port = WorkerInfo.extract_ip_port_from_string(parts[puturl_id - 1])
@@ -366,7 +373,7 @@ class DataParser:
             dest_worker_entry = self.get_current_worker_entry_by_ip_port(dest_worker_ip, dest_worker_port)
             assert dest_worker_entry is not None
             
-            file = self.ensure_file_info_entry(file_name, file_size)
+            file = self.ensure_file_info_entry(file_name, file_size, timestamp)
             transfer = file.add_transfer(source, dest_worker_entry, 'mini_task', 2, cache_level)
             transfer.start_stage_in(timestamp, "pending")
             dest_worker = self.workers[dest_worker_entry]
@@ -420,13 +427,13 @@ class DataParser:
                 pass
             elif "infile" in parts:
                 file_name = parts[parts.index("infile") + 1]
-                file = self.ensure_file_info_entry(file_name, 0)
+                file = self.ensure_file_info_entry(file_name, 0, timestamp)
                 if not file.is_consumer(self.sending_task):
                     file.add_consumer(self.sending_task)
                     self.sending_task.add_input_file(file_name)
             elif "outfile" in parts:
                 file_name = parts[parts.index("outfile") + 1]
-                file = self.ensure_file_info_entry(file_name, 0)
+                file = self.ensure_file_info_entry(file_name, 0, timestamp)
                 if not file.is_producer(self.sending_task):
                     file.add_producer(self.sending_task)
                     self.sending_task.add_output_file(file_name)
@@ -618,7 +625,7 @@ class DataParser:
             # start_sending_time = int(parts[cache_update_id + 7]) / 1e6
 
             # if this is a task-generated file, it is the first time the file is cached on this worker, otherwise we only update the stage in time
-            file = self.ensure_file_info_entry(file_name, size_in_mb)
+            file = self.ensure_file_info_entry(file_name, size_in_mb, timestamp)
 
             ip, port = WorkerInfo.extract_ip_port_from_string(parts[cache_update_id - 1])
             worker_entry = self.get_current_worker_entry_by_ip_port(ip, port)
@@ -1014,3 +1021,42 @@ class DataParser:
             print(f"Restoring subgraphs.pkl took {round(time_end - time_start, 4)} seconds")
         except Exception:
             raise ValueError("The subgraphs have not been generated yet")
+        
+    def generate_csv_files(self):
+        self.generate_csv_file_concurrent_replicas()
+
+    def generate_csv_file_concurrent_replicas(self):
+        rows = []
+
+        for file in self.files.values():
+            if not file.transfers or not file.producers:
+                continue
+
+            intervals = [
+                (t.time_stage_in, t.time_stage_out)
+                for t in file.transfers
+                if t.time_stage_in and t.time_stage_out
+            ]
+
+            if not intervals:
+                max_simul = 0
+            else:
+                events = [(start, 1) for start, _ in intervals] + [(end, -1) for _, end in intervals]
+                events.sort()
+                count = max_simul = 0
+                for _, delta in events:
+                    count += delta
+                    max_simul = max(max_simul, count)
+
+            rows.append((file.filename, max_simul, file.created_time))
+
+        if not rows:
+            return
+
+        df = pd.DataFrame(rows, columns=['file_name', 'max_simul_replicas', 'created_time'])
+        df = df.sort_values(by='created_time')
+        df.insert(0, 'file_idx', range(1, len(df) + 1))  # insert at first column
+        df = df[['file_idx', 'file_name', 'max_simul_replicas']]
+        df.columns = ['File Index', 'File Name', 'Max Concurrent Replicas (count)']
+
+        df.to_csv(self.csv_file_concurrent_replicas, index=False)

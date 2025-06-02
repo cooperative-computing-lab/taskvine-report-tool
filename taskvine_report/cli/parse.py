@@ -11,7 +11,7 @@ import sys
 import fnmatch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
-from taskvine_report.src.data_parse import DataParser
+from taskvine_report.src.data_parser import DataParser
 from taskvine_report import __version__
 
 
@@ -131,6 +131,7 @@ def main():
             data_parser = DataParser(template)
             data_parser.parse_logs()
             data_parser.generate_subgraphs()
+            data_parser.generate_csv_files()
             print(f"✅ Successfully processed: {template}")
         except Exception as e:
             print(f"❌ Error processing {template}: {e}")

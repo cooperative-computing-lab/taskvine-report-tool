@@ -14,6 +14,6 @@ __description__ = "Visualization and analysis tool for TaskVine execution logs"
 __url__ = "https://github.com/cooperative-computing-lab/taskvine-report-tool"
 
 # Import main components for easier access
-from .src.data_parse import DataParser
+from .src.data_parser import DataParser
 
 __all__ = ['DataParser'] 

@@ -158,7 +158,7 @@ def get_task_produced_files(files, min_time):
     for file in files.values():
         if not file.transfers or not file.producers:
             continue
-            
+
         fname = file.filename
         created_time = min((t.time_start_stage_in for t in file.transfers), default=float('inf')) - min_time
         created_time = round(created_time, 2) if created_time != float('inf') else float('inf')

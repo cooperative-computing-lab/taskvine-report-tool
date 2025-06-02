@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from ..src.data_parse import DataParser
+from ..src.data_parser import DataParser
 from .logger import Logger
 from .utils import (
     build_response_info_string,
@@ -60,23 +60,11 @@ class LeaseLock:
         self.release()
 
 
-class RuntimeState:
+class RuntimeState(DataParser):
     def __init__(self):
         # logs directory - will be set by app.py
         self.logs_dir = None
-        
-        # full path to the runtime template
-        self.runtime_template = None
-        self.data_parser = None
-
-        self.manager = None
-        self.workers = None
-        self.files = None
-        self.tasks = None
-        self.subgraphs = None
-
-        # for storing the graph files
-        self.svg_files_dir = None
+        super().__init__(None)
 
         self.MIN_TIME = None
         self.MAX_TIME = None
@@ -123,10 +111,7 @@ class RuntimeState:
         self.logger.info(f"{self.log_prefix} {build_response_info_string(response, request, duration)}")
 
     def reload_data_if_needed(self):
-        if not self.data_parser:
-            return False
-
-        if not self.data_parser.pkl_files:
+        if not self.pkl_files:
             return False
 
         with self.reload_lock:
@@ -137,10 +122,10 @@ class RuntimeState:
             return True
     
     def _get_current_pkl_files_fingerprint(self):
-        if not self.data_parser or not self.data_parser.pkl_files:
+        if not self.pkl_files:
             return None
 
-        return get_files_fingerprint(self.data_parser.pkl_files)
+        return get_files_fingerprint(self.pkl_files)
     
     def ensure_runtime_template(self, runtime_template):
         if not runtime_template:
@@ -149,7 +134,7 @@ class RuntimeState:
         if self.template_lock.is_locked():
             return False
 
-        if runtime_template == os.path.basename(self.runtime_template):
+        if self.runtime_template and runtime_template == os.path.basename(self.runtime_template):
             return True
 
         self.reload_template(runtime_template)
@@ -231,16 +216,12 @@ class RuntimeState:
     def reload_template(self, runtime_template):
         # init template and data parser
         self.runtime_template = os.path.join(self.logs_dir, Path(runtime_template).name)
-        self.data_parser = DataParser(self.runtime_template)
+        super().__init__(self.runtime_template)
 
         # load data
-        self.data_parser.restore_from_checkpoint()
-        self.manager = self.data_parser.manager
-        self.workers = self.data_parser.workers
-        self.files = self.data_parser.files
+        self.restore_from_checkpoint()
         # exclude library tasks
-        self.tasks = {tid: t for tid, t in self.data_parser.tasks.items() if not t.is_library_task}
-        self.subgraphs = self.data_parser.subgraphs
+        self.tasks = {tid: t for tid, t in self.tasks.items() if not t.is_library_task}
 
         # init time range
         self.MIN_TIME = self.manager.when_first_task_start_commit

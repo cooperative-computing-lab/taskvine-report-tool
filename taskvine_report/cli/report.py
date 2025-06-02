@@ -43,6 +43,7 @@ from taskvine_report.routes.task_completion_percentiles import task_completion_p
 from taskvine_report.routes.task_dependencies import task_dependencies_bp
 from taskvine_report.routes.lock import lock_bp
 from taskvine_report.routes.task_subgraphs import task_subgraphs_bp
+from taskvine_report.routes.export_csv_files import register_csv_export_routes
 from taskvine_report import __version__
 
 def create_app(logs_dir):
@@ -127,8 +128,10 @@ def create_app(logs_dir):
     def index():
         log_folders = [name for name in os.listdir(
             app.config["RUNTIME_STATE"].logs_dir) if os.path.isdir(os.path.join(app.config["RUNTIME_STATE"].logs_dir, name))]
-        log_folders_sorted = sorted(log_folders)
+        log_folders_sorted = sorted(log_folders)    
         return render_template('index.html', log_folders=log_folders_sorted)
+    
+    register_csv_export_routes(app)
 
     return app
 
