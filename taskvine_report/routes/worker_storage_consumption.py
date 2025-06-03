@@ -12,7 +12,9 @@ def get_worker_storage_consumption():
         df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_worker_storage_consumption)
         storage_data = extract_series_points_dict(df, 'Time (s)')
         storage_data, size_unit = scale_storage_series_points(storage_data)
-        x_domain, y_domain = extract_xy_domains_from_series_points(storage_data)
+        
+        x_domain = get_current_time_domain()
+        y_domain = extract_y_range_from_series_points(storage_data)
 
         return jsonify({
             'storage_data': downsample_series_points(storage_data),

@@ -2,8 +2,7 @@ from taskvine_report.utils import *
 
 import pandas as pd
 from collections import defaultdict
-from flask import Blueprint, jsonify, make_response, current_app
-from io import StringIO
+from flask import Blueprint, jsonify, current_app
 
 task_execution_details_bp = Blueprint(
     'task_execution_details', __name__, url_prefix='/api')
@@ -122,86 +121,92 @@ def downsample_tasks(tasks, key="execution_time", max_tasks=None):
 @check_and_reload_data()
 def get_task_execution_details():
     try:
+        # Read data from CSV file
+        df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_task_execution_details)
+        
         successful_tasks = []
         unsuccessful_tasks = []
         workers = []
-
-        for task in current_app.config["RUNTIME_STATE"].tasks.values():
-            if not task.core_id:
+        
+        # Process task data
+        task_rows = df[df['task_type'].isin(['successful', 'unsuccessful'])]
+        for _, row in task_rows.iterrows():
+            if pd.isna(row['task_id']):
                 continue
-            if not task.worker_entry:
-                continue
-
-            worker = current_app.config["RUNTIME_STATE"].workers[task.worker_entry]
-            worker_id = worker.id
-
-            if task.task_status == 0:
-                if not task.when_retrieved or task.is_library_task:
-                    continue
-
-                successful_tasks.append({
-                    'task_id': task.task_id,
-                    'try_id': task.task_try_id,
-                    'worker_entry': task.worker_entry,
-                    'worker_id': worker_id,
-                    'core_id': task.core_id[0],
-                    'is_recovery_task': task.is_recovery_task,
-                    'input_files': file_list_formatter(task.input_files),
-                    'output_files': file_list_formatter(task.output_files),
-                    'num_input_files': len(task.input_files),
-                    'num_output_files': len(task.output_files),
-                    'task_status': task.task_status,
-                    'category': task.category,
-                    'when_ready': task.when_ready - current_app.config["RUNTIME_STATE"].MIN_TIME,
-                    'when_running': task.when_running - current_app.config["RUNTIME_STATE"].MIN_TIME,
-                    'time_worker_start': task.time_worker_start - current_app.config["RUNTIME_STATE"].MIN_TIME,
-                    'time_worker_end': task.time_worker_end - current_app.config["RUNTIME_STATE"].MIN_TIME,
-                    'execution_time': task.time_worker_end - task.time_worker_start,
-                    'when_waiting_retrieval': task.when_waiting_retrieval - current_app.config["RUNTIME_STATE"].MIN_TIME,
-                    'when_retrieved': task.when_retrieved - current_app.config["RUNTIME_STATE"].MIN_TIME,
-                    'when_done': task.when_done - current_app.config["RUNTIME_STATE"].MIN_TIME if task.when_done else 'N/A'
+                
+            base_task_data = {
+                'task_id': int(row['task_id']),
+                'try_id': int(row['task_try_id']),
+                'worker_entry': str(row['worker_entry']),
+                'worker_id': int(row['worker_id']),
+                'core_id': int(row['core_id']),
+                'is_recovery_task': bool(row['is_recovery_task']),
+                'input_files': str(row['input_files']) if pd.notna(row['input_files']) else '',
+                'output_files': str(row['output_files']) if pd.notna(row['output_files']) else '',
+                'num_input_files': int(row['num_input_files']) if pd.notna(row['num_input_files']) else 0,
+                'num_output_files': int(row['num_output_files']) if pd.notna(row['num_output_files']) else 0,
+                'task_status': int(row['task_status']) if pd.notna(row['task_status']) else None,
+                'category': str(row['category']) if pd.notna(row['category']) else '',
+            }
+            
+            if row['task_type'] == 'successful':
+                base_task_data.update({
+                    'when_ready': float(row['when_ready']) if pd.notna(row['when_ready']) else None,
+                    'when_running': float(row['when_running']) if pd.notna(row['when_running']) else None,
+                    'time_worker_start': float(row['time_worker_start']) if pd.notna(row['time_worker_start']) else None,
+                    'time_worker_end': float(row['time_worker_end']) if pd.notna(row['time_worker_end']) else None,
+                    'execution_time': float(row['execution_time']) if pd.notna(row['execution_time']) else None,
+                    'when_waiting_retrieval': float(row['when_waiting_retrieval']) if pd.notna(row['when_waiting_retrieval']) else None,
+                    'when_retrieved': float(row['when_retrieved']) if pd.notna(row['when_retrieved']) else None,
+                    'when_done': float(row['when_done']) if pd.notna(row['when_done']) else 'N/A'
                 })
-            else:
-                unsuccessful_tasks.append({
-                    'task_id': task.task_id,
-                    'try_id': task.task_try_id,
-                    'worker_entry': task.worker_entry,
-                    'worker_id': worker_id,
-                    'core_id': task.core_id[0],
-                    'is_recovery_task': task.is_recovery_task,
-                    'input_files': file_list_formatter(task.input_files),
-                    'output_files': file_list_formatter(task.output_files),
-                    'num_input_files': len(task.input_files),
-                    'num_output_files': len(task.output_files),
-                    'task_status': task.task_status,
-                    'category': task.category,
-                    'when_ready': task.when_ready - current_app.config["RUNTIME_STATE"].MIN_TIME,
-                    'when_running': task.when_running - current_app.config["RUNTIME_STATE"].MIN_TIME,
-                    'when_failure_happens': task.when_failure_happens - current_app.config["RUNTIME_STATE"].MIN_TIME,
-                    'execution_time': task.when_failure_happens - task.when_running,
-                    'unsuccessful_checkbox_name': TASK_STATUS_TO_CHECKBOX_NAME.get(task.task_status, 'unknown'),
-                    'when_done': task.when_done - current_app.config["RUNTIME_STATE"].MIN_TIME if task.when_done else 'N/A'
+                successful_tasks.append(base_task_data)
+            else:  # unsuccessful
+                base_task_data.update({
+                    'when_ready': float(row['when_ready']) if pd.notna(row['when_ready']) else None,
+                    'when_running': float(row['when_running']) if pd.notna(row['when_running']) else None,
+                    'when_failure_happens': float(row['when_failure_happens']) if pd.notna(row['when_failure_happens']) else None,
+                    'execution_time': float(row['execution_time']) if pd.notna(row['execution_time']) else None,
+                    'unsuccessful_checkbox_name': str(row['unsuccessful_checkbox_name']) if pd.notna(row['unsuccessful_checkbox_name']) else 'unknown',
+                    'when_done': float(row['when_done']) if pd.notna(row['when_done']) else 'N/A'
                 })
-
-        for w in current_app.config["RUNTIME_STATE"].workers.values():
-            if not w.hash:
+                unsuccessful_tasks.append(base_task_data)
+        
+        # Process worker data
+        worker_rows = df[df['task_type'] == 'worker']
+        for _, row in worker_rows.iterrows():
+            if pd.isna(row['worker_id']):
                 continue
-
-            if len(w.time_disconnected) != len(w.time_connected):
-                w.time_disconnected = [current_app.config["RUNTIME_STATE"].MAX_TIME] * (len(w.time_connected) - len(w.time_disconnected))
-
+                
+            # Parse time_connected and time_disconnected arrays
+            time_connected = []
+            time_disconnected = []
+            
+            if pd.notna(row['time_connected']):
+                try:
+                    time_connected = eval(row['time_connected'])  # Convert string representation to list
+                except:
+                    time_connected = []
+                    
+            if pd.notna(row['time_disconnected']):
+                try:
+                    time_disconnected = eval(row['time_disconnected'])  # Convert string representation to list
+                except:
+                    time_disconnected = []
+                    
             workers.append({
-                'hash': w.hash,
-                'id': w.id,
-                'worker_entry': f"{w.ip}:{w.port}:{w.connect_id}",
-                'time_connected': [max(t - current_app.config["RUNTIME_STATE"].MIN_TIME, 0) for t in w.time_connected],
-                'time_disconnected': [max(t - current_app.config["RUNTIME_STATE"].MIN_TIME, 0) for t in w.time_disconnected],
-                'cores': w.cores,
-                'memory_mb': w.memory_mb,
-                'disk_mb': w.disk_mb,
-                'gpus': w.gpus
+                'hash': str(row['hash']) if pd.notna(row['hash']) else '',
+                'id': int(row['worker_id']),
+                'worker_entry': str(row['worker_entry']),
+                'time_connected': time_connected,
+                'time_disconnected': time_disconnected,
+                'cores': int(row['cores']) if pd.notna(row['cores']) else 0,
+                'memory_mb': int(row['memory_mb']) if pd.notna(row['memory_mb']) else 0,
+                'disk_mb': int(row['disk_mb']) if pd.notna(row['disk_mb']) else 0,
+                'gpus': int(row['gpus']) if pd.notna(row['gpus']) else 0
             })
 
+        # Calculate y_domain and y_tick_values
         y_domain = [f"{w['id']}-{i}" for w in workers for i in range(1, w['cores'] + 1)]
         if len(y_domain) <= 5:
             y_tick_values = y_domain
@@ -211,13 +216,15 @@ def get_task_execution_details():
             indices = [round(i * step) for i in range(num_ticks)]
             y_tick_values = [y_domain[i] for i in indices]
 
+        x_domain = get_current_time_domain()
+        
         data = {
             'legend': calculate_legend(successful_tasks, unsuccessful_tasks, workers),
             'successful_tasks': downsample_tasks(successful_tasks),
             'unsuccessful_tasks': downsample_tasks(unsuccessful_tasks),
             'workers': workers,
-            'x_domain': [0, current_app.config["RUNTIME_STATE"].MAX_TIME - current_app.config["RUNTIME_STATE"].MIN_TIME],
-            'x_tick_values': compute_linear_tick_values([0, current_app.config["RUNTIME_STATE"].MAX_TIME - current_app.config["RUNTIME_STATE"].MIN_TIME]),
+            'x_domain': x_domain,
+            'x_tick_values': compute_linear_tick_values(x_domain),
             'x_tick_formatter': d3_time_formatter(),
             'y_domain': y_domain,
             'y_tick_values': y_tick_values,
@@ -228,77 +235,4 @@ def get_task_execution_details():
 
     except Exception as e:
         current_app.config["RUNTIME_STATE"].log_error(f"Error in get_task_execution_details: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@task_execution_details_bp.route('/task-execution-details/export-csv')
-@check_and_reload_data()
-def export_task_execution_details_csv():
-    try:
-        rows = []
-
-        for task in current_app.config["RUNTIME_STATE"].tasks.values():
-            if not task.core_id:
-                continue
-
-            if task.task_status == 0:
-                if not task.when_retrieved or task.is_library_task:
-                    continue
-
-                rows.append({
-                    'type': 'Task Committing',
-                    'start_time(s)': round(task.when_running - current_app.config["RUNTIME_STATE"].MIN_TIME, 2),
-                    'end_time(s)': round(task.time_worker_start - current_app.config["RUNTIME_STATE"].MIN_TIME, 2),
-                    'task_id': task.task_id,
-                    'task_try_id': task.task_try_id
-                })
-                rows.append({
-                    'type': 'Task Executing',
-                    'start_time(s)': round(task.time_worker_start - current_app.config["RUNTIME_STATE"].MIN_TIME, 2),
-                    'end_time(s)': round(task.time_worker_end - current_app.config["RUNTIME_STATE"].MIN_TIME, 2),
-                    'task_id': task.task_id,
-                    'task_try_id': task.task_try_id
-                })
-                rows.append({
-                    'type': 'Task Retrieving',
-                    'start_time(s)': round(task.time_worker_end - current_app.config["RUNTIME_STATE"].MIN_TIME, 2),
-                    'end_time(s)': round(task.when_retrieved - current_app.config["RUNTIME_STATE"].MIN_TIME, 2),
-                    'task_id': task.task_id,
-                    'task_try_id': task.task_try_id
-                })
-            else:
-                rows.append({
-                    'type': 'Task Failed',
-                    'start_time(s)': round(task.when_running - current_app.config["RUNTIME_STATE"].MIN_TIME, 2),
-                    'end_time(s)': round(task.when_failure_happens - current_app.config["RUNTIME_STATE"].MIN_TIME, 2),
-                    'task_id': task.task_id,
-                    'task_try_id': task.task_try_id
-                })
-
-        for w in current_app.config["RUNTIME_STATE"].workers.values():
-            if not w.hash:
-                continue
-
-            if len(w.time_disconnected) != len(w.time_connected):
-                w.time_disconnected = [current_app.config["RUNTIME_STATE"].MAX_TIME] * (len(w.time_connected) - len(w.time_disconnected))
-
-            for idx, (t0, t1) in enumerate(zip(w.time_connected, w.time_disconnected)):
-                rows.append({
-                    'type': 'Worker',
-                    'start_time(s)': round(t0 - current_app.config["RUNTIME_STATE"].MIN_TIME, 2),
-                    'end_time(s)': round(t1 - current_app.config["RUNTIME_STATE"].MIN_TIME, 2),
-                    'worker_entry': f"{w.ip}:{w.port}:{w.connect_id}",
-                })
-
-        df = pd.DataFrame(rows)
-        buffer = StringIO()
-        df.to_csv(buffer, index=False)
-        buffer.seek(0)
-
-        response = make_response(buffer.getvalue())
-        response.headers["Content-Disposition"] = "attachment; filename=task_execution_details.csv"
-        response.headers["Content-Type"] = "text/csv"
-        return response
-
-    except Exception as e:
-        current_app.config["RUNTIME_STATE"].log_error(f"Error in export_task_execution_details_csv: {e}")
         return jsonify({'error': str(e)}), 500

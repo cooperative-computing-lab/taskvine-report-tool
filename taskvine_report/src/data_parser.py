@@ -75,6 +75,7 @@ class DataParser:
         self.csv_file_worker_storage_consumption = os.path.join(self.csv_files_dir, 'worker_storage_consumption.csv')
         self.csv_file_worker_storage_consumption_percentage = os.path.join(self.csv_files_dir, 'worker_storage_consumption_percentage.csv')
         self.csv_file_task_subgraphs = os.path.join(self.csv_files_dir, 'task_subgraphs.csv')
+        self.csv_file_task_execution_details = os.path.join(self.csv_files_dir, 'task_execution_details.csv')
 
         self.debug = os.path.join(self.vine_logs_dir, 'debug')
         self.transactions = os.path.join(self.vine_logs_dir, 'transactions')
@@ -117,6 +118,7 @@ class DataParser:
         # for plotting
         self.MIN_TIME = None
         self.MAX_TIME = None
+        self.time_domain_file = os.path.join(self.pkl_files_dir, 'time_domain.pkl')
 
     def _create_progress_bar(self):
         return Progress(
@@ -1004,6 +1006,11 @@ class DataParser:
         self.MIN_TIME = self.manager.when_first_task_start_commit
         self.MAX_TIME = self.manager.time_end
 
+        self.time_domain = [0, self.MAX_TIME - self.MIN_TIME]
+        # pkl store the time domain
+        with open(self.time_domain_file, 'wb') as f:
+            cloudpickle.dump(self.time_domain, f)
+
         time_end = time.time()
         print(f"Postprocessing debug took {round(time_end - time_start, 4)} seconds")
 
@@ -1085,6 +1092,7 @@ class DataParser:
         self.generate_task_metrics()
         self.generate_worker_metrics()
         self.generate_graph_metrics()
+        self.generate_task_execution_details_metrics()
 
     def generate_worker_metrics(self):
         base_time = self.MIN_TIME
@@ -1687,3 +1695,158 @@ class DataParser:
         write_worker_transfers_to_csv(worker_transfer_events['outgoing'], self.csv_file_worker_outgoing_transfers)
         write_worker_storage_consumption_to_csv(all_worker_storage, self.csv_file_worker_storage_consumption)
         write_worker_storage_consumption_to_csv(all_worker_storage, self.csv_file_worker_storage_consumption_percentage, percentage=True)
+
+    def generate_task_execution_details_metrics(self):
+        base_time = self.MIN_TIME
+        rows = []
+
+        # Task status mappings  
+        TASK_STATUS_NAMES = {
+            1: 'unsuccessful-input-missing',
+            2: 'unsuccessful-output-missing', 
+            4: 'unsuccessful-stdout-missing',
+            1 << 3: 'unsuccessful-signal',
+            2 << 3: 'unsuccessful-resource-exhaustion',
+            3 << 3: 'unsuccessful-max-end-time',
+            4 << 3: 'unsuccessful-unknown',
+            5 << 3: 'unsuccessful-forsaken',
+            6 << 3: 'unsuccessful-max-retries',
+            7 << 3: 'unsuccessful-max-wall-time',
+            8 << 3: 'unsuccessful-monitor-error',
+            9 << 3: 'unsuccessful-output-transfer-error',
+            10 << 3: 'unsuccessful-location-missing',
+            11 << 3: 'unsuccessful-cancelled',
+            12 << 3: 'unsuccessful-library-exit',
+            13 << 3: 'unsuccessful-sandbox-exhaustion',
+            14 << 3: 'unsuccessful-missing-library',
+            15 << 3: 'unsuccessful-worker-disconnected',
+        }
+
+        with self._create_progress_bar() as progress:
+            task_id = progress.add_task("Processing task execution details", total=len(self.tasks))
+            
+            for task in self.tasks.values():
+                progress.update(task_id, advance=1)
+                
+                if not hasattr(task, 'core_id') or not task.core_id:
+                    continue
+                if not task.worker_entry:
+                    continue
+
+                worker = self.workers[task.worker_entry]
+                worker_id = worker.id
+                core_id = task.core_id[0]
+
+                # Common task data
+                task_data = {
+                    'task_id': task.task_id,
+                    'task_try_id': task.task_try_id,
+                    'worker_entry': f"{task.worker_entry[0]}:{task.worker_entry[1]}:{task.worker_entry[2]}",
+                    'worker_id': worker_id,
+                    'core_id': core_id,
+                    'is_recovery_task': getattr(task, 'is_recovery_task', False),
+                    'input_files': file_list_formatter(task.input_files) if task.input_files else '',
+                    'output_files': file_list_formatter(task.output_files) if task.output_files else '',
+                    'num_input_files': len(task.input_files) if task.input_files else 0,
+                    'num_output_files': len(task.output_files) if task.output_files else 0,
+                    'task_status': task.task_status,
+                    'category': getattr(task, 'category', ''),
+                    'when_ready': round(task.when_ready - base_time, 2) if task.when_ready else None,
+                    'when_running': round(task.when_running - base_time, 2) if task.when_running else None,
+                }
+
+                if task.task_status == 0:  # Successful task
+                    if not task.when_retrieved or getattr(task, 'is_library_task', False):
+                        continue
+
+                    # Add successful task specific fields
+                    task_data.update({
+                        'time_worker_start': round(task.time_worker_start - base_time, 2) if task.time_worker_start else None,
+                        'time_worker_end': round(task.time_worker_end - base_time, 2) if task.time_worker_end else None,
+                        'execution_time': round(task.time_worker_end - task.time_worker_start, 2) if task.time_worker_end and task.time_worker_start else None,
+                        'when_waiting_retrieval': round(task.when_waiting_retrieval - base_time, 2) if task.when_waiting_retrieval else None,
+                        'when_retrieved': round(task.when_retrieved - base_time, 2) if task.when_retrieved else None,
+                        'when_done': round(task.when_done - base_time, 2) if task.when_done else None,
+                        'task_type': 'successful',
+                        'unsuccessful_checkbox_name': '',
+                        'when_failure_happens': None,
+                    })
+                else:  # Unsuccessful task
+                    task_data.update({
+                        'time_worker_start': None,
+                        'time_worker_end': None,
+                        'when_waiting_retrieval': None,
+                        'when_retrieved': None,
+                        'when_failure_happens': round(task.when_failure_happens - base_time, 2) if task.when_failure_happens else None,
+                        'execution_time': round(task.when_failure_happens - task.when_running, 2) if task.when_failure_happens and task.when_running else None,
+                        'when_done': round(task.when_done - base_time, 2) if task.when_done else None,
+                        'task_type': 'unsuccessful',
+                        'unsuccessful_checkbox_name': TASK_STATUS_NAMES.get(task.task_status, 'unknown'),
+                    })
+
+                rows.append(task_data)
+
+        # Add worker data
+        for worker in self.workers.values():
+            if not getattr(worker, 'hash', None):
+                continue
+
+            # Ensure equal length lists for time_connected and time_disconnected
+            time_disconnected = worker.time_disconnected[:]
+            if len(time_disconnected) != len(worker.time_connected):
+                time_disconnected.extend([self.MAX_TIME] * (len(worker.time_connected) - len(time_disconnected)))
+
+            worker_data = {
+                'task_id': None,
+                'task_try_id': None,
+                'worker_entry': f"{worker.ip}:{worker.port}:{worker.connect_id}",
+                'worker_id': worker.id,
+                'core_id': None,
+                'is_recovery_task': False,
+                'input_files': '',
+                'output_files': '',
+                'num_input_files': 0,
+                'num_output_files': 0,
+                'task_status': None,
+                'category': '',
+                'when_ready': None,
+                'when_running': None,
+                'time_worker_start': None,
+                'time_worker_end': None,
+                'execution_time': None,
+                'when_waiting_retrieval': None,
+                'when_retrieved': None,
+                'when_failure_happens': None,
+                'when_done': None,
+                'task_type': 'worker',
+                'unsuccessful_checkbox_name': '',
+                'hash': worker.hash,
+                'time_connected': [round(max(t - base_time, 0), 2) for t in worker.time_connected],
+                'time_disconnected': [round(max(t - base_time, 0), 2) for t in time_disconnected],
+                'cores': getattr(worker, 'cores', None),
+                'memory_mb': getattr(worker, 'memory_mb', None),
+                'disk_mb': getattr(worker, 'disk_mb', None),
+                'gpus': getattr(worker, 'gpus', None)
+            }
+            rows.append(worker_data)
+
+        if rows:
+            df = pd.DataFrame(rows)
+            
+            # Define column order
+            columns = [
+                'task_type', 'task_id', 'task_try_id', 'worker_entry', 'worker_id', 'core_id',
+                'is_recovery_task', 'input_files', 'output_files', 'num_input_files', 'num_output_files',
+                'task_status', 'category', 'when_ready', 'when_running', 'time_worker_start',
+                'time_worker_end', 'execution_time', 'when_waiting_retrieval', 'when_retrieved',
+                'when_failure_happens', 'when_done', 'unsuccessful_checkbox_name', 'hash',
+                'time_connected', 'time_disconnected', 'cores', 'memory_mb', 'disk_mb', 'gpus'
+            ]
+            
+            # Reorder columns and fill missing ones with None
+            for col in columns:
+                if col not in df.columns:
+                    df[col] = None
+            df = df[columns]
+            
+            self.write_df_to_csv(df, self.csv_file_task_execution_details, index=False)

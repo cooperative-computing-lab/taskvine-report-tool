@@ -5,13 +5,13 @@ import random
 import os
 import hashlib
 import math
-import shutil
 import random
 import bisect
 import numpy as np
 import functools
 import json
 import pandas as pd
+import cloudpickle
 from flask import current_app
 
 def floor_decimal(x, decimal_places):
@@ -232,6 +232,10 @@ def prefer_zero_else_max(series):
     if (series == 0).any():
         return 0.0
     return series.max()
+
+def get_current_time_domain():
+    with open(current_app.config["RUNTIME_STATE"].time_domain_file, 'rb') as f:
+        return cloudpickle.load(f)
 
 def check_and_reload_data():
     def decorator(func):
@@ -465,6 +469,51 @@ def extract_xy_domains_from_series_points(series_points_dict):
         return [0, 1], [0, 1]
 
     return [x_min, x_max], [min(0.0, y_min), max(1.0, y_max)]
+
+def extract_x_range_from_series_points(series_points_dict, x_index=0):
+    if not series_points_dict or not isinstance(series_points_dict, dict):
+        return [0, 1]
+
+    x_min = float('inf')
+    x_max = float('-inf')
+
+    try:
+        for points in series_points_dict.values():
+            if not points:
+                continue
+            for p in points:
+                if isinstance(p, (list, tuple)) and len(p) > x_index and p[x_index] is not None:
+                    x_val = p[x_index]
+                    x_min = min(x_min, x_val)
+                    x_max = max(x_max, x_val)
+
+        return [x_min, x_max] if x_min != float('inf') else [0, 1]
+    except Exception:
+        return [0, 1]
+
+def extract_y_range_from_series_points(series_points_dict, y_index=1):
+    if not series_points_dict or not isinstance(series_points_dict, dict):
+        return [0, 1]
+
+    y_min = float('inf')
+    y_max = float('-inf')
+
+    try:
+        for points in series_points_dict.values():
+            if not points:
+                continue
+            for p in points:
+                if isinstance(p, (list, tuple)) and len(p) > y_index and p[y_index] is not None:
+                    y_val = p[y_index]
+                    y_min = min(y_min, y_val)
+                    y_max = max(y_max, y_val)
+
+        if y_min != float('inf'):
+            return [min(0.0, y_min), max(1.0, y_max)]
+        else:
+            return [0, 1]
+    except Exception:
+        return [0, 1]
 
 def extract_size_points_from_df(df, x_col, y_col):
     points = extract_points_from_df(df, x_col, y_col)

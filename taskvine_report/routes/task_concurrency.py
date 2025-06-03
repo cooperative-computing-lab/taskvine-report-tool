@@ -12,7 +12,9 @@ def get_task_concurrency():
         phase_data = {}
         for phase in ['Waiting', 'Committing', 'Executing', 'Retrieving', 'Done']:
             phase_data[f"tasks_{phase.lower()}"] = extract_points_from_df(df, 'Time (s)', phase)
-        x_domain, y_domain = extract_xy_domains_from_series_points(phase_data)
+
+        x_domain = get_current_time_domain()
+        y_domain = extract_y_range_from_series_points(phase_data)
 
         return jsonify({
             **phase_data,
