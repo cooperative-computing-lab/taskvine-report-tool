@@ -1,13 +1,8 @@
+from taskvine_report.utils import *
 import os
 from pathlib import Path
 from ..src.data_parser import DataParser
 from .logger import Logger
-from .utils import (
-    build_response_info_string,
-    build_request_info_string,
-    get_files_fingerprint,
-    floor_decimal
-)
 import time
 import traceback
 import threading

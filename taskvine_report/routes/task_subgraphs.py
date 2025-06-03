@@ -7,7 +7,7 @@ import csv
 from flask import make_response
 import hashlib
 import json
-from .utils import *
+from taskvine_report.utils import *
 
 task_subgraphs_bp = Blueprint('task_subgraphs', __name__, url_prefix='/api')
 

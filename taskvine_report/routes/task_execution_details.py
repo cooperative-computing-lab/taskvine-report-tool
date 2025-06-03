@@ -1,4 +1,4 @@
-from .utils import *
+from taskvine_report.utils import *
 
 import pandas as pd
 from collections import defaultdict

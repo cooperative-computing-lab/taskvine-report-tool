@@ -1,7 +1,5 @@
-from .utils import *
-from flask import Blueprint, jsonify, Response, current_app
-import pandas as pd
-import os
+from taskvine_report.utils import *
+from flask import Blueprint, jsonify, current_app
 
 worker_concurrency_bp = Blueprint('worker_concurrency', __name__, url_prefix='/api')
 
@@ -9,17 +7,10 @@ worker_concurrency_bp = Blueprint('worker_concurrency', __name__, url_prefix='/a
 @check_and_reload_data()
 def get_worker_concurrency():
     try:
-        csv_path = current_app.config["RUNTIME_STATE"].csv_file_worker_concurrency
-
-        if not os.path.exists(csv_path):
-            return jsonify({'error': 'CSV file not found'}), 404
-
-        df = pd.read_csv(csv_path)
-        if df.empty:
-            return jsonify({'error': 'CSV is empty'}), 404
-
-        points = df[['Time (s)', 'Active Workers (count)']].values.tolist()
-        x_domain, y_domain = compute_points_domain(points)
+        df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_worker_concurrency)
+        points = extract_points_from_df(df, 'Time (s)', 'Active Workers (count)')
+        x_domain = extract_x_range_from_points(points)
+        y_domain = extract_y_range_from_points(points)
 
         return jsonify({
             'points': downsample_points(points),

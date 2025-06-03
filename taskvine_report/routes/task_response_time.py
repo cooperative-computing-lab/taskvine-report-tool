@@ -1,7 +1,5 @@
-from .utils import *
+from taskvine_report.utils import *
 from flask import Blueprint, jsonify, current_app
-import pandas as pd
-import os
 
 task_response_time_bp = Blueprint(
     'task_response_time', __name__, url_prefix='/api'
@@ -11,32 +9,21 @@ task_response_time_bp = Blueprint(
 @check_and_reload_data()
 def get_task_response_time():
     try:
-        csv_path = current_app.config["RUNTIME_STATE"].csv_file_task_response_time
-
-        if not os.path.exists(csv_path):
-            return jsonify({'error': 'CSV file not found'}), 404
-
-        df = pd.read_csv(csv_path)
-        if df.empty:
-            return jsonify({'error': 'CSV is empty'}), 404
-
-        # count dispatch status
-        dispatched_count = int(df['Was Dispatched'].sum())
-        undispatched_count = int(len(df) - dispatched_count)
-
-        points = df[['Global Index', 'Response Time', 'Task ID', 'Task Try ID', 'Was Dispatched']].values.tolist()
-        x_domain, y_domain = compute_points_domain(points)
+        df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_task_response_time)
+        points = extract_points_from_df(df, 'Global Index', 'Response Time', 'Task ID', 'Task Try ID', 'Was Dispatched')
+        x_domain = extract_x_range_from_points(points, x_index=0)
+        y_domain = extract_y_range_from_points(points, y_index=1)
 
         return jsonify({
-            'points': downsample_points(points),
+            'points': downsample_points(points, y_index=1),
             'x_domain': x_domain,
             'y_domain': y_domain,
             'x_tick_values': compute_linear_tick_values(x_domain),
             'y_tick_values': compute_linear_tick_values(y_domain),
             'x_tick_formatter': d3_int_formatter(),
             'y_tick_formatter': d3_time_formatter(),
-            'dispatched_count': dispatched_count,
-            'undispatched_count': undispatched_count
+            'dispatched_count': int(df['Was Dispatched'].sum()),
+            'undispatched_count': int(len(df) - int(df['Was Dispatched'].sum()))
         })
 
     except Exception as e:

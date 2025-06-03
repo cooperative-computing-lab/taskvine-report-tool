@@ -15,7 +15,7 @@ from collections import defaultdict
 import cloudpickle
 from datetime import timezone, timedelta
 import pytz
-from .utils import floor_decimal, get_unit_and_scale_by_max_file_size_mb, compress_time_based_critical_points
+from taskvine_report.utils import *
 
 
 def count_lines(file_name):
@@ -54,6 +54,7 @@ class DataParser:
         # csv files
         self.csv_file_concurrent_replicas = os.path.join(self.csv_files_dir, 'file_concurrent_replicas.csv')
         self.csv_file_created_size = os.path.join(self.csv_files_dir, 'file_created_size.csv')
+        self.csv_file_transferred_size = os.path.join(self.csv_files_dir, 'file_transferred_size.csv')
         self.csv_file_worker_concurrency = os.path.join(self.csv_files_dir, 'worker_concurrency.csv')
         self.csv_file_retention_time = os.path.join(self.csv_files_dir, 'file_retention_time.csv')
         self.csv_file_task_execution_time = os.path.join(self.csv_files_dir, 'task_execution_time.csv')
@@ -793,7 +794,7 @@ class DataParser:
         self.current_try_id = defaultdict(int)
         total_lines = count_lines(self.debug)
         debug_file_size_mb = floor_decimal(os.path.getsize(self.debug) / 1024 / 1024, 2)
-        unit, scale = get_unit_and_scale_by_max_file_size_mb(debug_file_size_mb)
+        unit, scale = get_size_unit_and_scale(debug_file_size_mb)
 
         print(f"Debug file size: {floor_decimal(debug_file_size_mb * scale, 2)} {unit}")
         
@@ -1053,6 +1054,7 @@ class DataParser:
     def generate_csv_files(self):
         self.generate_csv_file_concurrent_replicas()
         self.generate_csv_file_created_size()
+        self.generate_csv_file_transferred_size()
         self.generate_csv_worker_concurrency()
         self.generate_csv_file_retention_time()
         self.generate_csv_task_execution_time()
@@ -1136,6 +1138,37 @@ class DataParser:
         export_df.columns = ['File Index', 'Time (s)', 'Cumulative Size (MB)']
 
         export_df.to_csv(self.csv_file_created_size, index=False)
+
+    def generate_csv_file_transferred_size(self):
+        base_time = self.MIN_TIME
+        events = []
+
+        for file in self.files.values():
+            if not file.producers:
+                continue
+            for transfer in file.transfers:
+                if transfer.time_stage_in:
+                    t = floor_decimal(float(transfer.time_stage_in - base_time), 2)
+                    events.append((t, file.size_mb))
+                elif transfer.time_stage_out:
+                    t = floor_decimal(float(transfer.time_stage_out - base_time), 2)
+                    events.append((t, file.size_mb))
+
+        if not events:
+            return
+
+        df = pd.DataFrame(events, columns=["time", "delta"])
+        df["time"] = df["time"].apply(lambda x: floor_decimal(x, 2))
+        df = df.groupby("time", as_index=False)["delta"].sum()
+        df["cumulative"] = df["delta"].cumsum()
+        df["cumulative"] = df["cumulative"].clip(lower=0)
+
+        if df.empty:
+            return
+
+        export_df = df[["time", "cumulative"]].copy()
+        export_df.columns = ['Time (s)', 'Cumulative Size (MB)']
+        export_df.to_csv(self.csv_file_transferred_size, index=False)
 
     def generate_csv_worker_concurrency(self):
         base_time = self.MIN_TIME
@@ -1524,7 +1557,7 @@ class DataParser:
         df = df.sort_values(by='created_time')
         df.insert(0, 'file_idx', range(1, len(df) + 1))
 
-        unit, scale = get_unit_and_scale_by_max_file_size_mb(max_size)
+        unit, scale = get_size_unit_and_scale(max_size)
         df['file_size_scaled'] = df['file_size'] * scale
 
         export_df = df[['file_idx', 'file_name', 'file_size_scaled']].copy()
@@ -1791,83 +1824,86 @@ class DataParser:
         from collections import defaultdict
 
         for show_percentage in [False, True]:
-            csv_file = self.csv_file_worker_storage_consumption if not show_percentage else self.csv_file_worker_storage_consumption_percentage
-            
+            csv_file = (
+                self.csv_file_worker_storage_consumption
+                if not show_percentage
+                else self.csv_file_worker_storage_consumption_percentage
+            )
+
             all_worker_storage = defaultdict(list)
             for file in self.files.values():
                 for transfer in file.transfers:
                     dest = transfer.destination
                     if not isinstance(dest, tuple) or transfer.time_stage_in is None:
                         continue
-                    time_in = floor_decimal(float(transfer.time_start_stage_in - base_time), 2)
-                    time_out = floor_decimal(float(transfer.time_stage_out - base_time), 2)
+                    time_in = floor_decimal(transfer.time_start_stage_in - base_time, 2)
+                    time_out = floor_decimal(transfer.time_stage_out - base_time, 2)
                     size = max(0, file.size_mb)
-                    all_worker_storage[dest].append((time_in, size))
-                    all_worker_storage[dest].append((time_out, -size))
+                    all_worker_storage[dest].extend([(time_in, size), (time_out, -size)])
 
             if not all_worker_storage:
                 continue
 
             column_data = {}
-            time_set = set()
+            global_time_set = set()
 
             for worker_entry, events in all_worker_storage.items():
                 if not events:
                     continue
 
-                df = pd.DataFrame(events, columns=['time', 'size']).sort_values('time')
-                df['storage'] = df['size'].cumsum().clip(lower=0)
+                events.sort()
+                storage = 0
+                timeline = []
+                last_time = None
+
+                for t, delta in events:
+                    t = floor_decimal(t, 2)
+                    if last_time == t:
+                        storage += delta
+                        timeline[-1][1] = storage
+                    else:
+                        storage += delta
+                        timeline.append([t, storage])
+                        last_time = t
+
+                # clip negative storage
+                timeline = [[t, max(0.0, s)] for t, s in timeline]
 
                 if show_percentage:
                     worker = self.workers.get(worker_entry)
-                    if worker and worker.disk_mb > 0:
-                        df['storage'] = df['storage'] / worker.disk_mb * 100
-                    else:
+                    if not worker or worker.disk_mb <= 0:
                         continue
+                    timeline = [[t, s / worker.disk_mb * 100] for t, s in timeline]
 
-                df['time'] = df['time'].map(lambda x: floor_decimal(x, 2))
-                df = df.groupby('time', as_index=False)['storage'].last()
-
-                # Add worker time boundary points
+                # get time boundaries
+                boundary_points = []
                 worker = self.workers.get(worker_entry)
-                time_boundary_points = []
                 if worker:
-                    time_boundary_points = self.get_worker_time_boundary_points(worker, base_time)
+                    boundary_points = self.get_worker_time_boundary_points(worker, base_time)
 
-                if time_boundary_points:
-                    boundary_df = pd.DataFrame(time_boundary_points, columns=['time', 'storage'])
-                    full_df = pd.concat([df, boundary_df], ignore_index=True).sort_values('time')
-                else:
-                    full_df = df
+                for t, s in boundary_points:
+                    t = floor_decimal(t, 2)
+                    timeline.append([t, s])
 
-                full_df = full_df.groupby('time', as_index=False)['storage'].last().sort_values('time')
-
-                if full_df['storage'].isna().all():
+                if not timeline:
                     continue
 
-                raw_points = full_df[['time', 'storage']].values.tolist()
-                compressed_points = compress_time_based_critical_points(raw_points)
+                timeline.sort()
+                compressed = compress_time_based_critical_points(timeline)
 
                 wid = f"{worker_entry[0]}:{worker_entry[1]}:{worker_entry[2]}"
-                col_map = {t: v for t, v in compressed_points}
+                col_map = {t: v for t, v in compressed}
                 column_data[wid] = col_map
-                time_set.update(col_map.keys())
+                global_time_set.update(col_map.keys())
 
             if not column_data:
                 continue
 
-            sorted_times = sorted(time_set)
+            sorted_times = sorted(global_time_set)
             columns = sorted(column_data.keys())
 
-            rows = []
-            for t in sorted_times:
-                row = {'time (s)': t}
-                for c in columns:
-                    row[c] = column_data[c].get(t, float('nan'))
-                rows.append(row)
+            # build matrix in a vectorized-ish way
+            rows = [{'time (s)': t, **{c: column_data[c].get(t, float('nan')) for c in columns}} for t in sorted_times]
 
-            df = pd.DataFrame(rows)
-            df.to_csv(csv_file, index=False)
+            pd.DataFrame(rows).to_csv(csv_file, index=False)
 
-
-        

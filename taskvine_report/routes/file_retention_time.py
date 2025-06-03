@@ -1,7 +1,5 @@
-from .utils import *
+from taskvine_report.utils import *
 from flask import Blueprint, jsonify, current_app
-import pandas as pd
-import os
 
 file_retention_time_bp = Blueprint('file_retention_time', __name__, url_prefix='/api')
 
@@ -9,24 +7,14 @@ file_retention_time_bp = Blueprint('file_retention_time', __name__, url_prefix='
 @check_and_reload_data()
 def get_file_retention_time():
     try:
-        csv_path = current_app.config["RUNTIME_STATE"].csv_file_retention_time
-
-        if not os.path.exists(csv_path):
-            return jsonify({'error': 'CSV file not found'}), 404
-
-        df = pd.read_csv(csv_path)
-        if df.empty:
-            return jsonify({'error': 'CSV is empty'}), 404
-
-        file_idx_to_names = dict(zip(df['File Index'], df['File Name']))
-        points = df[['File Index', 'Retention Time (s)']].values.tolist()
-        points = [[x, round(y, 2)] for x, y in points]
-
-        x_domain, y_domain = compute_points_domain(points)
+        df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_retention_time)
+        points = extract_points_from_df(df, 'File Index', 'Retention Time (s)')
+        x_domain = extract_x_range_from_points(points)
+        y_domain = extract_y_range_from_points(points)
 
         return jsonify({
             'points': downsample_points(points),
-            'file_idx_to_names': file_idx_to_names,
+            'file_idx_to_names': dict(zip(df['File Index'], df['File Name'])),
             'x_domain': x_domain,
             'y_domain': y_domain,
             'x_tick_values': compute_linear_tick_values(x_domain),

@@ -1,6 +1,4 @@
-from .utils import *
-import pandas as pd
-import os
+from taskvine_report.utils import *
 from flask import Blueprint, jsonify, current_app
 
 task_concurrency_bp = Blueprint(
@@ -10,38 +8,21 @@ task_concurrency_bp = Blueprint(
 @check_and_reload_data()
 def get_task_concurrency():
     try:
-        csv_path = current_app.config["RUNTIME_STATE"].csv_file_task_concurrency
-
-        if not os.path.exists(csv_path):
-            return jsonify({'error': 'CSV file not found'}), 404
-
-        df = pd.read_csv(csv_path)
-        if df.empty:
-            return jsonify({'error': 'CSV is empty'}), 404
-
+        df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_task_concurrency)
         phase_data = {}
-        max_y = 0
-        
         for phase in ['Waiting', 'Committing', 'Executing', 'Retrieving', 'Done']:
-            points = df[['Time (s)', phase]].dropna().values.tolist()
-            # Data is already compressed when CSV was generated
-            phase_key = f"tasks_{phase.lower()}"
-            phase_data[phase_key] = points
-            
-            if points:
-                max_y = max(max_y, max(p[1] for p in points))
+            phase_data[f"tasks_{phase.lower()}"] = extract_points_from_df(df, 'Time (s)', phase)
+        x_domain, y_domain = extract_xy_domains_from_series_points(phase_data)
 
-        data = {
+        return jsonify({
             **phase_data,
-            'x_domain': [0, current_app.config["RUNTIME_STATE"].MAX_TIME - current_app.config["RUNTIME_STATE"].MIN_TIME],
-            'y_domain': [0, max_y],
-            'x_tick_values': compute_linear_tick_values([0, current_app.config["RUNTIME_STATE"].MAX_TIME - current_app.config["RUNTIME_STATE"].MIN_TIME]),
-            'y_tick_values': compute_linear_tick_values([0, max_y]),
+            'x_domain': x_domain,
+            'y_domain': y_domain,
+            'x_tick_values': compute_linear_tick_values(x_domain),
+            'y_tick_values': compute_linear_tick_values(y_domain),
             'x_tick_formatter': d3_time_formatter(),
             'y_tick_formatter': d3_int_formatter(),
-        }
-
-        return jsonify(data)
+        })
 
     except Exception as e:
         current_app.config["RUNTIME_STATE"].log_error(f"Error in get_task_concurrency: {e}")
