@@ -144,7 +144,7 @@ class DataParser:
         filename = os.path.basename(csv_file_path)
 
         progress = self._create_progress_bar()
-        task_id = progress.add_task(f"Writing {filename}", total=total_rows)
+        task_id = progress.add_task(f"=== Writing {filename}", total=total_rows)
 
         with progress:
             with open(csv_file_path, 'w', newline='') as f:
@@ -981,7 +981,10 @@ class DataParser:
                 raise ValueError(f"task {task.task_id} when_retrieved is smaller than time_worker_end: {task.time_worker_end} - {task.when_retrieved}")
         # post-processing for workers
         for worker in self.workers.values():
-            # for workers, check if the time_disconnected is larger than the time_connected
+            # if any of the workers has no time disconnected, we set it to the manager's time_end
+            if not worker.time_disconnected or len(worker.time_disconnected) == 0:
+                worker.time_disconnected = [self.manager.time_end]
+            # check if the time_disconnected is larger than the time_connected
             for i, (time_connected, time_disconnected) in enumerate(zip(worker.time_connected, worker.time_disconnected)):
                 if time_disconnected < time_connected:
                     if time_disconnected - time_connected > 1:

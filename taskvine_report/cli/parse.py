@@ -9,6 +9,7 @@ import argparse
 import os
 import sys
 import fnmatch
+import traceback as tb
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from taskvine_report.src.data_parser import DataParser
@@ -138,7 +139,8 @@ def main():
             data_parser.generate_csv_files()
             print(f"✅ Successfully processed: {template}")
         except Exception as e:
-            print(f"❌ Error processing {template}: {e}")
+            print(f"❌ Error processing {template}")
+            print(tb.format_exc())
             sys.exit(1)
 
     print("\n🎉 All log directories processed successfully!")
