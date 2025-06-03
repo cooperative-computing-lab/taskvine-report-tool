@@ -1078,6 +1078,9 @@ class DataParser:
             raise ValueError("The subgraphs have not been generated yet")
 
     def generate_csv_files(self):
+        # return if no tasks were dispatched
+        if not self.MIN_TIME:
+            return
         self.generate_file_metrics()
         self.generate_task_metrics()
         self.generate_worker_metrics()
