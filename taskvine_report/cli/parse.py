@@ -141,7 +141,6 @@ def main():
         except Exception as e:
             print(f"❌ Error processing {template}")
             print(tb.format_exc())
-            sys.exit(1)
 
     print("\n🎉 All log directories processed successfully!")
 
