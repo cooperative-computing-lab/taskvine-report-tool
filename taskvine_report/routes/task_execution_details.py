@@ -133,7 +133,7 @@ def get_task_execution_details():
         for _, row in task_rows.iterrows():
             if pd.isna(row['task_id']):
                 continue
-                
+
             base_task_data = {
                 'task_id': int(row['task_id']),
                 'try_id': int(row['task_try_id']),

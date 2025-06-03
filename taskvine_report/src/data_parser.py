@@ -1090,9 +1090,9 @@ class DataParser:
             return
         self.generate_file_metrics()
         self.generate_task_metrics()
+        self.generate_task_execution_details_metrics()
         self.generate_worker_metrics()
         self.generate_graph_metrics()
-        self.generate_task_execution_details_metrics()
 
     def generate_worker_metrics(self):
         base_time = self.MIN_TIME
@@ -1797,29 +1797,29 @@ class DataParser:
                 time_disconnected.extend([self.MAX_TIME] * (len(worker.time_connected) - len(time_disconnected)))
 
             worker_data = {
-                'task_id': None,
-                'task_try_id': None,
+                'task_id': pd.NA,
+                'task_try_id': pd.NA,
                 'worker_entry': f"{worker.ip}:{worker.port}:{worker.connect_id}",
                 'worker_id': worker.id,
-                'core_id': None,
-                'is_recovery_task': False,
-                'input_files': '',
-                'output_files': '',
-                'num_input_files': 0,
-                'num_output_files': 0,
-                'task_status': None,
-                'category': '',
-                'when_ready': None,
-                'when_running': None,
-                'time_worker_start': None,
-                'time_worker_end': None,
-                'execution_time': None,
-                'when_waiting_retrieval': None,
-                'when_retrieved': None,
-                'when_failure_happens': None,
-                'when_done': None,
+                'core_id': pd.NA,
+                'is_recovery_task': pd.NA,
+                'input_files': pd.NA,
+                'output_files': pd.NA,
+                'num_input_files': pd.NA,
+                'num_output_files': pd.NA,
+                'task_status': pd.NA,
+                'category': pd.NA,
+                'when_ready': pd.NA,
+                'when_running': pd.NA,
+                'time_worker_start': pd.NA,
+                'time_worker_end': pd.NA,
+                'execution_time': pd.NA,
+                'when_waiting_retrieval': pd.NA,
+                'when_retrieved': pd.NA,
+                'when_failure_happens': pd.NA,
+                'when_done': pd.NA,
                 'task_type': 'worker',
-                'unsuccessful_checkbox_name': '',
+                'unsuccessful_checkbox_name': pd.NA,
                 'hash': worker.hash,
                 'time_connected': [round(max(t - base_time, 0), 2) for t in worker.time_connected],
                 'time_disconnected': [round(max(t - base_time, 0), 2) for t in time_disconnected],
@@ -1829,6 +1829,8 @@ class DataParser:
                 'gpus': getattr(worker, 'gpus', None)
             }
             rows.append(worker_data)
+        
+        # --- output ---
 
         if rows:
             df = pd.DataFrame(rows)

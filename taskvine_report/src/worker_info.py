@@ -1,4 +1,5 @@
 import re
+import json
 from bitarray import bitarray
 
 
@@ -121,20 +122,26 @@ class WorkerInfo:
             pass
         self.disk_mb = disk_mb
 
+    def to_json(self):
+        return {
+            "ip": self.ip,
+            "port": self.port,
+            "connect_id": self.connect_id,
+            "id": self.id,
+            "hash": self.hash,
+            "worker_entry": self.get_worker_key(),
+            "machine_name": self.machine_name,
+            "transfer_port": self.transfer_port,
+            "cores": self.cores,
+            "gpus": self.gpus,
+            "memory_mb": self.memory_mb,
+            "disk_mb": self.disk_mb,
+            "time_connected": self.time_connected[0],
+            "time_disconnected": self.time_disconnected[0],
+        }
+
     def print_info(self):
-        print("id: ", self.id)
-        print("ip: ", self.ip)
-        print("port: ", self.port)
-        print("hash: ", self.hash)
-        print("machine_name: ", self.machine_name)
-        print("transfer_port: ", self.transfer_port)
-        print("cores: ", self.cores)
-        print("gpus: ", self.gpus)
-        print("memory_mb: ", self.memory_mb)
-        print("disk_mb: ", self.disk_mb)
-        print("time_connected: ", self.time_connected)
-        print("time_disconnected: ", self.time_disconnected)
-        print("\n")
+        print(json.dumps(self.to_json(), indent=2))
 
     @staticmethod
     def extract_ip_port_from_string(string):
