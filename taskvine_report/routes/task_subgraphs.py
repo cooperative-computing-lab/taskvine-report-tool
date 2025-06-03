@@ -5,7 +5,6 @@ from pathlib import Path
 from io import StringIO
 import csv
 from flask import make_response
-import hashlib
 import json
 from taskvine_report.utils import *
 
@@ -19,28 +18,6 @@ def sanitize_filename(filename):
     if len(filename) > 200:
         filename = filename[:200]
     return filename
-
-def check_subgraph_cache(svg_file_path, current_hash):
-    hash_file_path = svg_file_path.replace('.svg', '.hash')
-    
-    # Check if both SVG and hash files exist
-    if not (Path(svg_file_path).exists() and Path(hash_file_path).exists()):
-        return False
-    
-    try:
-        with open(hash_file_path, 'r') as f:
-            cached_hash = f.read().strip()
-        return cached_hash == current_hash
-    except Exception:
-        return False
-
-def save_subgraph_hash(svg_file_path, current_hash):
-    hash_file_path = svg_file_path.replace('.svg', '.hash')
-    try:
-        with open(hash_file_path, 'w') as f:
-            f.write(current_hash)
-    except Exception as e:
-        current_app.config["RUNTIME_STATE"].logger.warning(f"Failed to save subgraph hash: {e}")
 
 @task_subgraphs_bp.route('/task-subgraphs')
 @check_and_reload_data()
@@ -84,23 +61,12 @@ def get_task_subgraphs():
         svg_file_path_without_suffix = os.path.normpath(os.path.join(svg_dir, safe_filename))
         svg_file_path = f'{svg_file_path_without_suffix}.svg'
 
-        # Generate hash for caching based on CSV data
-        import hashlib
-        hash_data = {
-            'subgraph_id': subgraph_id,
-            'plot_unsuccessful_task': plot_unsuccessful_task,
-            'plot_recovery_task': plot_recovery_task,
-            'task_count': len(subgraph_tasks)
-        }
-        json_str = json.dumps(hash_data, sort_keys=True)
-        current_hash = hashlib.sha256(json_str.encode('utf-8')).hexdigest()
-        
-        # Check if we can use cached version
-        use_cache = check_subgraph_cache(svg_file_path, current_hash)
-        
-        if not use_cache:
-            current_app.config["RUNTIME_STATE"].logger.info(f"Generating new subgraph {subgraph_id} from CSV")
-
+        # Check if SVG file already exists
+        if Path(svg_file_path).exists():
+            current_app.config["RUNTIME_STATE"].logger.info(f"Using existing subgraph {subgraph_id} SVG file")
+        else:
+            current_app.config["RUNTIME_STATE"].logger.info(f"Generating subgraph {subgraph_id} from CSV")
+            
             # check if graphviz is available on the system
             import shutil
             if not shutil.which('dot'):
@@ -131,13 +97,28 @@ def get_task_subgraphs():
                     if not plot_unsuccessful_task and failure_count > 0:
                         continue
                     
-                    # Parse input and output files
-                    input_files = str(task_row.get('input_files', '')).split('|') if pd.notna(task_row.get('input_files')) and str(task_row.get('input_files', '')).strip() else []
-                    output_files = str(task_row.get('output_files', '')).split('|') if pd.notna(task_row.get('output_files')) and str(task_row.get('output_files', '')).strip() else []
+                    # Parse input and output files with timing info
+                    def parse_files_with_timing(files_str):
+                        files_with_timing = []
+                        if pd.notna(files_str) and str(files_str).strip():
+                            for item in str(files_str).split('|'):
+                                if ':' in item:
+                                    file_name, timing = item.rsplit(':', 1)
+                                    try:
+                                        timing = float(timing)
+                                    except ValueError:
+                                        timing = 0.0
+                                    files_with_timing.append((file_name.strip(), timing))
+                                else:
+                                    files_with_timing.append((item.strip(), 0.0))
+                        return files_with_timing
+                    
+                    input_files = parse_files_with_timing(task_row.get('input_files', ''))
+                    output_files = parse_files_with_timing(task_row.get('output_files', ''))
                     
                     # Remove empty strings
-                    input_files = [f for f in input_files if f.strip()]
-                    output_files = [f for f in output_files if f.strip()]
+                    input_files = [(f, t) for f, t in input_files if f]
+                    output_files = [(f, t) for f, t in output_files if f]
                     
                     tasks_dict[task_id] = {
                         'task_id': int(task_id),
@@ -150,7 +131,7 @@ def get_task_subgraphs():
                 # Build file dependencies from task data
                 for task_data in tasks_dict.values():
                     # Add files to files_dict
-                    for file_name in task_data['input_files'] + task_data['output_files']:
+                    for file_name, _ in task_data['input_files'] + task_data['output_files']:
                         if file_name not in files_dict:
                             files_dict[file_name] = {
                                 'filename': file_name,
@@ -159,12 +140,12 @@ def get_task_subgraphs():
                             }
                     
                     # Add task as producer for output files
-                    for file_name in task_data['output_files']:
+                    for file_name, _ in task_data['output_files']:
                         if task_data['task_id'] not in files_dict[file_name]['producers']:
                             files_dict[file_name]['producers'].append(task_data['task_id'])
                     
                     # Add task as consumer for input files  
-                    for file_name in task_data['input_files']:
+                    for file_name, _ in task_data['input_files']:
                         if task_data['task_id'] not in files_dict[file_name]['consumers']:
                             files_dict[file_name]['consumers'].append(task_data['task_id'])
 
@@ -192,31 +173,33 @@ def get_task_subgraphs():
                     filename = file_data['filename']
                     dot.node(filename, filename, shape='box')
 
-                def plot_task2file_edge(dot, task_data, file_data):
+                def plot_task2file_edge(dot, task_data, file_data, timing=None):
                     if not file_data['producers']:
                         return
-                    dot.edge(str(task_data['task_id']), file_data['filename'])
+                    label = f"{timing:.2f}s" if timing is not None else ""
+                    dot.edge(str(task_data['task_id']), file_data['filename'], label=label)
 
-                def plot_file2task_edge(dot, file_data, task_data):
+                def plot_file2task_edge(dot, file_data, task_data, timing=None):
                     if not file_data['producers']:
                         return
-                    dot.edge(file_data['filename'], str(task_data['task_id']))
+                    label = f"{timing:.2f}s" if timing is not None else ""
+                    dot.edge(file_data['filename'], str(task_data['task_id']), label=label)
 
                 # Add all tasks and files to the graph
                 for task_id, task_data in tasks_dict.items():
                     plot_task_node(dot, task_data)
                     
-                    # Add input file edges
-                    for file_name in task_data['input_files']:
+                    # Add input file edges with waiting times
+                    for file_name, waiting_time in task_data['input_files']:
                         if file_name in files_dict and files_dict[file_name]['producers']:
                             plot_file_node(dot, files_dict[file_name])
-                            plot_file2task_edge(dot, files_dict[file_name], task_data)
+                            plot_file2task_edge(dot, files_dict[file_name], task_data, waiting_time)
                     
-                    # Add output file edges
-                    for file_name in task_data['output_files']:
+                    # Add output file edges with creation times
+                    for file_name, creation_time in task_data['output_files']:
                         if file_name in files_dict and files_dict[file_name]['producers']:
                             plot_file_node(dot, files_dict[file_name])
-                            plot_task2file_edge(dot, task_data, files_dict[file_name])
+                            plot_task2file_edge(dot, task_data, files_dict[file_name], creation_time)
                 
                 # Generate SVG
                 svg_generated = False
@@ -241,10 +224,6 @@ def get_task_subgraphs():
                     fallback_svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="500" height="150"><rect width="500" height="150" fill="#f8f9fa" stroke="#dee2e6"/><text x="10" y="30" font-family="Arial" font-size="14" fill="#dc3545">Error: Failed to generate subgraph visualization</text><text x="10" y="50" font-family="Arial" font-size="12" fill="#6c757d">Reason: {error_message}</text><text x="10" y="80" font-family="Arial" font-size="12" fill="#6c757d">Subgraph ID: {subgraph_id}</text><text x="10" y="100" font-family="Arial" font-size="12" fill="#6c757d">Tasks: {len(subgraph_tasks)}</text><text x="10" y="130" font-family="Arial" font-size="10" fill="#6c757d">CSV-based rendering</text></svg>'
                     with open(svg_file_path, 'w', encoding='utf-8') as f:
                         f.write(fallback_svg)
-                
-                save_subgraph_hash(svg_file_path, current_hash)
-        else:
-            current_app.config["RUNTIME_STATE"].logger.info(f"Using cached subgraph {subgraph_id}")
 
         data['subgraph_id'] = int(subgraph_id)
         data['num_task_tries'] = int(len(subgraph_tasks))

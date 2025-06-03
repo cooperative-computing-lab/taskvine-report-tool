@@ -7,7 +7,7 @@ file_transferred_size_bp = Blueprint('file_transferred_size', __name__, url_pref
 @check_and_reload_data()
 def get_file_transferred_size():
     try:
-        df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_transferred_size)
+        df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_file_transferred_size)
         points, unit = extract_size_points_from_df(df, 'Time (s)', 'Cumulative Size (MB)')
         x_domain = extract_x_range_from_points(points)
         y_domain = extract_y_range_from_points(points)

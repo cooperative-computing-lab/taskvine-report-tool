@@ -5,6 +5,7 @@ import random
 import os
 import hashlib
 import math
+import shutil
 import random
 import bisect
 import numpy as np
@@ -469,3 +470,8 @@ def extract_size_points_from_df(df, x_col, y_col):
     points = extract_points_from_df(df, x_col, y_col)
     unit, scale = get_size_unit_and_scale(max(p[1] for p in points))
     return [[x, y * scale] for x, y in points], unit
+
+def ensure_dir(path):
+    if os.path.exists(path):
+        return
+    os.makedirs(path)
