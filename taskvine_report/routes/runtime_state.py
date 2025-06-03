@@ -66,8 +66,6 @@ class RuntimeState(DataParser):
         self.logs_dir = None
         super().__init__(None)
 
-        self.MIN_TIME = None
-        self.MAX_TIME = None
         self.task_stats = None
 
         self.tick_size = 12
@@ -222,10 +220,6 @@ class RuntimeState(DataParser):
         self.restore_from_checkpoint()
         # exclude library tasks
         self.tasks = {tid: t for tid, t in self.tasks.items() if not t.is_library_task}
-
-        # init time range
-        self.MIN_TIME = self.manager.when_first_task_start_commit
-        self.MAX_TIME = self.manager.time_end
 
         # init task stats
         self.get_task_stats()

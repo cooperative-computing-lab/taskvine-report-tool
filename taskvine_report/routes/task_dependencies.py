@@ -1,6 +1,6 @@
-from flask import Blueprint, jsonify, make_response, current_app
+from flask import Blueprint, jsonify, current_app
 import pandas as pd
-from io import StringIO
+import os
 
 from .utils import (
     compute_linear_tick_values,
@@ -10,24 +10,19 @@ from .utils import (
 
 task_dependencies_bp = Blueprint('task_dependencies', __name__, url_prefix='/api')
 
-def get_dependency_points():
-    if not current_app.config["RUNTIME_STATE"].task_stats:
-        return []
-
-    return [
-        [row['global_idx'], row['dependency_count']]
-        for row in current_app.config["RUNTIME_STATE"].task_stats
-    ]
-
-
 @task_dependencies_bp.route('/task-dependencies')
 def get_task_dependencies():
     try:
-        points = get_dependency_points()
+        csv_path = current_app.config["RUNTIME_STATE"].csv_file_task_dependencies
 
-        if not points:
-            return jsonify({'error': 'No dependency data available'}), 404
+        if not os.path.exists(csv_path):
+            return jsonify({'error': 'CSV file not found'}), 404
 
+        df = pd.read_csv(csv_path)
+        if df.empty:
+            return jsonify({'error': 'CSV is empty'}), 404
+
+        points = df[['Global Index', 'Dependency Count']].values.tolist()
         x_domain, y_domain = compute_points_domain(points)
 
         return jsonify({
@@ -41,27 +36,4 @@ def get_task_dependencies():
         })
     except Exception as e:
         current_app.config["RUNTIME_STATE"].log_error(f"Error in get_task_dependencies: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@task_dependencies_bp.route('/task-dependencies/export-csv')
-def export_task_dependencies_csv():
-    try:
-        points = get_dependency_points()
-
-        if not points:
-            return jsonify({'error': 'No dependency data available'}), 404
-
-        df = pd.DataFrame(points, columns=["Task ID", "Dependency Count"])
-
-        buffer = StringIO()
-        df.to_csv(buffer, index=False)
-        buffer.seek(0)
-
-        response = make_response(buffer.getvalue())
-        response.headers["Content-Disposition"] = "attachment; filename=task_dependency_count.csv"
-        response.headers["Content-Type"] = "text/csv"
-        return response
-    except Exception as e:
-        current_app.config["RUNTIME_STATE"].log_error(f"Error in export_task_dependencies_csv: {e}")
         return jsonify({'error': str(e)}), 500

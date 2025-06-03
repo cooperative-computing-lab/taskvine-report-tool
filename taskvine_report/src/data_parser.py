@@ -15,7 +15,7 @@ from collections import defaultdict
 import cloudpickle
 from datetime import timezone, timedelta
 import pytz
-from .utils import floor_decimal, get_unit_and_scale_by_max_file_size_mb
+from .utils import floor_decimal, get_unit_and_scale_by_max_file_size_mb, compress_time_based_critical_points
 
 
 def count_lines(file_name):
@@ -53,6 +53,24 @@ class DataParser:
 
         # csv files
         self.csv_file_concurrent_replicas = os.path.join(self.csv_files_dir, 'file_concurrent_replicas.csv')
+        self.csv_file_created_size = os.path.join(self.csv_files_dir, 'file_created_size.csv')
+        self.csv_file_worker_concurrency = os.path.join(self.csv_files_dir, 'worker_concurrency.csv')
+        self.csv_file_retention_time = os.path.join(self.csv_files_dir, 'file_retention_time.csv')
+        self.csv_file_task_execution_time = os.path.join(self.csv_files_dir, 'task_execution_time.csv')
+        self.csv_file_task_response_time = os.path.join(self.csv_files_dir, 'task_response_time.csv')
+        self.csv_file_task_concurrency = os.path.join(self.csv_files_dir, 'task_concurrency.csv')
+        self.csv_file_task_retrieval_time = os.path.join(self.csv_files_dir, 'task_retrieval_time.csv')
+        self.csv_file_task_dependencies = os.path.join(self.csv_files_dir, 'task_dependencies.csv')
+        self.csv_file_task_dependents = os.path.join(self.csv_files_dir, 'task_dependents.csv')
+        self.csv_file_task_completion_percentiles = os.path.join(self.csv_files_dir, 'task_completion_percentiles.csv')
+        self.csv_file_sizes = os.path.join(self.csv_files_dir, 'file_sizes.csv')
+        self.csv_file_worker_lifetime = os.path.join(self.csv_files_dir, 'worker_lifetime.csv')
+        self.csv_file_worker_executing_tasks = os.path.join(self.csv_files_dir, 'worker_executing_tasks.csv')
+        self.csv_file_worker_waiting_retrieval_tasks = os.path.join(self.csv_files_dir, 'worker_waiting_retrieval_tasks.csv')
+        self.csv_file_worker_incoming_transfers = os.path.join(self.csv_files_dir, 'worker_incoming_transfers.csv')
+        self.csv_file_worker_outgoing_transfers = os.path.join(self.csv_files_dir, 'worker_outgoing_transfers.csv')
+        self.csv_file_worker_storage_consumption = os.path.join(self.csv_files_dir, 'worker_storage_consumption.csv')
+        self.csv_file_worker_storage_consumption_percentage = os.path.join(self.csv_files_dir, 'worker_storage_consumption_percentage.csv')
 
         self.debug = os.path.join(self.vine_logs_dir, 'debug')
         self.transactions = os.path.join(self.vine_logs_dir, 'transactions')
@@ -91,6 +109,10 @@ class DataParser:
         self.sending_task = None
         self.mini_task_transferring = None
         self.sending_back = None
+
+        # for plotting
+        self.MIN_TIME = None
+        self.MAX_TIME = None
 
     def get_current_worker_by_ip_port(self, worker_ip: str, worker_port: int):
         connect_id = self.current_worker_connect_id[(worker_ip, worker_port)]
@@ -950,9 +972,13 @@ class DataParser:
                 if transfer.time_stage_out is None:
                     # set the time_stage_out as the manager's time_end
                     transfer.time_stage_out = self.manager.time_end
+
+        # set the min and max time
+        self.MIN_TIME = self.manager.when_first_task_start_commit
+        self.MAX_TIME = self.manager.time_end
+
         time_end = time.time()
-        print(
-            f"Postprocessing debug took {round(time_end - time_start, 4)} seconds")
+        print(f"Postprocessing debug took {round(time_end - time_start, 4)} seconds")
 
     def restore_debug(self):
         time_start = time.time()
@@ -1010,6 +1036,8 @@ class DataParser:
             with open(os.path.join(self.pkl_files_dir, 'manager.pkl'), 'rb') as f:
                 self.manager = cloudpickle.load(f)
             time_end = time.time()
+            self.MIN_TIME = self.manager.when_first_task_start_commit
+            self.MAX_TIME = self.manager.time_end
             print(f"Restoring manager.pkl took {round(time_end - time_start, 4)} seconds")
         except Exception:
             raise ValueError("The debug file has not been successfully parsed yet")
@@ -1024,6 +1052,21 @@ class DataParser:
         
     def generate_csv_files(self):
         self.generate_csv_file_concurrent_replicas()
+        self.generate_csv_file_created_size()
+        self.generate_csv_worker_concurrency()
+        self.generate_csv_file_retention_time()
+        self.generate_csv_task_execution_time()
+        self.generate_csv_task_response_time()
+        self.generate_csv_task_concurrency()
+        self.generate_csv_task_retrieval_time()
+        self.generate_csv_task_dependencies_and_dependents()
+        self.generate_csv_task_completion_percentiles()
+        self.generate_csv_file_sizes()
+        self.generate_csv_worker_lifetime()
+        self.generate_csv_worker_executing_tasks()
+        self.generate_csv_worker_waiting_retrieval_tasks()
+        self.generate_csv_worker_transfers()
+        self.generate_csv_worker_storage_consumption()
 
     def generate_csv_file_concurrent_replicas(self):
         rows = []
@@ -1060,3 +1103,771 @@ class DataParser:
         df.columns = ['File Index', 'File Name', 'Max Concurrent Replicas (count)']
 
         df.to_csv(self.csv_file_concurrent_replicas, index=False)
+
+    def generate_csv_file_created_size(self):
+        base_time = self.MIN_TIME
+        events = []
+
+        for file in self.files.values():
+            if not file.producers:
+                continue
+
+            stage_times = [t.time_stage_in for t in file.transfers if t.time_stage_in is not None]
+            if stage_times:
+                first_time = min(stage_times)
+                t = floor_decimal(float(first_time - base_time), 2)
+                events.append((t, file.size_mb))
+
+        if not events:
+            return
+
+        df = pd.DataFrame(events, columns=['time', 'delta'])
+        df['time'] = df['time'].apply(lambda x: floor_decimal(x, 2))
+        df = df.groupby('time', as_index=False)['delta'].sum()
+        df['cumulative'] = df['delta'].cumsum()
+        df['cumulative'] = df['cumulative'].clip(lower=0)
+
+        if df.empty:
+            return
+
+        export_df = df[['time', 'cumulative']].copy()
+        export_df = export_df.sort_values('time')
+        export_df.insert(0, 'file_idx', range(1, len(export_df) + 1))
+        export_df.columns = ['File Index', 'Time (s)', 'Cumulative Size (MB)']
+
+        export_df.to_csv(self.csv_file_created_size, index=False)
+
+    def generate_csv_worker_concurrency(self):
+        base_time = self.MIN_TIME
+        connect_times = []
+        disconnect_times = []
+
+        for worker in self.workers.values():
+            connect_times.extend([floor_decimal(t - base_time, 2) for t in worker.time_connected])
+            disconnect_times.extend([floor_decimal(t - base_time, 2) for t in worker.time_disconnected])
+
+        initial_active = sum(t <= 0 for t in connect_times)
+
+        events = (
+            [(t, 1) for t in connect_times if t > 0] +
+            [(t, -1) for t in disconnect_times if t > 0]
+        )
+
+        if not events and initial_active == 0:
+            return
+
+        df = pd.DataFrame(events, columns=["time", "delta"])
+        df = df.groupby("time", as_index=False)["delta"].sum().sort_values("time")
+
+        df.loc[-1] = [0.0, 0]
+        df = df.sort_index().reset_index(drop=True)
+
+        df["active"] = df["delta"].cumsum() + initial_active
+        
+        # Add the final time point
+        max_time = floor_decimal(self.MAX_TIME - self.MIN_TIME, 2)
+        if df.iloc[-1]["time"] < max_time:
+            last_active = df.iloc[-1]["active"]
+            new_row = pd.DataFrame({"time": [max_time], "delta": [0], "active": [last_active]})
+            df = pd.concat([df, new_row], ignore_index=True)
+
+        export_df = df[['time', 'active']].copy()
+        export_df.columns = ['Time (s)', 'Active Workers (count)']
+
+        export_df.to_csv(self.csv_file_worker_concurrency, index=False)
+
+    def generate_csv_file_retention_time(self):
+        rows = []
+        
+        for file in self.files.values():
+            if not file.producers:
+                continue
+                
+            if not file.transfers:
+                continue
+                
+            first_stage_in = min((t.time_start_stage_in for t in file.transfers if t.time_start_stage_in), default=float('inf'))
+            last_stage_out = max((t.time_stage_out for t in file.transfers if t.time_stage_out), default=float('-inf'))
+            
+            if first_stage_in == float('inf') or last_stage_out == float('-inf'):
+                continue
+                
+            retention_time = last_stage_out - first_stage_in
+            rows.append((file.filename, retention_time, file.created_time))
+
+        if not rows:
+            return
+
+        df = pd.DataFrame(rows, columns=['file_name', 'retention_time', 'created_time'])
+        df = df.sort_values(by='created_time')
+        df.insert(0, 'file_idx', range(1, len(df) + 1))
+        df = df[['file_idx', 'file_name', 'retention_time']]
+        df.columns = ['File Index', 'File Name', 'Retention Time (s)']
+
+        df.to_csv(self.csv_file_retention_time, index=False)
+
+    def generate_csv_task_execution_time(self):
+        # sort all tasks by when_ready time and exclude library tasks
+        sorted_tasks = sorted(
+            [task for task in self.tasks.values() if not task.is_library_task],
+            key=lambda t: (t.when_ready if t.when_ready is not None else float('inf'))
+        )
+
+        rows = []
+        for idx, task in enumerate(sorted_tasks, 1):
+            task_id = task.task_id
+            task_try_id = task.task_try_id
+
+            if task.task_status == 0:
+                task_execution_time = max(floor_decimal(task.time_worker_end - task.time_worker_start, 2), 0.01)
+                ran_to_completion = 1
+            elif task.task_status != 0 and task.when_running and task.when_failure_happens:
+                task_execution_time = max(floor_decimal(task.when_failure_happens - task.when_running, 2), 0.01)
+                ran_to_completion = 0
+            else:
+                # these tasks were not dispatched at all
+                pass
+
+            if task_execution_time:
+                rows.append((idx, task_execution_time, task_id, task_try_id, ran_to_completion))
+
+        if not rows:
+            return
+
+        df = pd.DataFrame(rows, columns=['Global Index', 'Execution Time', 'Task ID', 'Task Try ID', 'Ran to Completion'])
+        df.to_csv(self.csv_file_task_execution_time, index=False)
+
+    def generate_csv_task_response_time(self):
+        # sort all tasks by when_ready time and exclude library tasks
+        sorted_tasks = sorted(
+            [task for task in self.tasks.values() if not task.is_library_task],
+            key=lambda t: (t.when_ready if t.when_ready is not None else float('inf'))
+        )
+
+        rows = []
+        for idx, task in enumerate(sorted_tasks, 1):
+            task_id = task.task_id
+            task_try_id = task.task_try_id
+
+            # Calculate task response time
+            if task.when_running:
+                task_response_time = max(floor_decimal(task.when_running - task.when_ready, 2), 0.01)
+                was_dispatched = 1
+            elif task.when_failure_happens:
+                task_response_time = max(floor_decimal(task.when_failure_happens - task.when_ready, 2), 0.01)
+                was_dispatched = 0
+            else:
+                task_response_time = None
+                was_dispatched = 0
+
+            # Only include tasks that have response time data
+            if task_response_time is not None:
+                rows.append((idx, task_response_time, task_id, task_try_id, was_dispatched))
+
+        if not rows:
+            return
+
+        df = pd.DataFrame(rows, columns=['Global Index', 'Response Time', 'Task ID', 'Task Try ID', 'Was Dispatched'])
+        df.to_csv(self.csv_file_task_response_time, index=False)
+
+    def generate_csv_task_concurrency(self):
+        task_phases = {
+            'tasks_waiting': [],
+            'tasks_committing': [],
+            'tasks_executing': [],
+            'tasks_retrieving': [],
+            'tasks_done': [],
+        }
+
+        base_time = self.MIN_TIME
+
+        for task in self.tasks.values():
+            if task.is_library_task:
+                continue
+                
+            if task.when_ready:
+                # ready tasks can happen before the base time
+                t0 = floor_decimal(max(task.when_ready - base_time, 0), 2)
+                task_phases['tasks_waiting'].append((t0, 1))
+                time_waiting_end = None
+                if task.when_running:
+                    time_waiting_end = task.when_running
+                elif task.when_failure_happens:
+                    time_waiting_end = task.when_failure_happens
+                if time_waiting_end:
+                    t1 = floor_decimal(time_waiting_end - base_time, 2)
+                    task_phases['tasks_waiting'].append((t1, -1))
+
+            if task.when_running:
+                t0 = floor_decimal(task.when_running - base_time, 2)
+                task_phases['tasks_committing'].append((t0, 1))
+                time_committing_end = None
+                if task.time_worker_start:
+                    time_committing_end = task.time_worker_start
+                elif task.when_failure_happens:
+                    time_committing_end = task.when_failure_happens
+                elif task.when_waiting_retrieval:
+                    time_committing_end = task.when_waiting_retrieval
+                if time_committing_end:    
+                    t1 = floor_decimal(time_committing_end - base_time, 2)
+                    task_phases['tasks_committing'].append((t1, -1))
+
+            if task.time_worker_start:
+                t0 = floor_decimal(task.time_worker_start - base_time, 2)
+                task_phases['tasks_executing'].append((t0, 1))
+                time_executing_end = None
+                if task.time_worker_end:
+                    time_executing_end = task.time_worker_end
+                elif task.when_failure_happens:
+                    time_executing_end = task.when_failure_happens
+                elif task.when_waiting_retrieval:
+                    time_executing_end = task.when_waiting_retrieval
+                if time_executing_end:
+                    t1 = floor_decimal(time_executing_end - base_time, 2)
+                    task_phases['tasks_executing'].append((t1, -1))
+
+            if task.time_worker_end:
+                t0 = floor_decimal(task.time_worker_end - base_time, 2)
+                task_phases['tasks_retrieving'].append((t0, 1))
+                time_retrieving_end = None
+                if task.when_waiting_retrieval:
+                    time_retrieving_end = task.when_waiting_retrieval
+                elif task.when_failure_happens:
+                    time_retrieving_end = task.when_failure_happens
+                if time_retrieving_end:
+                    t1 = floor_decimal(time_retrieving_end - base_time, 2)
+                    task_phases['tasks_retrieving'].append((t1, -1))
+
+            if task.when_done:
+                t0 = floor_decimal(task.when_done - base_time, 2)
+                task_phases['tasks_done'].append((t0, 1))
+
+        # process each phase and create time series data
+        phase_data = {}
+        for phase_name, events in task_phases.items():
+            if not events:
+                phase_data[phase_name] = []
+                continue
+            df = pd.DataFrame(events, columns=['time', 'event']).sort_values('time')
+            df = df.groupby('time')['event'].sum().reset_index()
+            df['cumulative'] = df['event'].cumsum().clip(lower=0)
+            phase_data[phase_name] = df[['time', 'cumulative']].values.tolist()
+
+        # create a merged DataFrame for CSV export
+        all_times = set()
+        for points in phase_data.values():
+            if points:
+                all_times.update([p[0] for p in points])
+        
+        if not all_times:
+            return
+
+        all_times = sorted(all_times)
+        
+        # create data for each time point
+        rows = []
+        phase_titles = {
+            'tasks_waiting': 'Waiting',
+            'tasks_committing': 'Committing', 
+            'tasks_executing': 'Executing',
+            'tasks_retrieving': 'Retrieving',
+            'tasks_done': 'Done'
+        }
+        
+        for time_point in all_times:
+            row = {'time': time_point}
+            for phase_name, points in phase_data.items():
+                # find the value at this time point
+                value = 0
+                for t, val in points:
+                    if t <= time_point:
+                        value = val
+                    else:
+                        break
+                row[phase_titles[phase_name]] = value
+            rows.append(row)
+
+        if not rows:
+            return
+
+        df = pd.DataFrame(rows)
+        df = df.sort_values('time')
+        df.columns = ['Time (s)', 'Waiting', 'Committing', 'Executing', 'Retrieving', 'Done']
+        df.to_csv(self.csv_file_task_concurrency, index=False)
+
+    def generate_csv_task_retrieval_time(self):
+        # sort all tasks by when_ready time and exclude library tasks
+        sorted_tasks = sorted(
+            [task for task in self.tasks.values() if not task.is_library_task],
+            key=lambda t: (t.when_ready if t.when_ready is not None else float('inf'))
+        )
+
+        rows = []
+        for idx, task in enumerate(sorted_tasks, 1):
+            task_id = task.task_id
+            task_try_id = task.task_try_id
+
+            # Calculate task waiting retrieval time
+            if task.when_retrieved and task.when_waiting_retrieval:
+                task_waiting_retrieval_time = max(floor_decimal(task.when_retrieved - task.when_waiting_retrieval, 2), 0.01)
+                rows.append((idx, task_waiting_retrieval_time, task_id, task_try_id))
+
+        if not rows:
+            return
+
+        df = pd.DataFrame(rows, columns=['Global Index', 'Retrieval Time', 'Task ID', 'Task Try ID'])
+        df.to_csv(self.csv_file_task_retrieval_time, index=False)
+
+    def generate_csv_task_dependencies_and_dependents(self):
+        # calculate task dependents and dependencies
+        output_file_to_task = {}
+        for task in self.tasks.values():
+            if task.is_library_task:
+                continue
+            for f in task.output_files:
+                output_file_to_task[f] = task.task_id
+        
+        dependency_map = {task.task_id: set() for task in self.tasks.values() if not task.is_library_task}
+        dependent_map = {task.task_id: set() for task in self.tasks.values() if not task.is_library_task}
+
+        for task in self.tasks.values():
+            if task.is_library_task:
+                continue
+            task_id = task.task_id
+            for f in task.input_files:
+                parent_id = output_file_to_task.get(f)
+                if parent_id and parent_id != task_id:
+                    dependency_map[task_id].add(parent_id)
+                    dependent_map[parent_id].add(task_id)
+
+        # sort all tasks by when_ready time
+        sorted_tasks = sorted(
+            [task for task in self.tasks.values() if not task.is_library_task],
+            key=lambda t: (t.when_ready if t.when_ready is not None else float('inf'))
+        )
+
+        # generate dependencies CSV
+        dependencies_rows = []
+        dependents_rows = []
+        
+        for idx, task in enumerate(sorted_tasks, 1):
+            task_id = task.task_id
+            dependency_count = len(dependency_map[task_id])
+            dependent_count = len(dependent_map[task_id])
+            
+            dependencies_rows.append((idx, dependency_count))
+            dependents_rows.append((idx, dependent_count))
+
+        # generate dependencies CSV
+        if dependencies_rows:
+            df_dependencies = pd.DataFrame(dependencies_rows, columns=['Global Index', 'Dependency Count'])
+            df_dependencies.to_csv(self.csv_file_task_dependencies, index=False)
+
+        # generate dependents CSV  
+        if dependents_rows:
+            df_dependents = pd.DataFrame(dependents_rows, columns=['Global Index', 'Dependent Count'])
+            df_dependents.to_csv(self.csv_file_task_dependents, index=False)
+
+    def generate_csv_task_completion_percentiles(self):
+        import math
+        
+        finish_times = []
+        for task in self.tasks.values():
+            # Filter out library tasks
+            if task.is_library_task:
+                continue
+            
+            # Calculate finish time relative to MIN_TIME
+            finish_time = task.when_done or task.when_retrieved
+            if finish_time:
+                finish_times.append(finish_time - self.MIN_TIME)
+
+        if not finish_times:
+            return
+
+        finish_times = sorted(finish_times)
+        n = len(finish_times)
+
+        rows = []
+        for p in range(1, 101):
+            idx = int(math.ceil(p / 100 * n)) - 1
+            idx = max(0, min(idx, n - 1))
+            rows.append((p, floor_decimal(finish_times[idx], 2)))
+
+        df = pd.DataFrame(rows, columns=['Percentile', 'Completion Time'])
+        df.to_csv(self.csv_file_task_completion_percentiles, index=False)
+
+    def generate_csv_file_sizes(self):
+        rows = []
+        max_size = 0
+
+        for file in self.files.values():
+            if not file.transfers or not file.producers:
+                continue
+
+            fname = file.filename
+            size = file.size_mb
+            if size is None:
+                continue
+
+            created_time = min((t.time_start_stage_in for t in file.transfers), default=float('inf'))
+            if created_time == float('inf'):
+                continue
+
+            rows.append((fname, size, created_time))
+            max_size = max(max_size, size)
+
+        if not rows:
+            return
+
+        df = pd.DataFrame(rows, columns=['file_name', 'file_size', 'created_time'])
+        df = df.sort_values(by='created_time')
+        df.insert(0, 'file_idx', range(1, len(df) + 1))
+
+        unit, scale = get_unit_and_scale_by_max_file_size_mb(max_size)
+        df['file_size_scaled'] = df['file_size'] * scale
+
+        export_df = df[['file_idx', 'file_name', 'file_size_scaled']].copy()
+        export_df.columns = ['File Index', 'File Name', f'Size ({unit})']
+
+        export_df.to_csv(self.csv_file_sizes, index=False)
+
+    def generate_csv_worker_lifetime(self):
+        entries = []
+        for worker in self.workers.values():
+            worker_key = worker.get_worker_key()
+            worker_ip_port = ':'.join(worker_key.split(':')[:-1])  # Remove connect_id
+            worker_id = worker.id
+            
+            for i, t_start in enumerate(worker.time_connected):
+                t_end = (
+                    worker.time_disconnected[i]
+                    if i < len(worker.time_disconnected)
+                    else self.MAX_TIME
+                )
+                t0 = floor_decimal(max(0, t_start - self.MIN_TIME), 2)
+                t1 = floor_decimal(max(0, t_end - self.MIN_TIME), 2)
+                duration = floor_decimal(max(0, t1 - t0), 2)
+                entries.append((t0, duration, worker_id, worker_ip_port))
+
+        if not entries:
+            return
+
+        entries.sort(key=lambda x: x[0])
+        rows = [(worker_id, worker_ip_port, duration) for _, duration, worker_id, worker_ip_port in entries]
+
+        df = pd.DataFrame(rows, columns=['ID', 'Worker IP Port', 'Lifetime (s)'])
+        df.to_csv(self.csv_file_worker_lifetime, index=False)
+
+    def generate_csv_worker_executing_tasks(self):
+        base_time = self.MIN_TIME
+        from collections import defaultdict
+        
+        all_worker_events = defaultdict(list)
+
+        for task in self.tasks.values():
+            if not task.worker_entry or not task.time_worker_start or not task.time_worker_end:
+                continue
+            worker_entry = task.worker_entry
+            start = floor_decimal(task.time_worker_start - base_time, 2)
+            end = floor_decimal(task.time_worker_end - base_time, 2)
+            if start >= end:
+                continue
+            all_worker_events[worker_entry].extend([(start, 1), (end, -1)])
+
+        if not all_worker_events:
+            return
+
+        column_data = {}
+        time_set = set()
+
+        for worker_entry, events in all_worker_events.items():
+            # Add worker time boundary points
+            w = self.workers.get(worker_entry)
+            if w:
+                # Get worker time boundary points
+                t_connected = floor_decimal(w.time_connected[0] - base_time, 2)
+                t_disconnected = floor_decimal(w.time_disconnected[0] - base_time, 2)
+                boundary = []
+                if t_connected > 0:
+                    boundary.append((t_connected, 0))
+                if t_disconnected > 0:
+                    boundary.append((t_disconnected, 0))
+                events += boundary
+
+            if not events:
+                continue
+
+            df = pd.DataFrame(events, columns=['time', 'delta'])
+            df = df.groupby('time', as_index=False)['delta'].sum()
+            df['cumulative'] = df['delta'].cumsum()
+            df['cumulative'] = df['cumulative'].clip(lower=0)
+
+            raw_points = df[['time', 'cumulative']].values.tolist()
+            compressed_points = compress_time_based_critical_points(raw_points)
+
+            wid = f"{worker_entry[0]}:{worker_entry[1]}:{worker_entry[2]}"
+            col_map = {t: v for t, v in compressed_points}
+            column_data[wid] = col_map
+            time_set.update(col_map.keys())
+
+        if not column_data:
+            return
+
+        sorted_times = sorted(time_set)
+        columns = sorted(column_data.keys())
+
+        # Create CSV data
+        rows = []
+        for t in sorted_times:
+            row = {'time (s)': floor_decimal(t, 2)}
+            for c in columns:
+                row[c] = column_data[c].get(t, float('nan'))
+            rows.append(row)
+
+        df = pd.DataFrame(rows)
+        df.to_csv(self.csv_file_worker_executing_tasks, index=False)
+
+    def generate_csv_worker_waiting_retrieval_tasks(self):
+        base_time = self.MIN_TIME
+        from collections import defaultdict
+        
+        all_worker_events = defaultdict(list)
+
+        for task in self.tasks.values():
+            if not task.worker_entry or not task.when_waiting_retrieval or not task.when_retrieved:
+                continue
+            worker_entry = task.worker_entry
+            start = floor_decimal(task.when_waiting_retrieval - base_time, 2)
+            end = floor_decimal(task.when_retrieved - base_time, 2)
+            if start >= end:
+                continue
+            all_worker_events[worker_entry].extend([(start, 1), (end, -1)])
+
+        if not all_worker_events:
+            return
+
+        column_data = {}
+        time_set = set()
+
+        for worker_entry, events in all_worker_events.items():
+            w = self.workers.get(worker_entry)
+            if w:
+                # Get worker time boundary points
+                t_connected = floor_decimal(w.time_connected[0] - base_time, 2)
+                t_disconnected = floor_decimal(w.time_disconnected[0] - base_time, 2)
+                boundary = []
+                if t_connected > 0:
+                    boundary.append((t_connected, 0))
+                if t_disconnected > 0:
+                    boundary.append((t_disconnected, 0))
+                events += boundary
+
+            if not events:
+                continue
+
+            df = pd.DataFrame(events, columns=['time', 'delta'])
+            df = df.groupby('time', as_index=False)['delta'].sum()
+            df['cumulative'] = df['delta'].cumsum()
+            df['cumulative'] = df['cumulative'].clip(lower=0)
+
+            if df['cumulative'].isna().all():
+                continue
+
+            raw_points = df[['time', 'cumulative']].values.tolist()
+            compressed_points = compress_time_based_critical_points(raw_points)
+
+            wid = f"{worker_entry[0]}:{worker_entry[1]}:{worker_entry[2]}"
+            col_map = {t: v for t, v in compressed_points}
+            column_data[wid] = col_map
+            time_set.update(col_map.keys())
+
+        if not column_data:
+            return
+
+        sorted_times = sorted(time_set)
+        columns = sorted(column_data.keys())
+
+        # Create CSV data
+        rows = []
+        for t in sorted_times:
+            row = {'time (s)': floor_decimal(t, 2)}
+            for c in columns:
+                row[c] = column_data[c].get(t, float('nan'))
+            rows.append(row)
+
+        df = pd.DataFrame(rows)
+        df.to_csv(self.csv_file_worker_waiting_retrieval_tasks, index=False)
+
+    def get_worker_time_boundary_points(self, worker, base_time):
+        t_connected = floor_decimal(worker.time_connected[0] - base_time, 2)
+        t_disconnected = floor_decimal(worker.time_disconnected[0] - base_time, 2)
+        boundary = []   
+        if t_connected > 0:
+            boundary.append((t_connected, 0))
+        if t_disconnected > 0:
+            boundary.append((t_disconnected, 0))
+        return boundary
+
+    def generate_csv_worker_transfers(self):
+        base_time = self.MIN_TIME
+        from collections import defaultdict
+
+        for role in ['incoming', 'outgoing']:
+            transfer_role = 'destination' if role == 'incoming' else 'source'
+            csv_file = self.csv_file_worker_incoming_transfers if role == 'incoming' else self.csv_file_worker_outgoing_transfers
+
+            transfers_by_worker = defaultdict(list)
+
+            for file in self.files.values():
+                for transfer in file.transfers:
+                    worker_entry = getattr(transfer, transfer_role)
+                    if not isinstance(worker_entry, tuple) or len(worker_entry) != 3:
+                        continue
+
+                    t0 = floor_decimal(transfer.time_start_stage_in - base_time, 2)
+                    transfers_by_worker[worker_entry].append((t0, 1))
+
+                    t1 = None
+                    if transfer.time_stage_in:
+                        t1 = floor_decimal(transfer.time_stage_in - base_time, 2)
+                    elif transfer.time_stage_out:
+                        t1 = floor_decimal(transfer.time_stage_out - base_time, 2)
+                    else:
+                        print(f"========== {file.filename} has no stage_in or stage_out")
+
+                    if t1 is not None:
+                        transfers_by_worker[worker_entry].append((t1, -1))
+
+            if not transfers_by_worker:
+                continue
+
+            column_data = {}
+            time_set = set()
+
+            for worker_entry, events in transfers_by_worker.items():
+                if not events:
+                    continue
+
+                w = self.workers.get(worker_entry)
+                time_boundary_points = []
+                if w:
+                    time_boundary_points = self.get_worker_time_boundary_points(w, base_time)
+
+                all_events = events + time_boundary_points
+                df = pd.DataFrame(all_events, columns=['time', 'delta'])
+                df = df.groupby('time', as_index=False)['delta'].sum()
+                df['cumulative'] = df['delta'].cumsum().clip(lower=0)
+
+                if df['cumulative'].isna().all():
+                    continue
+
+                raw_points = df[['time', 'cumulative']].values.tolist()
+                compressed_points = compress_time_based_critical_points(raw_points)
+
+                wid = f"{worker_entry[0]}:{worker_entry[1]}:{worker_entry[2]}"
+                col_map = {t: v for t, v in compressed_points}
+                column_data[wid] = col_map
+                time_set.update(col_map.keys())
+
+            if not column_data:
+                continue
+
+            sorted_times = sorted(time_set)
+            columns = sorted(column_data.keys())
+
+            rows = []
+            for t in sorted_times:
+                row = {'time (s)': t}
+                for c in columns:
+                    row[c] = column_data[c].get(t, float('nan'))
+                rows.append(row)
+
+            df = pd.DataFrame(rows)
+            df.to_csv(csv_file, index=False)
+
+    def generate_csv_worker_storage_consumption(self):
+        base_time = self.MIN_TIME
+        from collections import defaultdict
+
+        for show_percentage in [False, True]:
+            csv_file = self.csv_file_worker_storage_consumption if not show_percentage else self.csv_file_worker_storage_consumption_percentage
+            
+            all_worker_storage = defaultdict(list)
+            for file in self.files.values():
+                for transfer in file.transfers:
+                    dest = transfer.destination
+                    if not isinstance(dest, tuple) or transfer.time_stage_in is None:
+                        continue
+                    time_in = floor_decimal(float(transfer.time_start_stage_in - base_time), 2)
+                    time_out = floor_decimal(float(transfer.time_stage_out - base_time), 2)
+                    size = max(0, file.size_mb)
+                    all_worker_storage[dest].append((time_in, size))
+                    all_worker_storage[dest].append((time_out, -size))
+
+            if not all_worker_storage:
+                continue
+
+            column_data = {}
+            time_set = set()
+
+            for worker_entry, events in all_worker_storage.items():
+                if not events:
+                    continue
+
+                df = pd.DataFrame(events, columns=['time', 'size']).sort_values('time')
+                df['storage'] = df['size'].cumsum().clip(lower=0)
+
+                if show_percentage:
+                    worker = self.workers.get(worker_entry)
+                    if worker and worker.disk_mb > 0:
+                        df['storage'] = df['storage'] / worker.disk_mb * 100
+                    else:
+                        continue
+
+                df['time'] = df['time'].map(lambda x: floor_decimal(x, 2))
+                df = df.groupby('time', as_index=False)['storage'].last()
+
+                # Add worker time boundary points
+                worker = self.workers.get(worker_entry)
+                time_boundary_points = []
+                if worker:
+                    time_boundary_points = self.get_worker_time_boundary_points(worker, base_time)
+
+                if time_boundary_points:
+                    boundary_df = pd.DataFrame(time_boundary_points, columns=['time', 'storage'])
+                    full_df = pd.concat([df, boundary_df], ignore_index=True).sort_values('time')
+                else:
+                    full_df = df
+
+                full_df = full_df.groupby('time', as_index=False)['storage'].last().sort_values('time')
+
+                if full_df['storage'].isna().all():
+                    continue
+
+                raw_points = full_df[['time', 'storage']].values.tolist()
+                compressed_points = compress_time_based_critical_points(raw_points)
+
+                wid = f"{worker_entry[0]}:{worker_entry[1]}:{worker_entry[2]}"
+                col_map = {t: v for t, v in compressed_points}
+                column_data[wid] = col_map
+                time_set.update(col_map.keys())
+
+            if not column_data:
+                continue
+
+            sorted_times = sorted(time_set)
+            columns = sorted(column_data.keys())
+
+            rows = []
+            for t in sorted_times:
+                row = {'time (s)': t}
+                for c in columns:
+                    row[c] = column_data[c].get(t, float('nan'))
+                rows.append(row)
+
+            df = pd.DataFrame(rows)
+            df.to_csv(csv_file, index=False)
+
+
+        

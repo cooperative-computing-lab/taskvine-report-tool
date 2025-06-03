@@ -32,6 +32,10 @@ def find_matching_directories(root_dir, patterns):
         
         matched_dirs = []
         for pattern in patterns:
+            # strip trailing slashes and get basename
+            pattern = pattern.rstrip('/')
+            pattern = os.path.basename(pattern)
+            
             # remove quotes if user accidentally included them
             cleaned_pattern = pattern.strip('\'"')
             
