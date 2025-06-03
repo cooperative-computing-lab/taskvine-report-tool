@@ -15,6 +15,7 @@ from collections import defaultdict
 import cloudpickle
 from datetime import timezone, timedelta
 import pytz
+import platform
 from taskvine_report.utils import *
 
 
@@ -72,6 +73,7 @@ class DataParser:
         self.csv_file_worker_outgoing_transfers = os.path.join(self.csv_files_dir, 'worker_outgoing_transfers.csv')
         self.csv_file_worker_storage_consumption = os.path.join(self.csv_files_dir, 'worker_storage_consumption.csv')
         self.csv_file_worker_storage_consumption_percentage = os.path.join(self.csv_files_dir, 'worker_storage_consumption_percentage.csv')
+        self.csv_file_task_subgraphs = os.path.join(self.csv_files_dir, 'task_subgraphs.csv')
 
         self.debug = os.path.join(self.vine_logs_dir, 'debug')
         self.transactions = os.path.join(self.vine_logs_dir, 'transactions')
@@ -1069,6 +1071,7 @@ class DataParser:
         self.generate_csv_worker_waiting_retrieval_tasks()
         self.generate_csv_worker_transfers()
         self.generate_csv_worker_storage_consumption()
+        self.generate_csv_task_subgraphs()
 
     def generate_csv_file_concurrent_replicas(self):
         rows = []
@@ -1589,12 +1592,11 @@ class DataParser:
         entries.sort(key=lambda x: x[0])
         rows = [(worker_id, worker_ip_port, duration) for _, duration, worker_id, worker_ip_port in entries]
 
-        df = pd.DataFrame(rows, columns=['ID', 'Worker IP Port', 'Lifetime (s)'])
+        df = pd.DataFrame(rows, columns=['ID', 'Worker IP Port', 'LifeTime (s)'])
         df.to_csv(self.csv_file_worker_lifetime, index=False)
 
     def generate_csv_worker_executing_tasks(self):
         base_time = self.MIN_TIME
-        from collections import defaultdict
         
         all_worker_events = defaultdict(list)
 
@@ -1653,7 +1655,7 @@ class DataParser:
         # Create CSV data
         rows = []
         for t in sorted_times:
-            row = {'time (s)': floor_decimal(t, 2)}
+            row = {'Time (s)': floor_decimal(t, 2)}
             for c in columns:
                 row[c] = column_data[c].get(t, float('nan'))
             rows.append(row)
@@ -1663,7 +1665,6 @@ class DataParser:
 
     def generate_csv_worker_waiting_retrieval_tasks(self):
         base_time = self.MIN_TIME
-        from collections import defaultdict
         
         all_worker_events = defaultdict(list)
 
@@ -1724,7 +1725,7 @@ class DataParser:
         # Create CSV data
         rows = []
         for t in sorted_times:
-            row = {'time (s)': floor_decimal(t, 2)}
+            row = {'Time (s)': floor_decimal(t, 2)}
             for c in columns:
                 row[c] = column_data[c].get(t, float('nan'))
             rows.append(row)
@@ -1744,7 +1745,6 @@ class DataParser:
 
     def generate_csv_worker_transfers(self):
         base_time = self.MIN_TIME
-        from collections import defaultdict
 
         for role in ['incoming', 'outgoing']:
             transfer_role = 'destination' if role == 'incoming' else 'source'
@@ -1811,7 +1811,7 @@ class DataParser:
 
             rows = []
             for t in sorted_times:
-                row = {'time (s)': t}
+                row = {'Time (s)': t}
                 for c in columns:
                     row[c] = column_data[c].get(t, float('nan'))
                 rows.append(row)
@@ -1821,7 +1821,6 @@ class DataParser:
 
     def generate_csv_worker_storage_consumption(self):
         base_time = self.MIN_TIME
-        from collections import defaultdict
 
         for show_percentage in [False, True]:
             csv_file = (
@@ -1903,7 +1902,104 @@ class DataParser:
             columns = sorted(column_data.keys())
 
             # build matrix in a vectorized-ish way
-            rows = [{'time (s)': t, **{c: column_data[c].get(t, float('nan')) for c in columns}} for t in sorted_times]
+            rows = [{'Time (s)': t, **{c: column_data[c].get(t, float('nan')) for c in columns}} for t in sorted_times]
 
             pd.DataFrame(rows).to_csv(csv_file, index=False)
+
+    def generate_csv_task_subgraphs(self):
+        # Step 1: Select unique tasks (one task_id maps to one try_id, preferring tasks with more output files)
+        unique_tasks = {}
+        # Also count failures for each task_id
+        task_failure_counts = {}
+        
+        for (tid, try_id), task in self.tasks.items():
+            if getattr(task, 'is_library_task', False):
+                continue
+            
+            # Count failures for this task_id
+            if tid not in task_failure_counts:
+                task_failure_counts[tid] = 0
+            
+            task_status = getattr(task, 'task_status', None)
+            if task_status is not None and task_status != 0:
+                task_failure_counts[tid] += 1
+                
+            if tid not in unique_tasks:
+                unique_tasks[tid] = task
+            else:
+                # Prefer tasks with output files, then more output files, then successful tasks, then later try_ids
+                current_task = unique_tasks[tid]
+                
+                current_output_count = len(getattr(current_task, 'output_files', []))
+                new_output_count = len(getattr(task, 'output_files', []))
+                
+                # If new task has output files and current doesn't, use new task
+                if new_output_count > 0 and current_output_count == 0:
+                    unique_tasks[tid] = task
+                # If both have output files, prefer the one with more output files
+                elif new_output_count > current_output_count:
+                    unique_tasks[tid] = task
+                # If same number of output files, prefer successful tasks over failed ones
+                elif new_output_count == current_output_count:
+                    current_status = getattr(current_task, 'task_status', None)
+                    new_status = getattr(task, 'task_status', None)
+                    
+                    if (current_status != 0 and new_status == 0):
+                        unique_tasks[tid] = task
+                    # If both have same success status, prefer later try_id
+                    elif (current_status == new_status and task.task_try_id > current_task.task_try_id):
+                        unique_tasks[tid] = task
+
+        if not unique_tasks:
+            return
+
+        # Step 2: Build set of files that have producer tasks
+        files_with_producers = set()
+        for task in unique_tasks.values():
+            for file_name in getattr(task, 'output_files', []):
+                files_with_producers.add(file_name)
+
+        # Step 3: Map tasks to subgraphs
+        task_to_subgraph = {}
+        if hasattr(self, 'subgraphs') and self.subgraphs:
+            for subgraph_id, task_entries in self.subgraphs.items():
+                for (tid, try_id) in task_entries:
+                    if tid in unique_tasks:  # Only include if we have this task in unique_tasks
+                        task_to_subgraph[tid] = subgraph_id
+
+        # Step 4: Generate the single CSV with filtered files
+        rows = []
+        for task in unique_tasks.values():
+            task_id = task.task_id
+            subgraph_id = task_to_subgraph.get(task_id, 0)  # Default to 0 if not in any subgraph
+            is_recovery_task = getattr(task, 'is_recovery_task', False)
+            
+            # Get failure count for this task_id
+            failure_count = task_failure_counts.get(task_id, 0)
+            
+            # Filter input files to only include those with producers
+            input_files = [f for f in getattr(task, 'input_files', []) if f in files_with_producers]
+            
+            # Filter output files to only include those with producers (which should be all of them for this task)
+            output_files = [f for f in getattr(task, 'output_files', []) if f in files_with_producers]
+            
+            # Join files with | separator
+            input_files_str = '|'.join(input_files) if input_files else ''
+            output_files_str = '|'.join(output_files) if output_files else ''
+            
+            rows.append([
+                subgraph_id,
+                task_id,
+                is_recovery_task,
+                failure_count,
+                input_files_str,
+                output_files_str
+            ])
+
+        if rows:
+            import pandas as pd
+            df = pd.DataFrame(rows, columns=[
+                'subgraph_id', 'task_id', 'is_recovery_task', 'failure_count', 'input_files', 'output_files'
+            ])
+            df.to_csv(self.csv_file_task_subgraphs, index=False)
 

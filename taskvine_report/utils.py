@@ -84,7 +84,7 @@ def d3_percentage_formatter(digits=2):
 def d3_worker_core_formatter():
     return '(d) => d.split("-")[0]'
 
-def downsample_points(points, target_point_count=3000, y_index=1):
+def downsample_points(points, target_point_count=10000, y_index=1):
     if not points:
         return []
 

@@ -10,7 +10,7 @@ worker_storage_consumption_bp = Blueprint(
 def get_worker_storage_consumption():
     try:
         df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_worker_storage_consumption)
-        storage_data = extract_series_points_dict(df, 'time (s)')
+        storage_data = extract_series_points_dict(df, 'Time (s)')
         storage_data, size_unit = scale_storage_series_points(storage_data)
         x_domain, y_domain = extract_xy_domains_from_series_points(storage_data)
 

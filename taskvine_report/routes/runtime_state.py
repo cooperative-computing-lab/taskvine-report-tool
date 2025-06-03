@@ -212,7 +212,7 @@ class RuntimeState(DataParser):
         super().__init__(self.runtime_template)
 
         # load data
-        self.restore_from_checkpoint()
+        # self.restore_from_checkpoint()
         # exclude library tasks
         self.tasks = {tid: t for tid, t in self.tasks.items() if not t.is_library_task}
 

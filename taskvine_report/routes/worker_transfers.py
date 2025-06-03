@@ -8,7 +8,7 @@ def _get_worker_transfer_data(role):
         csv_attr = "csv_file_worker_incoming_transfers" if role == "incoming" else "csv_file_worker_outgoing_transfers"
         df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].__getattribute__(csv_attr))
 
-        data = extract_series_points_dict(df, 'time (s)')
+        data = extract_series_points_dict(df, 'Time (s)')
         x_domain, y_domain = extract_xy_domains_from_series_points(data)
 
         return jsonify({
