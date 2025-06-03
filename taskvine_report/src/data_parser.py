@@ -1004,7 +1004,7 @@ class DataParser:
 
         # set the min and max time
         self.MIN_TIME = self.manager.when_first_task_start_commit
-        self.MAX_TIME = self.manager.time_end
+        self.MAX_TIME = self.manager.time_end if self.manager.time_end else self.manager.current_max_time
 
         self.time_domain = [0, self.MAX_TIME - self.MIN_TIME]
         # pkl store the time domain
