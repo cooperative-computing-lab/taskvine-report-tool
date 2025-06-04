@@ -50,7 +50,7 @@ def create_app(logs_dir):
     package_dir = os.path.dirname(os.path.dirname(__file__))
     template_dir = os.path.join(package_dir, 'templates')
     static_dir = os.path.join(package_dir, 'static')
-    
+
     app = Flask(__name__, 
                 template_folder=template_dir,
                 static_folder=static_dir)
@@ -58,16 +58,16 @@ def create_app(logs_dir):
     def setup_request_logging(app):
         @app.before_request
         def log_request_info():
-            app.config["RUNTIME_STATE"].template_lock.renew()
             request_folder = request.args.get('folder')
+            app.config["PROCESSING_REQUESTS_COUNT"] += 1
             app.config["RUNTIME_STATE"].log_request(request)
             request._start_time = time.time()
-            
             app.config["RUNTIME_STATE"].ensure_runtime_template(request_folder)
 
         @app.after_request
         def log_response_info(response):
             app.config["RUNTIME_STATE"].template_lock.renew()
+            app.config["PROCESSING_REQUESTS_COUNT"] -= 1
             if hasattr(request, '_start_time'):
                 duration = time.time() - request._start_time
                 app.config["RUNTIME_STATE"].log_response(response, request, duration)
@@ -123,6 +123,7 @@ def create_app(logs_dir):
     app.config["RUNTIME_STATE"].set_logger()
     app.config["RUNTIME_STATE"].set_logs_dir(logs_dir)
     app.config["RUNTIME_STATE"].log_info(f"Using logs directory: {logs_dir}")
+    app.config["PROCESSING_REQUESTS_COUNT"] = 0
 
     @app.route('/')
     def index():

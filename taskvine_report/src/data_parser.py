@@ -845,7 +845,6 @@ class DataParser:
         self.parse_debug()
 
     def generate_subgraphs(self):
-        time_start = time.time()
         # exclude library tasks from subgraph generation to match RUNTIME_STATE filtering
         tasks_keys = set(key for key, task in self.tasks.items() if not task.is_library_task)
         parent = {key: key for key in tasks_keys}
@@ -878,7 +877,7 @@ class DataParser:
                 rank[root_x] += 1
 
         with self._create_progress_bar() as progress:
-            task_id = progress.add_task("Parsing subgraphs", total=len(self.files))
+            task_id = progress.add_task("Parsing file dependencies", total=len(self.files))
             
             for file in self.files.values():
                 progress.update(task_id, advance=1)
@@ -903,9 +902,6 @@ class DataParser:
         sorted_subgraphs = sorted(subgraphs.values(), key=len, reverse=True)
         self.subgraphs = {i: subgraph for i,
                           subgraph in enumerate(sorted_subgraphs, 1)}
-
-        time_end = time.time()
-        print(f"Parsing subgraphs took {round(time_end - time_start, 4)} seconds")
 
         self.checkpoint_subgraphs()
 

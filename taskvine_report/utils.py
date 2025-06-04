@@ -524,3 +524,9 @@ def ensure_dir(path):
     if os.path.exists(path):
         return
     os.makedirs(path)
+
+def get_current_runtime_template():
+    return current_app.config["RUNTIME_STATE"].runtime_template
+
+def request_template_matches_current_runtime_template(request):
+    return request.args.get('folder') == get_current_runtime_template()

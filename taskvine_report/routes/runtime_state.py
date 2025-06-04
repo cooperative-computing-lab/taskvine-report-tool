@@ -6,27 +6,34 @@ from .logger import Logger
 import time
 import traceback
 import threading
-import cloudpickle
+from flask import current_app
 
 
 class LeaseLock:
-    def __init__(self, lease_duration_sec=60):
+    def __init__(self, lease_duration_sec=20):
         self._lock = threading.Lock()
         self._expiry_time = 0
         self._lease_duration = lease_duration_sec
 
     def acquire(self):
         now = time.time()
+        # release lock if it's expired
         if self._lock.locked() and now > self._expiry_time:
             try:
                 self._lock.release()
             except RuntimeError:
                 pass
+        # release lock if there is no request being processed (the lock request itself is a request)
+        if current_app.config["PROCESSING_REQUESTS_COUNT"] <= 1:
+            try:
+                self._lock.release()
+            except RuntimeError:
+                pass
 
+        # acquire lock as non-blocking
         if not self._lock.acquire(blocking=False):
             return False
 
-        self._expiry_time = time.time() + self._lease_duration
         return True
 
     def release(self):
@@ -67,11 +74,11 @@ class RuntimeState(DataParser):
         self.tick_size = 12
 
         # for preventing multiple instances of the same runtime template
-        self.template_lock = LeaseLock(lease_duration_sec=60)
+        self.template_lock = LeaseLock()
 
         # for preventing multiple reloads of the data
         self._pkl_files_fingerprint = None
-        self.reload_lock = LeaseLock(lease_duration_sec=180)
+        self.reload_lock = LeaseLock()
 
     def set_logger(self):
         self.logger = Logger()
