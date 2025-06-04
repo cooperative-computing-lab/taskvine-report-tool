@@ -536,14 +536,16 @@ export class BaseModule {
 
         this._setAxesFromFetchedData();
 
-        /* legend and toolbox must be set after data is fetched */
-        this._initToolbox();
+        /* we are safe to plot axes after data is fetched */
         this._plotAxes();
-        this._setupZoomAndScroll();
-        this._initResizeHandler();
-
         /* legend must be set after axes are plotted */
         this.initLegend();
+        /* after the axes are plotted, we can setup zoom and scroll */
+        this._setupZoomAndScroll();
+        this._initResizeHandler();
+        
+        /* toolbox must be set after the legend is set b/c it checks if there are checkboxes */
+        this._initToolbox();
     }
 
     plot() {}

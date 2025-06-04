@@ -129,7 +129,7 @@ def get_task_execution_details():
         workers = []
         
         # Process task data
-        task_rows = df[df['task_type'].isin(['successful', 'unsuccessful'])]
+        task_rows = df[df['record_type'].isin(['successful_tasks', 'unsuccessful_tasks'])]
         for _, row in task_rows.iterrows():
             if pd.isna(row['task_id']):
                 continue
@@ -149,7 +149,7 @@ def get_task_execution_details():
                 'category': str(row['category']) if pd.notna(row['category']) else '',
             }
             
-            if row['task_type'] == 'successful':
+            if row['record_type'] == 'successful_tasks':
                 base_task_data.update({
                     'when_ready': float(row['when_ready']) if pd.notna(row['when_ready']) else None,
                     'when_running': float(row['when_running']) if pd.notna(row['when_running']) else None,
@@ -173,7 +173,7 @@ def get_task_execution_details():
                 unsuccessful_tasks.append(base_task_data)
         
         # Process worker data
-        worker_rows = df[df['task_type'] == 'worker']
+        worker_rows = df[df['record_type'] == 'worker']
         for _, row in worker_rows.iterrows():
             if pd.isna(row['worker_id']):
                 continue

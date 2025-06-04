@@ -133,30 +133,7 @@ class DataParser:
         )
 
     def write_df_to_csv(self, df, csv_file_path, **kwargs):
-        import os
-        import math
-
-        total_rows = len(df)
-        if total_rows == 0:
-            df.to_csv(csv_file_path, **kwargs)
-            return
-
-        num_chunks = min(100, total_rows)
-        chunk_size = math.ceil(total_rows / num_chunks)
-        filename = os.path.basename(csv_file_path)
-
-        progress = self._create_progress_bar()
-        task_id = progress.add_task(f"=== Writing {filename}", total=total_rows)
-
-        with progress:
-            with open(csv_file_path, 'w', newline='') as f:
-                for i in range(num_chunks):
-                    start = i * chunk_size
-                    end = min((i + 1) * chunk_size, total_rows)
-                    chunk = df.iloc[start:end]
-                    header = (i == 0)
-                    chunk.to_csv(f, header=header, **kwargs)
-                    progress.update(task_id, advance=len(chunk))
+        df.to_csv(csv_file_path, **kwargs)
 
     def get_current_worker_by_ip_port(self, worker_ip: str, worker_port: int):
         connect_id = self.current_worker_connect_id[(worker_ip, worker_port)]
@@ -1701,7 +1678,7 @@ class DataParser:
         base_time = self.MIN_TIME
         rows = []
 
-        # Task status mappings  
+        # Task status mappings
         TASK_STATUS_NAMES = {
             1: 'unsuccessful-input-missing',
             2: 'unsuccessful-output-missing', 
@@ -1768,7 +1745,7 @@ class DataParser:
                         'when_waiting_retrieval': round(task.when_waiting_retrieval - base_time, 2) if task.when_waiting_retrieval else None,
                         'when_retrieved': round(task.when_retrieved - base_time, 2) if task.when_retrieved else None,
                         'when_done': round(task.when_done - base_time, 2) if task.when_done else None,
-                        'task_type': 'successful',
+                        'record_type': 'successful_tasks',
                         'unsuccessful_checkbox_name': '',
                         'when_failure_happens': None,
                     })
@@ -1781,7 +1758,7 @@ class DataParser:
                         'when_failure_happens': round(task.when_failure_happens - base_time, 2) if task.when_failure_happens else None,
                         'execution_time': round(task.when_failure_happens - task.when_running, 2) if task.when_failure_happens and task.when_running else None,
                         'when_done': round(task.when_done - base_time, 2) if task.when_done else None,
-                        'task_type': 'unsuccessful',
+                        'record_type': 'unsuccessful_tasks',
                         'unsuccessful_checkbox_name': TASK_STATUS_NAMES.get(task.task_status, 'unknown'),
                     })
 
@@ -1819,7 +1796,7 @@ class DataParser:
                 'when_retrieved': pd.NA,
                 'when_failure_happens': pd.NA,
                 'when_done': pd.NA,
-                'task_type': 'worker',
+                'record_type': 'worker',
                 'unsuccessful_checkbox_name': pd.NA,
                 'hash': worker.hash,
                 'time_connected': [round(max(t - base_time, 0), 2) for t in worker.time_connected],
@@ -1838,7 +1815,7 @@ class DataParser:
             
             # Define column order
             columns = [
-                'task_type', 'task_id', 'task_try_id', 'worker_entry', 'worker_id', 'core_id',
+                'record_type', 'task_id', 'task_try_id', 'worker_entry', 'worker_id', 'core_id',
                 'is_recovery_task', 'input_files', 'output_files', 'num_input_files', 'num_output_files',
                 'task_status', 'category', 'when_ready', 'when_running', 'time_worker_start',
                 'time_worker_end', 'execution_time', 'when_waiting_retrieval', 'when_retrieved',
