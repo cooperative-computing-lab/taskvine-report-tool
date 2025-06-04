@@ -4,7 +4,7 @@ TaskVine Report Tool
 Visualization and analysis tool for TaskVine execution logs.
 """
 
-__version__ = "3.2.7.1"
+__version__ = "3.3.1"
 __author__ = "Collaborative Computing Lab (CCL), University of Notre Dame"
 __email__ = "jzhou24@nd.edu"
 

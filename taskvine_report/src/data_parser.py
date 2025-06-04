@@ -953,7 +953,10 @@ class DataParser:
                 raise ValueError(f"task {task.task_id} time_worker_end is smaller than time_worker_start: {task.time_worker_start} - {task.time_worker_end}")
             # note that the task might have not been retrieved yet
             if task.when_retrieved and task.time_worker_end and task.when_retrieved < task.time_worker_end:
-                raise ValueError(f"task {task.task_id} when_retrieved is smaller than time_worker_end: {task.time_worker_end} - {task.when_retrieved}")
+                if abs(task.time_worker_end - task.when_retrieved) <= 1:
+                    task.set_time_worker_end(task.when_retrieved)
+                else:
+                    raise ValueError(f"task {task.task_id} when_retrieved is smaller than time_worker_end: {task.time_worker_end} - {task.when_retrieved}")
         # post-processing for workers
         for worker in self.workers.values():
             # if any of the workers has no time disconnected, we set it to the manager's time_end
