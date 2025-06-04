@@ -1,0 +1,68 @@
+{% set name = "taskvine-report-tool" %}
+{% set version = "3.2.7.1" %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  path: ../
+
+build:
+  noarch: python
+  script: "{{ PYTHON }} -m pip install . -vv"
+  number: 0
+  entry_points:
+    - vine_parse = taskvine_report.cli.parse:main
+    - vine_report = taskvine_report.cli.report:main
+
+requirements:
+  host:
+    - python >=3.7,<3.12
+    - pip
+    - setuptools
+    - python-graphviz
+    - tqdm
+    - bitarray
+    - pandas
+    - cloudpickle
+    - rich
+    - flask
+    - pytz
+  run:
+    - python >=3.7,<3.12
+    - flask
+    - pandas
+    - cloudpickle
+    - rich
+    - tqdm
+    - bitarray
+    - pytz
+    - python-graphviz
+
+test:
+  imports:
+    - taskvine_report
+    - taskvine_report.cli
+    - taskvine_report.routes
+    - taskvine_report.src
+  commands:
+    - vine_parse --help
+    - vine_report --help
+
+about:
+  home: https://github.com/cooperative-computing-lab/taskvine-report-tool
+  license: MIT
+  license_family: MIT
+  license_file: LICENSE
+  summary: "Visualization and analysis tool for TaskVine execution logs"
+  description: |
+    TaskVine Report Tool provides visualization and analysis capabilities
+    for TaskVine execution logs, enabling users to monitor and analyze
+    distributed computing workflows.
+  doc_url: https://ccl.cse.nd.edu/software/taskvine/
+  dev_url: https://github.com/cooperative-computing-lab/taskvine-report-tool
+
+extra:
+  recipe-maintainers:
+    - jzhou24 

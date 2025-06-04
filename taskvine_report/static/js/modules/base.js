@@ -375,8 +375,8 @@ export class BaseModule {
             items.push(this.createToolboxItemSelectAll());
             items.push(this.createToolboxItemClearAll());
         }
-        items.push(this.createToolboxItemRefetch());
         items.push(this.createToolboxItemReset());
+        items.push(this.createToolboxItemRefetch());
 
         this._setToolboxItems(items);
     }

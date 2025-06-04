@@ -5,20 +5,26 @@ Setup script for TaskVine Report Tool
 Traditional setup.py configuration for reliable PyPI packaging.
 """
 
-from setuptools import setup, find_packages
+from setuptools import setup
 import os
-import sys
+import re
 
-# Add the package directory to path to import version
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'taskvine_report'))
-from taskvine_report import __version__
+def get_version():
+    """Read version from __init__.py without importing the package"""
+    init_path = os.path.join(os.path.dirname(__file__), 'taskvine_report', '__init__.py')
+    with open(init_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    version_match = re.search(r'^__version__ = [\'"]([^\'"]*)[\'"]', content, re.M)
+    if version_match:
+        return version_match.group(1)
+    raise RuntimeError('Unable to find version string.')
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
     name="taskvine-report-tool",
-    version=__version__,
+    version=get_version(),
     author="Collaborative Computing Lab (CCL), University of Notre Dame",
     author_email="jzhou24@nd.edu",
     description="Visualization and analysis tool for TaskVine execution logs",
@@ -47,7 +53,7 @@ setup(
         "Topic :: System :: Distributed Computing",
         "Topic :: System :: Monitoring",
     ],
-    python_requires=">=3.7",
+    python_requires=">=3.7,<3.12",
     install_requires=[
         "flask>=2.0.0",
         "pandas>=1.3.0",

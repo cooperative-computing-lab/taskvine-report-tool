@@ -1066,11 +1066,29 @@ class DataParser:
         # return if no tasks were dispatched
         if not self.MIN_TIME:
             return
-        self.generate_file_metrics()
-        self.generate_task_metrics()
-        self.generate_task_execution_details_metrics()
-        self.generate_worker_metrics()
-        self.generate_graph_metrics()
+
+        with self._create_progress_bar() as progress:
+            task_id = progress.add_task("[blue]Starting...", total=5)
+
+            progress.update(task_id, description="[green]Generating file metrics")
+            self.generate_file_metrics()
+            progress.advance(task_id)
+
+            progress.update(task_id, description="[green]Generating task metrics")
+            self.generate_task_metrics()
+            progress.advance(task_id)
+
+            progress.update(task_id, description="[green]Generating task exec details")
+            self.generate_task_execution_details_metrics()
+            progress.advance(task_id)
+
+            progress.update(task_id, description="[green]Generating worker metrics")
+            self.generate_worker_metrics()
+            progress.advance(task_id)
+
+            progress.update(task_id, description="[green]Generating graph metrics")
+            self.generate_graph_metrics()
+            progress.advance(task_id)
 
     def generate_worker_metrics(self):
         base_time = self.MIN_TIME
@@ -1081,54 +1099,45 @@ class DataParser:
         executing_task_events = defaultdict(list)
         waiting_retrieval_events = defaultdict(list)
         
-        total_work = len(self.workers) + len(self.tasks)
+        for worker in self.workers.values():
+            worker_key = worker.get_worker_key()
+            worker_ip_port = ':'.join(worker_key.split(':')[:-1])  # Remove connect_id
+            worker_id = worker.id
+            worker_entry = (worker.ip, worker.port, worker.connect_id)
+            
+            for i, t_start in enumerate(worker.time_connected):
+                t_end = (
+                    worker.time_disconnected[i]
+                    if i < len(worker.time_disconnected)
+                    else self.MAX_TIME
+                )
+                t0 = floor_decimal(max(0, t_start - base_time), 2)
+                t1 = floor_decimal(max(0, t_end - base_time), 2)
+                duration = floor_decimal(max(0, t1 - t0), 2)
+                worker_lifetime_entries.append((t0, duration, worker_id, worker_ip_port))
+            
+            for t in worker.time_connected:
+                connect_events.append(floor_decimal(t - base_time, 2))
+            for t in worker.time_disconnected:
+                disconnect_events.append(floor_decimal(t - base_time, 2))
         
-        with self._create_progress_bar() as progress:
-            task_id = progress.add_task("Processing worker metrics", total=total_work)
+        for task in self.tasks.values():
+            if not task.worker_entry:
+                continue
             
-            for worker in self.workers.values():
-                progress.update(task_id, advance=1)
-                
-                worker_key = worker.get_worker_key()
-                worker_ip_port = ':'.join(worker_key.split(':')[:-1])  # Remove connect_id
-                worker_id = worker.id
-                worker_entry = (worker.ip, worker.port, worker.connect_id)
-                
-                for i, t_start in enumerate(worker.time_connected):
-                    t_end = (
-                        worker.time_disconnected[i]
-                        if i < len(worker.time_disconnected)
-                        else self.MAX_TIME
-                    )
-                    t0 = floor_decimal(max(0, t_start - base_time), 2)
-                    t1 = floor_decimal(max(0, t_end - base_time), 2)
-                    duration = floor_decimal(max(0, t1 - t0), 2)
-                    worker_lifetime_entries.append((t0, duration, worker_id, worker_ip_port))
-                
-                for t in worker.time_connected:
-                    connect_events.append(floor_decimal(t - base_time, 2))
-                for t in worker.time_disconnected:
-                    disconnect_events.append(floor_decimal(t - base_time, 2))
+            worker_entry = task.worker_entry
             
-            for task in self.tasks.values():
-                progress.update(task_id, advance=1)
-                
-                if not task.worker_entry:
-                    continue
-                
-                worker_entry = task.worker_entry
-                
-                if task.time_worker_start and task.time_worker_end:
-                    start = floor_decimal(task.time_worker_start - base_time, 2)
-                    end = floor_decimal(task.time_worker_end - base_time, 2)
-                    if start < end:
-                        executing_task_events[worker_entry].extend([(start, 1), (end, -1)])
-                
-                if task.when_waiting_retrieval and task.when_retrieved:
-                    start = floor_decimal(task.when_waiting_retrieval - base_time, 2)
-                    end = floor_decimal(task.when_retrieved - base_time, 2)
-                    if start < end:
-                        waiting_retrieval_events[worker_entry].extend([(start, 1), (end, -1)])
+            if task.time_worker_start and task.time_worker_end:
+                start = floor_decimal(task.time_worker_start - base_time, 2)
+                end = floor_decimal(task.time_worker_end - base_time, 2)
+                if start < end:
+                    executing_task_events[worker_entry].extend([(start, 1), (end, -1)])
+            
+            if task.when_waiting_retrieval and task.when_retrieved:
+                start = floor_decimal(task.when_waiting_retrieval - base_time, 2)
+                end = floor_decimal(task.when_retrieved - base_time, 2)
+                if start < end:
+                    waiting_retrieval_events[worker_entry].extend([(start, 1), (end, -1)])
 
         # Helper function for worker time series data
         def generate_worker_time_series_csv(events_dict, csv_file):
@@ -1249,70 +1258,65 @@ class DataParser:
                     dependency_map[task_id].add(parent_id)
                     dependent_map[parent_id].add(task_id)
 
-        with self._create_progress_bar() as progress:
-            task_id = progress.add_task("Processing task metrics", total=len(sorted_tasks))
-            
-            for idx, task in enumerate(sorted_tasks, 1):
-                progress.update(task_id, advance=1)
-                
-                tid = task.task_id
-                try_id = task.task_try_id
-                status = task.task_status
+        for idx, task in enumerate(sorted_tasks, 1):
+            tid = task.task_id
+            try_id = task.task_try_id
+            status = task.task_status
 
-                ready = task.when_ready
-                running = task.when_running
-                start = task.time_worker_start
-                end = task.time_worker_end
-                fail = task.when_failure_happens
-                retrieved = task.when_retrieved
-                wait_retrieval = task.when_waiting_retrieval
-                done = task.when_done
+            ready = task.when_ready
+            running = task.when_running
+            start = task.time_worker_start
+            end = task.time_worker_end
+            fail = task.when_failure_happens
+            retrieved = task.when_retrieved
+            wait_retrieval = task.when_waiting_retrieval
+            done = task.when_done
 
-                def fd(t): return floor_decimal(t - base_time, 2) if t else None
+            def fd(t): return floor_decimal(t - base_time, 2) if t else None
 
-                et = None
-                ran = 0
-                if status == 0 and end and start:
-                    et = max(fd(end) - fd(start), 0.01)
-                    ran = 1
-                elif running and fail:
-                    et = max(fd(fail) - fd(running), 0.01)
-                if et:
-                    execution_time_rows.append((idx, et, tid, try_id, ran))
+            et = None
+            ran = 0
+            if status == 0 and end and start:
+                et = max(fd(end) - fd(start), 0.01)
+                ran = 1
+            elif running and fail:
+                et = max(fd(fail) - fd(running), 0.01)
+            if et:
+                execution_time_rows.append((idx, et, tid, try_id, ran))
 
-                rt = None
-                dispatched = 0
-                if running and ready:
-                    rt = max(fd(running) - fd(ready), 0.01)
-                    dispatched = 1
-                elif fail and ready:
-                    rt = max(fd(fail) - fd(ready), 0.01)
-                if rt is not None:
-                    response_time_rows.append((idx, rt, tid, try_id, dispatched))
+            rt = None
+            dispatched = 0
+            if running and ready:
+                rt = max(fd(running) - fd(ready), 0.01)
+                dispatched = 1
+            elif fail and ready:
+                rt = max(fd(fail) - fd(ready), 0.01)
+            if rt is not None:
+                response_time_rows.append((idx, rt, tid, try_id, dispatched))
 
-                if retrieved and wait_retrieval:
-                    rtt = max(fd(retrieved) - fd(wait_retrieval), 0.01)
-                    retrieval_time_rows.append((idx, rtt, tid, try_id))
+            if retrieved and wait_retrieval:
+                rtt = max(fd(retrieved) - fd(wait_retrieval), 0.01)
+                retrieval_time_rows.append((idx, rtt, tid, try_id))
 
-                dependencies_rows.append((idx, len(dependency_map[tid])))
-                dependents_rows.append((idx, len(dependent_map[tid])))
+            dependencies_rows.append((idx, len(dependency_map[tid])))
+            dependents_rows.append((idx, len(dependent_map[tid])))
 
-                finish = done or retrieved
-                if finish:
-                    finish_times.append(fd(finish))
+            finish = done or retrieved
+            if finish:
+                finish_times.append(fd(finish))
 
-                def add_phase(name, t0, t1=None):
-                    if t0:
-                        task_phases[name].append((fd(t0), 1))
-                    if t0 and t1:
-                        task_phases[name].append((fd(t1), -1))
+            def add_phase(name, t0, t1=None):
+                if t0:
+                    task_phases[name].append((fd(t0), 1))
+                if t0 and t1:
+                    task_phases[name].append((fd(t1), -1))
 
-                add_phase('tasks_waiting', ready, running or fail)
-                add_phase('tasks_committing', running, start or fail or wait_retrieval)
-                add_phase('tasks_executing', start, end or fail or wait_retrieval)
-                add_phase('tasks_retrieving', end, wait_retrieval or fail)
-                if done:
-                    task_phases['tasks_done'].append((fd(done), 1))
+            add_phase('tasks_waiting', ready, running or fail)
+            add_phase('tasks_committing', running, start or fail or wait_retrieval)
+            add_phase('tasks_executing', start, end or fail or wait_retrieval)
+            add_phase('tasks_retrieving', end, wait_retrieval or fail)
+            if done:
+                task_phases['tasks_done'].append((fd(done), 1))
 
         def write_csv(data, cols, path):
             if data:
@@ -1359,49 +1363,43 @@ class DataParser:
 
         self.write_df_to_csv(time_df, self.csv_file_task_concurrency, index=False)
 
-
     def generate_graph_metrics(self):
         unique_tasks = {}
         task_failure_counts = {}
         
         total_tasks = len([task for task in self.tasks.values() if not getattr(task, 'is_library_task', False)])
         
-        with self._create_progress_bar() as progress:
-            task_id = progress.add_task("Processing graph metrics", total=total_tasks)
+        for (tid, try_id), task in self.tasks.items():
+            if getattr(task, 'is_library_task', False):
+                continue
             
-            for (tid, try_id), task in self.tasks.items():
-                if getattr(task, 'is_library_task', False):
-                    continue
-                
-                progress.update(task_id, advance=1)
-                
-                if tid not in task_failure_counts:
-                    task_failure_counts[tid] = 0
-                
-                task_status = getattr(task, 'task_status', None)
-                if task_status is not None and task_status != 0:
-                    task_failure_counts[tid] += 1
+            if tid not in task_failure_counts:
+                task_failure_counts[tid] = 0
+            
+            task_status = getattr(task, 'task_status', None)
+            if task_status is not None and task_status != 0:
+                task_failure_counts[tid] += 1
 
-                if tid not in unique_tasks:
+            if tid not in unique_tasks:
+                unique_tasks[tid] = task
+            else:
+                current_task = unique_tasks[tid]
+                
+                current_output_count = len(getattr(current_task, 'output_files', []))
+                new_output_count = len(getattr(task, 'output_files', []))
+                
+                if new_output_count > 0 and current_output_count == 0:
                     unique_tasks[tid] = task
-                else:
-                    current_task = unique_tasks[tid]
+                elif new_output_count > current_output_count:
+                    unique_tasks[tid] = task
+                elif new_output_count == current_output_count:
+                    current_status = getattr(current_task, 'task_status', None)
+                    new_status = getattr(task, 'task_status', None)
                     
-                    current_output_count = len(getattr(current_task, 'output_files', []))
-                    new_output_count = len(getattr(task, 'output_files', []))
-                    
-                    if new_output_count > 0 and current_output_count == 0:
+                    if (current_status != 0 and new_status == 0):
                         unique_tasks[tid] = task
-                    elif new_output_count > current_output_count:
+                    elif (current_status == new_status and task.task_try_id > current_task.task_try_id):
                         unique_tasks[tid] = task
-                    elif new_output_count == current_output_count:
-                        current_status = getattr(current_task, 'task_status', None)
-                        new_status = getattr(task, 'task_status', None)
-                        
-                        if (current_status != 0 and new_status == 0):
-                            unique_tasks[tid] = task
-                        elif (current_status == new_status and task.task_try_id > current_task.task_try_id):
-                            unique_tasks[tid] = task
 
         if not unique_tasks:
             return
@@ -1501,78 +1499,73 @@ class DataParser:
             'outgoing': defaultdict(list)
         }
 
-        with self._create_progress_bar() as progress:
-            file_task_id = progress.add_task("Processing file metrics", total=len(self.files))
-            
-            for file in self.files.values():
-                progress.update(file_task_id, advance=1)
-                
-                if not file.transfers or not file.producers:
-                    continue
+        for file in self.files.values():
+            if not file.transfers or not file.producers:
+                continue
 
-                intervals = [
-                    (t.time_stage_in, t.time_stage_out)
-                    for t in file.transfers
-                    if t.time_stage_in and t.time_stage_out
-                ]
-                if intervals:
-                    events = [(start, 1) for start, _ in intervals] + [(end, -1) for _, end in intervals]
-                    events.sort()
-                    count = max_simul = 0
-                    for _, delta in events:
-                        count += delta
-                        max_simul = max(max_simul, count)
-                else:
-                    max_simul = 0
-                rows_concurrent.append((file.filename, max_simul, file.created_time))
+            intervals = [
+                (t.time_stage_in, t.time_stage_out)
+                for t in file.transfers
+                if t.time_stage_in and t.time_stage_out
+            ]
+            if intervals:
+                events = [(start, 1) for start, _ in intervals] + [(end, -1) for _, end in intervals]
+                events.sort()
+                count = max_simul = 0
+                for _, delta in events:
+                    count += delta
+                    max_simul = max(max_simul, count)
+            else:
+                max_simul = 0
+            rows_concurrent.append((file.filename, max_simul, file.created_time))
 
-                stage_times = [t.time_stage_in for t in file.transfers if t.time_stage_in is not None]
-                if stage_times:
-                    first_time = min(stage_times)
-                    t = floor_decimal(float(first_time - base_time), 2)
-                    events_created.append((t, file.size_mb))
+            stage_times = [t.time_stage_in for t in file.transfers if t.time_stage_in is not None]
+            if stage_times:
+                first_time = min(stage_times)
+                t = floor_decimal(float(first_time - base_time), 2)
+                events_created.append((t, file.size_mb))
 
-                for transfer in file.transfers:
+            for transfer in file.transfers:
+                if transfer.time_stage_in:
+                    t = floor_decimal(float(transfer.time_stage_in - base_time), 2)
+                    events_transferred.append((t, file.size_mb))
+                elif transfer.time_stage_out:
+                    t = floor_decimal(float(transfer.time_stage_out - base_time), 2)
+                    events_transferred.append((t, file.size_mb))
+
+                dest = transfer.destination
+                if isinstance(dest, tuple) and transfer.time_stage_in:
+                    time_in = floor_decimal(transfer.time_start_stage_in - base_time, 2)
+                    time_out = floor_decimal(transfer.time_stage_out - base_time, 2)
+                    size = max(0, file.size_mb)
+                    all_worker_storage[dest].extend([(time_in, size), (time_out, -size)])
+
+                for role in ['incoming', 'outgoing']:
+                    wid = getattr(transfer, 'destination' if role == 'incoming' else 'source', None)
+                    if not isinstance(wid, tuple):
+                        continue
+                    t0 = floor_decimal(transfer.time_start_stage_in - base_time, 2)
+                    t1 = None
                     if transfer.time_stage_in:
-                        t = floor_decimal(float(transfer.time_stage_in - base_time), 2)
-                        events_transferred.append((t, file.size_mb))
+                        t1 = floor_decimal(transfer.time_stage_in - base_time, 2)
                     elif transfer.time_stage_out:
-                        t = floor_decimal(float(transfer.time_stage_out - base_time), 2)
-                        events_transferred.append((t, file.size_mb))
+                        t1 = floor_decimal(transfer.time_stage_out - base_time, 2)
+                    if t1 is not None:
+                        worker_transfer_events[role][wid].extend([(t0, 1), (t1, -1)])
 
-                    dest = transfer.destination
-                    if isinstance(dest, tuple) and transfer.time_stage_in:
-                        time_in = floor_decimal(transfer.time_start_stage_in - base_time, 2)
-                        time_out = floor_decimal(transfer.time_stage_out - base_time, 2)
-                        size = max(0, file.size_mb)
-                        all_worker_storage[dest].extend([(time_in, size), (time_out, -size)])
+            first_stage_in = min((t.time_start_stage_in for t in file.transfers if t.time_start_stage_in), default=float('inf'))
+            last_stage_out = max((t.time_stage_out for t in file.transfers if t.time_stage_out), default=float('-inf'))
+            if first_stage_in != float('inf') and last_stage_out != float('-inf'):
+                retention_time = floor_decimal(last_stage_out - first_stage_in, 2)
+                rows_retention.append((file.filename, retention_time, file.created_time))
 
-                    for role in ['incoming', 'outgoing']:
-                        wid = getattr(transfer, 'destination' if role == 'incoming' else 'source', None)
-                        if not isinstance(wid, tuple):
-                            continue
-                        t0 = floor_decimal(transfer.time_start_stage_in - base_time, 2)
-                        t1 = None
-                        if transfer.time_stage_in:
-                            t1 = floor_decimal(transfer.time_stage_in - base_time, 2)
-                        elif transfer.time_stage_out:
-                            t1 = floor_decimal(transfer.time_stage_out - base_time, 2)
-                        if t1 is not None:
-                            worker_transfer_events[role][wid].extend([(t0, 1), (t1, -1)])
-
-                first_stage_in = min((t.time_start_stage_in for t in file.transfers if t.time_start_stage_in), default=float('inf'))
-                last_stage_out = max((t.time_stage_out for t in file.transfers if t.time_stage_out), default=float('-inf'))
-                if first_stage_in != float('inf') and last_stage_out != float('-inf'):
-                    retention_time = floor_decimal(last_stage_out - first_stage_in, 2)
-                    rows_retention.append((file.filename, retention_time, file.created_time))
-
-                fname = file.filename
-                size = file.size_mb
-                if size is not None:
-                    created_time = min((t.time_start_stage_in for t in file.transfers if t.time_start_stage_in), default=float('inf'))
-                    if created_time != float('inf'):
-                        rows_sizes.append((fname, size, created_time))
-                        max_size = max(max_size, size)
+            fname = file.filename
+            size = file.size_mb
+            if size is not None:
+                created_time = min((t.time_start_stage_in for t in file.transfers if t.time_start_stage_in), default=float('inf'))
+                if created_time != float('inf'):
+                    rows_sizes.append((fname, size, created_time))
+                    max_size = max(max_size, size)
 
         # --- output ---
 
@@ -1700,69 +1693,64 @@ class DataParser:
             15 << 3: 'unsuccessful-worker-disconnected',
         }
 
-        with self._create_progress_bar() as progress:
-            task_id = progress.add_task("Processing task execution details", total=len(self.tasks))
-            
-            for task in self.tasks.values():
-                progress.update(task_id, advance=1)
-                
-                if not hasattr(task, 'core_id') or not task.core_id:
+        for task in self.tasks.values():
+            if not hasattr(task, 'core_id') or not task.core_id:
+                continue
+            if not task.worker_entry:
+                continue
+
+            worker = self.workers[task.worker_entry]
+            worker_id = worker.id
+            core_id = task.core_id[0]
+
+            # Common task data
+            task_data = {
+                'task_id': task.task_id,
+                'task_try_id': task.task_try_id,
+                'worker_entry': f"{task.worker_entry[0]}:{task.worker_entry[1]}:{task.worker_entry[2]}",
+                'worker_id': worker_id,
+                'core_id': core_id,
+                'is_recovery_task': getattr(task, 'is_recovery_task', False),
+                'input_files': file_list_formatter(task.input_files) if task.input_files else '',
+                'output_files': file_list_formatter(task.output_files) if task.output_files else '',
+                'num_input_files': len(task.input_files) if task.input_files else 0,
+                'num_output_files': len(task.output_files) if task.output_files else 0,
+                'task_status': task.task_status,
+                'category': getattr(task, 'category', ''),
+                'when_ready': round(task.when_ready - base_time, 2) if task.when_ready else None,
+                'when_running': round(task.when_running - base_time, 2) if task.when_running else None,
+            }
+
+            if task.task_status == 0:  # Successful task
+                if not task.when_retrieved or getattr(task, 'is_library_task', False):
                     continue
-                if not task.worker_entry:
-                    continue
 
-                worker = self.workers[task.worker_entry]
-                worker_id = worker.id
-                core_id = task.core_id[0]
+                # Add successful task specific fields
+                task_data.update({
+                    'time_worker_start': round(task.time_worker_start - base_time, 2) if task.time_worker_start else None,
+                    'time_worker_end': round(task.time_worker_end - base_time, 2) if task.time_worker_end else None,
+                    'execution_time': round(task.time_worker_end - task.time_worker_start, 2) if task.time_worker_end and task.time_worker_start else None,
+                    'when_waiting_retrieval': round(task.when_waiting_retrieval - base_time, 2) if task.when_waiting_retrieval else None,
+                    'when_retrieved': round(task.when_retrieved - base_time, 2) if task.when_retrieved else None,
+                    'when_done': round(task.when_done - base_time, 2) if task.when_done else None,
+                    'record_type': 'successful_tasks',
+                    'unsuccessful_checkbox_name': '',
+                    'when_failure_happens': None,
+                })
+            else:  # Unsuccessful task
+                task_data.update({
+                    'time_worker_start': None,
+                    'time_worker_end': None,
+                    'when_waiting_retrieval': None,
+                    'when_retrieved': None,
+                    'when_failure_happens': round(task.when_failure_happens - base_time, 2) if task.when_failure_happens else None,
+                    'execution_time': round(task.when_failure_happens - task.when_running, 2) if task.when_failure_happens and task.when_running else None,
+                    'when_done': round(task.when_done - base_time, 2) if task.when_done else None,
+                    'record_type': 'unsuccessful_tasks',
+                    'unsuccessful_checkbox_name': TASK_STATUS_NAMES.get(task.task_status, 'unknown'),
+                })
 
-                # Common task data
-                task_data = {
-                    'task_id': task.task_id,
-                    'task_try_id': task.task_try_id,
-                    'worker_entry': f"{task.worker_entry[0]}:{task.worker_entry[1]}:{task.worker_entry[2]}",
-                    'worker_id': worker_id,
-                    'core_id': core_id,
-                    'is_recovery_task': getattr(task, 'is_recovery_task', False),
-                    'input_files': file_list_formatter(task.input_files) if task.input_files else '',
-                    'output_files': file_list_formatter(task.output_files) if task.output_files else '',
-                    'num_input_files': len(task.input_files) if task.input_files else 0,
-                    'num_output_files': len(task.output_files) if task.output_files else 0,
-                    'task_status': task.task_status,
-                    'category': getattr(task, 'category', ''),
-                    'when_ready': round(task.when_ready - base_time, 2) if task.when_ready else None,
-                    'when_running': round(task.when_running - base_time, 2) if task.when_running else None,
-                }
-
-                if task.task_status == 0:  # Successful task
-                    if not task.when_retrieved or getattr(task, 'is_library_task', False):
-                        continue
-
-                    # Add successful task specific fields
-                    task_data.update({
-                        'time_worker_start': round(task.time_worker_start - base_time, 2) if task.time_worker_start else None,
-                        'time_worker_end': round(task.time_worker_end - base_time, 2) if task.time_worker_end else None,
-                        'execution_time': round(task.time_worker_end - task.time_worker_start, 2) if task.time_worker_end and task.time_worker_start else None,
-                        'when_waiting_retrieval': round(task.when_waiting_retrieval - base_time, 2) if task.when_waiting_retrieval else None,
-                        'when_retrieved': round(task.when_retrieved - base_time, 2) if task.when_retrieved else None,
-                        'when_done': round(task.when_done - base_time, 2) if task.when_done else None,
-                        'record_type': 'successful_tasks',
-                        'unsuccessful_checkbox_name': '',
-                        'when_failure_happens': None,
-                    })
-                else:  # Unsuccessful task
-                    task_data.update({
-                        'time_worker_start': None,
-                        'time_worker_end': None,
-                        'when_waiting_retrieval': None,
-                        'when_retrieved': None,
-                        'when_failure_happens': round(task.when_failure_happens - base_time, 2) if task.when_failure_happens else None,
-                        'execution_time': round(task.when_failure_happens - task.when_running, 2) if task.when_failure_happens and task.when_running else None,
-                        'when_done': round(task.when_done - base_time, 2) if task.when_done else None,
-                        'record_type': 'unsuccessful_tasks',
-                        'unsuccessful_checkbox_name': TASK_STATUS_NAMES.get(task.task_status, 'unknown'),
-                    })
-
-                rows.append(task_data)
+            rows.append(task_data)
 
         # Add worker data
         for worker in self.workers.values():
