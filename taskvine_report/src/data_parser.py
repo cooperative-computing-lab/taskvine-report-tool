@@ -48,10 +48,10 @@ class DataParser:
         self.json_files_dir = os.path.join(self.runtime_template, 'json-files')
         self.pkl_files_dir = os.path.join(self.runtime_template, 'pkl-files')
         self.svg_files_dir = os.path.join(self.runtime_template, 'svg-files')
-        ensure_dir(self.csv_files_dir)
-        ensure_dir(self.json_files_dir)
-        ensure_dir(self.pkl_files_dir)
-        ensure_dir(self.svg_files_dir)
+        ensure_dir(self.csv_files_dir, replace=False)
+        ensure_dir(self.json_files_dir, replace=False)
+        ensure_dir(self.pkl_files_dir, replace=False)
+        ensure_dir(self.svg_files_dir, replace=True)
 
         # csv files
         self.csv_file_file_concurrent_replicas = os.path.join(self.csv_files_dir, 'file_concurrent_replicas.csv')
@@ -876,22 +876,18 @@ class DataParser:
                 parent[root_y] = root_x
                 rank[root_x] += 1
 
-        with self._create_progress_bar() as progress:
-            task_id = progress.add_task("Parsing file dependencies", total=len(self.files))
-            
-            for file in self.files.values():
-                progress.update(task_id, advance=1)
-                if not file.producers:
-                    continue
-                # use set operations to quickly get the tasks involved
-                tasks_involved = (set(file.producers) | set(
-                    file.consumers)) & tasks_keys
-                if len(tasks_involved) <= 1:
-                    continue
-                tasks_involved = list(tasks_involved)
-                first_task = tasks_involved[0]
-                for other_task in tasks_involved[1:]:
-                    union(first_task, other_task)
+        for file in self.files.values():
+            if not file.producers:
+                continue
+            # use set operations to quickly get the tasks involved
+            tasks_involved = (set(file.producers) | set(
+                file.consumers)) & tasks_keys
+            if len(tasks_involved) <= 1:
+                continue
+            tasks_involved = list(tasks_involved)
+            first_task = tasks_involved[0]
+            for other_task in tasks_involved[1:]:
+                union(first_task, other_task)
 
         # group tasks by the root, forming subgraphs
         subgraphs = defaultdict(set)
@@ -1067,7 +1063,7 @@ class DataParser:
             return
 
         with self._create_progress_bar() as progress:
-            task_id = progress.add_task("[blue]Starting...", total=5)
+            task_id = progress.add_task("[blue]Starting...", total=6)
 
             progress.update(task_id, description="[green]Generating file metrics")
             self.generate_file_metrics()
@@ -1083,6 +1079,10 @@ class DataParser:
 
             progress.update(task_id, description="[green]Generating worker metrics")
             self.generate_worker_metrics()
+            progress.advance(task_id)
+
+            progress.update(task_id, description="[green]Generating file dependencies")
+            self.generate_subgraphs()
             progress.advance(task_id)
 
             progress.update(task_id, description="[green]Generating graph metrics")

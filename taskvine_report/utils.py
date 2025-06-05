@@ -13,6 +13,7 @@ import json
 import pandas as pd
 import cloudpickle
 from flask import current_app
+import shutil
 
 def floor_decimal(x, decimal_places):
     factor = 10 ** decimal_places
@@ -520,9 +521,12 @@ def extract_size_points_from_df(df, x_col, y_col):
     unit, scale = get_size_unit_and_scale(max(p[1] for p in points))
     return [[x, y * scale] for x, y in points], unit
 
-def ensure_dir(path):
+def ensure_dir(path, replace=False):
     if os.path.exists(path):
-        return
+        if replace:
+            shutil.rmtree(path)
+        else:
+            return
     os.makedirs(path)
 
 def get_current_runtime_template():

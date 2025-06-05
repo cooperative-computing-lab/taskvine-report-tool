@@ -135,7 +135,6 @@ def main():
         try:
             data_parser = DataParser(template)
             data_parser.parse_logs()
-            data_parser.generate_subgraphs()
             data_parser.generate_csv_files()
             print(f"✅ Successfully processed: {template}")
         except Exception as e:
