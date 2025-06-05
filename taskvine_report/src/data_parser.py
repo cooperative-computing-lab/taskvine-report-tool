@@ -987,7 +987,7 @@ class DataParser:
         time_end = time.time()
         print(f"Postprocessing debug took {round(time_end - time_start, 4)} seconds")
 
-    def restore_debug(self):
+    def restore_pkl_files(self):
         time_start = time.time()
         try:
             time_start = time.time()

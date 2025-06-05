@@ -2,108 +2,170 @@
 
 An interactive visualization tool for [TaskVine](https://github.com/cooperative-computing-lab/cctools), a task scheduler for large workflows to run efficiently on HPC clusters. This tool helps you analyze task execution patterns, file transfers, resource utilization, storage consumption, and other key metrics.
 
-## Quick Install
+## Installation
+
+### For Users (Recommended)
+
+Install directly from PyPI:
+
+```bash
+pip install taskvine-report-tool
+```
+
+After installation, you can use the commands `vine_parse` and `vine_report` directly from anywhere.
+
+### For Developers
+
+If you want to contribute to development or modify the source code:
 
 ```bash
 git clone https://github.com/cooperative-computing-lab/taskvine-report-tool.git
 cd taskvine-report-tool
-pip install .
+pip install -e .
 ```
 
 ## Usage Guide
 
 The tool provides two main commands:
 
-- 🔍 `vine_parse` - Parse TaskVine logs
+- 🔍 `vine_parse` - Parse TaskVine logs and generate analysis data
 - 🌐 `vine_report` - Start web visualization server
 
-Follow these steps to use the visualization tool:
-
-### 1. Prepare Log Files
-
-After running your TaskVine workflow, you'll find the logs in a directory named with a timestamp (e.g., `2025-05-20T110437`) or your specified workflow name. The default structure looks like this:
-
-```
-workflow_name/
-└── vine-logs/
-    ├── debug
-    ├── performance
-    ├── taskgraph
-    ├── transactions
-    └── workflow.json
-```
-
-To use these logs with the visualization tool:
-
-1. Copy the entire workflow directory to a logs directory:
-```bash
-mkdir -p logs
-cp -r /path/to/workflow_name logs/
-```
-
-2. Parse the logs and generate visualization data:
-```bash
-vine_parse logs/your_workflow_name
-```
-
-Or parse all log collections at once:
-```bash
-vine_parse --all --logs-dir logs
-```
-
-3. Start the visualization server:
-```bash
-vine_report
-```
-
-4. View the report in your browser at `http://localhost:9122`
-
-Note: In the web interface, you'll only see log collections that have been successfully processed by `vine_parse`. You can process multiple log collections at once:
-
-```bash
-vine_parse logs/log1 logs/log2 logs/log3
-```
-
-### 2. Command Reference
+### Command Reference
 
 #### `vine_parse` - Parse TaskVine Logs
 
+**Required Parameters:**
+- `--templates`: List of log directory names/patterns (required)
+
+**Optional Parameters:**
+- `--logs-dir`: Base directory containing log folders (default: current directory)
+
+**Usage Examples:**
+
 ```bash
-# Basic usage - specify individual log directories
-vine_parse experiment1 experiment2
+# Basic usage - parse specific log directories (--templates is required)
+vine_parse --templates experiment1 experiment2
 
-# Process all log directories in current directory
-vine_parse --all
+# Use glob patterns to match multiple directories
+vine_parse --templates exp* test* checkpoint_*
 
-# Process all log directories in a specific directory
-vine_parse --all --logs-dir /path/to/logs
+# Specify a different logs directory
+vine_parse --logs-dir /path/to/logs --templates experiment1
 
-# Specify custom logs directory for individual directories
-vine_parse --logs-dir /path/to/logs experiment1
-
-# Get help
-vine_parse --help
+# Parse directories matching patterns in a specific directory
+vine_parse --logs-dir /home/user/logs --templates workflow_* test_*
 ```
+
+**Default Behavior:**
+- If no `--logs-dir` is specified, uses current working directory
+- The `--templates` parameter is **required** - the command will fail without it
+- Patterns support shell glob expansion (*, ?, [])
+- Automatically filters out directories that don't contain `vine-logs` subdirectory
 
 #### `vine_report` - Start Web Server
 
+**All Parameters are Optional:**
+
+- `--logs-dir`: Directory containing log folders (default: current directory)
+- `--port`: Port number for the web server (default: 9122)
+- `--host`: Host address to bind to (default: 0.0.0.0)
+
+**Usage Examples:**
+
 ```bash
-# Basic usage
+# Basic usage - start server with all defaults
 vine_report
 
 # Specify custom port and logs directory
 vine_report --port 8080 --logs-dir /path/to/logs
 
-# Allow remote access
-vine_report --host 0.0.0.0 --port 9122
+# Bind to specific host (restrict access)
+vine_report --host 127.0.0.1 --port 9122
 
-# Get help
-vine_report --help
+# Allow remote access (default behavior)
+vine_report --host 0.0.0.0 --port 9122
 ```
 
-### 3. Alternative: Configure TaskVine Log Location
+**Default Behavior:**
+- Uses current working directory as logs directory
+- Starts server on port 9122
+- Binds to all interfaces (0.0.0.0) allowing remote access
+- Displays all available IP addresses where the server can be accessed
 
-Instead of manually copying logs, you can configure TaskVine to generate logs directly in the correct location. When creating your TaskVine manager, set these parameters:
+## Quick Start
+
+Follow these steps to use the visualization tool:
+
+### 1. Navigate to Your Log Directory
+
+After running your TaskVine workflow, the logs are automatically saved in the `vine-run-info` directory within your workflow's working directory. Navigate to this directory:
+
+```bash
+cd your_workflow_directory/vine-run-info
+```
+
+You'll see a structure like this containing your experiment runs:
+
+```
+vine-run-info/
+├── experiment1/
+│   └── vine-logs/
+│       ├── debug
+│       ├── performance
+│       ├── taskgraph
+│       ├── transactions
+│       └── workflow.json
+├── experiment2/
+│   └── vine-logs/
+└── test_run/
+    └── vine-logs/
+```
+
+### 2. Parse and Visualize
+
+From within the `vine-run-info` directory:
+
+1. Parse specific experiments (**--templates is required**):
+```bash
+vine_parse --templates experiment1 experiment2
+```
+
+Or parse all experiments matching a pattern:
+```bash
+vine_parse --templates exp* test_*
+```
+
+2. Start the visualization server:
+```bash
+vine_report
+```
+
+3. View the report in your browser at `http://localhost:9122`
+
+Note: In the web interface, you'll only see log collections that have been successfully processed by `vine_parse`.
+
+### 2. Working with Different Log Directories
+
+If your logs are in a different location, you can specify the base directory containing your log folders using `--logs-dir`:
+
+```bash
+# If your logs are in a custom location:
+# /home/user/custom_logs/
+# ├── experiment1/vine-logs/
+# ├── experiment2/vine-logs/
+# └── test_run/vine-logs/
+
+# Parse specific experiments from custom location
+vine_parse --logs-dir /home/user/custom_logs --templates experiment1 experiment2
+
+# Parse all experiments matching pattern from custom location
+vine_parse --logs-dir /home/user/custom_logs --templates exp* test*
+```
+
+### 3. Customizing TaskVine Log Location
+
+By default, TaskVine creates a `vine-run-info` directory in your working directory. You can customize this location when creating your TaskVine manager:
 
 ```python
 manager = vine.Manager(
@@ -124,62 +186,57 @@ This will automatically create the correct directory structure:
 
 After your workflow completes, simply:
 1. Navigate to your analysis directory: `cd ~/my_analysis_directory`
-2. Parse the logs: `vine_parse your_workflow_name`
+2. Parse the logs: `vine_parse --templates your_workflow_name`
 3. Start the server: `vine_report`
 4. View at `http://localhost:9122`
 
-### 4. Multiple Log Collections
+### 4. Generated Data Structure
 
-You can have multiple log collections. For example:
-
+After parsing, each experiment will have multiple generated directories:
 ```
-logs/
-├── experiment1/
-│   └── vine-logs/
-├── large_workflow/
-│   └── vine-logs/
-└── test_run/
-    └── vine-logs/
-```
-
-Parse all of them at once:
-```bash
-vine_parse experiment1 large_workflow test_run
-```
-
-Or use the --all option:
-```bash
-vine_parse --all
-```
-
-### 5. Complete Workflow Example
-
-```bash
-# 1. Parse your logs
-vine_parse --logs-dir ~/my_logs experiment1 experiment2
-
-# 2. Start the web server
-vine_report --logs-dir ~/my_logs --port 9122
-
-# 3. Open browser to http://localhost:9122
-```
-
-### 6. Generated Data Structure
-
-After parsing, each log collection will have a `pkl-files` directory:
-```
-logs/
+vine-run-info/
 └── experiment1/
-    ├── vine-logs/
+    ├── vine-logs/          # Original log files
     │   ├── debug
-    │   └── transactions
-    └── pkl-files/          # Generated by vine_parse
-        ├── manager.pkl     # Manager information
-        ├── workers.pkl     # Worker statistics
-        ├── tasks.pkl       # Task execution details
-        ├── files.pkl       # File transfer information
-        └── subgraphs.pkl   # Task dependency graphs
+    │   ├── performance
+    │   ├── taskgraph
+    │   ├── transactions
+    │   └── workflow.json
+    ├── pkl-files/          # Raw parsed data (generated by vine_parse)
+    │   ├── manager.pkl     # Manager information
+    │   ├── workers.pkl     # Worker statistics
+    │   ├── tasks.pkl       # Task execution details
+    │   ├── files.pkl       # File transfer information
+    │   └── subgraphs.pkl   # Task dependency graphs
+    ├── csv-files/          # Visualization-ready data (generated from pkl-files)
+    │   ├── task_concurrency.csv
+    │   ├── worker_lifetime.csv
+    │   ├── file_transfers.csv
+    │   └── ...             # Various CSV files for different charts
+    └── svg-files/          # Cached graph visualizations
+        ├── task_subgraphs_1.svg
+        ├── task_dependencies_graph.svg
+        └── ...             # Cached SVG files for complex graphs
 ```
+
+**Directory Breakdown:**
+
+- **`pkl-files/`**: Contains the raw parsed data extracted directly from log files. These are Python pickle files containing structured data about workers, tasks, files, and other workflow components. This is the primary output of `vine_parse`.
+
+- **`csv-files/`**: Contains visualization-ready data files generated from the pkl-files. The web frontend uses these CSV files as the data source for all charts and graphs. Each CSV file corresponds to a specific visualization module.
+
+- **`svg-files/`**: Contains cached SVG files for complex graph visualizations (such as task dependency graphs and subgraphs). Since building these graphs is computationally expensive and time-consuming, we cache the generated SVG files to avoid rebuilding them on subsequent loads.
+
+**For Developers:**
+
+If you want to work with the raw data programmatically, you can load the pkl files into memory using the `restore_pkl_files()` function. The data structures are defined in the following files:
+- `data_parser.py` - Main data parsing logic and file restoration
+- `task.py` - Task data structure and methods
+- `worker.py` - Worker data structure and methods  
+- `file.py` - File data structure and methods
+- `manager.py` - Manager data structure and methods
+
+This allows you to build custom visualizations based on the original parsed data. You can also customize the CSV generation logic by editing the `generate_csv_files()` function to create your own visualization-ready data formats.
 
 ## Important Notes
 
