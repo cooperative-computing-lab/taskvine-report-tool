@@ -130,18 +130,26 @@ def main():
         print(f"  - {path}")
 
     # process each directory
+    success = 0
+    failed = 0
+
     for template in full_paths:
         print(f"\n=== Start parsing: {template}")
         try:
             data_parser = DataParser(template)
             data_parser.parse_logs()
             data_parser.generate_csv_files()
+            success += 1
             print(f"✅ Successfully processed: {template}")
         except Exception as e:
             print(f"❌ Error processing {template}")
+            failed += 1
             print(tb.format_exc())
 
-    print("\n🎉 All log directories processed successfully!")
+    if success > 0:
+        print(f"\n🎉 {success} log {'directory' if success == 1 else 'directories'} processed successfully!")
+    if failed > 0:
+        print(f"❌ {failed} log {'directory' if failed == 1 else 'directories'} failed to process")
 
 
 if __name__ == '__main__':
