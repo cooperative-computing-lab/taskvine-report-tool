@@ -51,7 +51,7 @@ class DataParser:
         ensure_dir(self.csv_files_dir, replace=False)
         ensure_dir(self.json_files_dir, replace=False)
         ensure_dir(self.pkl_files_dir, replace=False)
-        ensure_dir(self.svg_files_dir, replace=True)
+        ensure_dir(self.svg_files_dir, replace=False)
 
         # csv files
         self.csv_file_file_concurrent_replicas = os.path.join(self.csv_files_dir, 'file_concurrent_replicas.csv')
@@ -62,6 +62,7 @@ class DataParser:
         self.csv_file_task_execution_time = os.path.join(self.csv_files_dir, 'task_execution_time.csv')
         self.csv_file_task_response_time = os.path.join(self.csv_files_dir, 'task_response_time.csv')
         self.csv_file_task_concurrency = os.path.join(self.csv_files_dir, 'task_concurrency.csv')
+        self.csv_file_task_concurrency_recovery_only = os.path.join(self.csv_files_dir, 'task_concurrency_recovery_only.csv')
         self.csv_file_task_retrieval_time = os.path.join(self.csv_files_dir, 'task_retrieval_time.csv')
         self.csv_file_task_dependencies = os.path.join(self.csv_files_dir, 'task_dependencies.csv')
         self.csv_file_task_dependents = os.path.join(self.csv_files_dir, 'task_dependents.csv')
@@ -1066,7 +1067,7 @@ class DataParser:
             return
 
         with self._create_progress_bar() as progress:
-            task_id = progress.add_task("[blue]Starting...", total=6)
+            task_id = progress.add_task("[blue]Starting...", total=7)
 
             progress.update(task_id, description="[green]Generating file metrics")
             self.generate_file_metrics()
@@ -1074,6 +1075,10 @@ class DataParser:
 
             progress.update(task_id, description="[green]Generating task metrics")
             self.generate_task_metrics()
+            progress.advance(task_id)
+
+            progress.update(task_id, description="[green]Generating task concurrency data")
+            self.generate_task_concurrency_data()
             progress.advance(task_id)
 
             progress.update(task_id, description="[green]Generating task exec details")
@@ -1232,6 +1237,129 @@ class DataParser:
         # 4. Worker Waiting Retrieval Tasks
         generate_worker_time_series_csv(waiting_retrieval_events, self.csv_file_worker_waiting_retrieval_tasks)
 
+    def generate_task_concurrency_data(self):
+        filtered_tasks = [task for task in self.tasks.values() if not task.is_library_task]
+        if not filtered_tasks:
+            return
+
+        sorted_tasks = sorted(filtered_tasks, key=lambda t: (t.when_ready or float('inf')))
+        base_time = self.MIN_TIME
+
+        task_phases = defaultdict(list)
+        phase_titles = {
+            'tasks_waiting': 'Waiting',
+            'tasks_committing': 'Committing',
+            'tasks_executing': 'Executing',
+            'tasks_retrieving': 'Retrieving',
+            'tasks_done': 'Done'
+        }
+
+        for task in sorted_tasks:
+            ready = task.when_ready
+            running = task.when_running
+            start = task.time_worker_start
+            end = task.time_worker_end
+            fail = task.when_failure_happens
+            wait_retrieval = task.when_waiting_retrieval
+            done = task.when_done
+
+            def fd(t): return floor_decimal(t - base_time, 2) if t else None
+
+            def add_phase(name, t0, t1=None):
+                if t0:
+                    task_phases[name].append((fd(t0), 1))
+                if t0 and t1:
+                    task_phases[name].append((fd(t1), -1))
+
+            add_phase('tasks_waiting', ready, running or fail)
+            add_phase('tasks_committing', running, start or fail or wait_retrieval)
+            add_phase('tasks_executing', start, end or fail or wait_retrieval)
+            add_phase('tasks_retrieving', end, wait_retrieval or fail)
+            if done:
+                task_phases['tasks_done'].append((fd(done), 1))
+
+        all_times = sorted({t for df in [pd.DataFrame(events, columns=['time', 'event']) for events in task_phases.values() if events] for t in df['time']})
+        if not all_times:
+            return
+            
+        time_df = pd.DataFrame({'Time (s)': all_times})
+        first_time = all_times[0]
+
+        for name, events in task_phases.items():
+            if not events:
+                time_df[phase_titles[name]] = 0
+                continue
+            df_phase = pd.DataFrame(events, columns=['time', 'event']).sort_values('time')
+            df_phase = df_phase.groupby('time', as_index=False)['event'].sum()
+            df_phase['cumulative'] = df_phase['event'].cumsum().clip(lower=0)
+            df_phase = df_phase[['time', 'cumulative']].rename(columns={'cumulative': phase_titles[name]})
+            time_df = pd.merge_asof(time_df, df_phase, left_on='Time (s)', right_on='time', direction='backward')
+            time_df.drop(columns=['time'], inplace=True)
+
+        # Ensure all phase columns exist and set first time point to 0
+        for title in phase_titles.values():
+            if title not in time_df.columns:
+                time_df[title] = 0
+            time_df.loc[time_df['Time (s)'] == first_time, title] = 0
+
+        time_df.fillna(0, inplace=True)
+        self.write_df_to_csv(time_df, self.csv_file_task_concurrency, index=False)
+
+        recovery_phases = defaultdict(list)
+        for task in sorted_tasks:
+            if not task.is_recovery_task:
+                continue
+
+            ready = task.when_ready
+            running = task.when_running
+            start = task.time_worker_start
+            end = task.time_worker_end
+            fail = task.when_failure_happens
+            wait_retrieval = task.when_waiting_retrieval
+            done = task.when_done
+
+            def fd(t): return floor_decimal(t - base_time, 2) if t else None
+
+            def add_phase(name, t0, t1=None):
+                if t0:
+                    recovery_phases[name].append((fd(t0), 1))
+                if t0 and t1:
+                    recovery_phases[name].append((fd(t1), -1))
+
+            add_phase('tasks_waiting', ready, running or fail)
+            add_phase('tasks_committing', running, start or fail or wait_retrieval)
+            add_phase('tasks_executing', start, end or fail or wait_retrieval)
+            add_phase('tasks_retrieving', end, wait_retrieval or fail)
+            if done:
+                recovery_phases['tasks_done'].append((fd(done), 1))
+
+        all_times = sorted({t for df in [pd.DataFrame(events, columns=['time', 'event']) for events in recovery_phases.values() if events] for t in df['time']})
+        if not all_times:
+            return
+            
+        time_df = pd.DataFrame({'Time (s)': all_times})
+        first_time = all_times[0]
+
+        for name, events in recovery_phases.items():
+            if not events:
+                time_df[phase_titles[name]] = 0
+                continue
+            df_phase = pd.DataFrame(events, columns=['time', 'event']).sort_values('time')
+            df_phase = df_phase.groupby('time', as_index=False)['event'].sum()
+            df_phase['cumulative'] = df_phase['event'].cumsum().clip(lower=0)
+            df_phase = df_phase[['time', 'cumulative']].rename(columns={'cumulative': phase_titles[name]})
+            time_df = pd.merge_asof(time_df, df_phase, left_on='Time (s)', right_on='time', direction='backward')
+            time_df.drop(columns=['time'], inplace=True)
+
+        # Ensure all phase columns exist and set first time point to 0
+        for title in phase_titles.values():
+            if title not in time_df.columns:
+                time_df[title] = 0
+            time_df.loc[time_df['Time (s)'] == first_time, title] = 0
+
+        time_df.fillna(0, inplace=True)
+        self.write_df_to_csv(time_df, self.csv_file_task_concurrency_recovery_only, index=False)
+
     def generate_task_metrics(self):
         filtered_tasks = [task for task in self.tasks.values() if not task.is_library_task]
         if not filtered_tasks:
@@ -1246,7 +1374,6 @@ class DataParser:
         dependencies_rows = []
         dependents_rows = []
         finish_times = []
-        task_phases = defaultdict(list)
 
         output_to_task = {f: t.task_id for t in filtered_tasks for f in t.output_files}
         dependency_map = defaultdict(set)
@@ -1307,19 +1434,6 @@ class DataParser:
             if finish:
                 finish_times.append(fd(finish))
 
-            def add_phase(name, t0, t1=None):
-                if t0:
-                    task_phases[name].append((fd(t0), 1))
-                if t0 and t1:
-                    task_phases[name].append((fd(t1), -1))
-
-            add_phase('tasks_waiting', ready, running or fail)
-            add_phase('tasks_committing', running, start or fail or wait_retrieval)
-            add_phase('tasks_executing', start, end or fail or wait_retrieval)
-            add_phase('tasks_retrieving', end, wait_retrieval or fail)
-            if done:
-                task_phases['tasks_done'].append((fd(done), 1))
-
         def write_csv(data, cols, path):
             if data:
                 self.write_df_to_csv(pd.DataFrame(data, columns=cols), path, index=False)
@@ -1335,35 +1449,6 @@ class DataParser:
             n = len(finish_times)
             percentiles = [(p, floor_decimal(finish_times[min(n - 1, max(0, math.ceil(p / 100 * n) - 1))], 2)) for p in range(1, 101)]
             write_csv(percentiles, ['Percentile', 'Completion Time'], self.csv_file_task_completion_percentiles)
-
-        phase_titles = {
-            'tasks_waiting': 'Waiting',
-            'tasks_committing': 'Committing',
-            'tasks_executing': 'Executing',
-            'tasks_retrieving': 'Retrieving',
-            'tasks_done': 'Done'
-        }
-
-        df_list = []
-        for name, events in task_phases.items():
-            if not events:
-                continue
-            df_phase = pd.DataFrame(events, columns=['time', 'event']).sort_values('time')
-            df_phase = df_phase.groupby('time', as_index=False)['event'].sum()
-            df_phase['cumulative'] = df_phase['event'].cumsum().clip(lower=0)
-            df_phase = df_phase[['time', 'cumulative']].rename(columns={'cumulative': phase_titles[name]})
-            df_list.append(df_phase)
-
-        all_times = sorted({t for df in df_list for t in df['time']})
-        time_df = pd.DataFrame({'Time (s)': all_times})
-
-        for df_phase in df_list:
-            time_df = pd.merge_asof(time_df, df_phase, left_on='Time (s)', right_on='time', direction='backward')
-            time_df.drop(columns=['time'], inplace=True)
-
-        time_df.fillna(0, inplace=True)
-
-        self.write_df_to_csv(time_df, self.csv_file_task_concurrency, index=False)
 
     def generate_graph_metrics(self):
         unique_tasks = {}

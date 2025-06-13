@@ -66,6 +66,11 @@ export class BaseModule {
 
         this.xScale = null;
         this.yScale = null;
+
+        // Add new properties for toolbox items
+        this.toolboxSelectorItems = [];
+        this.toolboxInputItems = [];
+        this.toolboxButtonItems = [];
     }
 
     switchFolder(folder) {
@@ -360,25 +365,71 @@ export class BaseModule {
             this.clearToolbox();
         }
 
-        const items = [
-            this.createToolboxItemExport(),
-        ];
+        // Initialize default items
+        this.toolboxSelectorItems = [this.createToolboxItemExport()];
+        this.toolboxInputItems = [];
+        this.toolboxButtonItems = [];
+
+        // Add scale-related input items
         if (this.bottomScaleType === 'linear') {
-            items.push(this.createToolboxItemSetXMin());
-            items.push(this.createToolboxItemSetXMax());
+            this.toolboxInputItems.push(this.createToolboxItemSetXMin());
+            this.toolboxInputItems.push(this.createToolboxItemSetXMax());
         }
         if (this.leftScaleType === 'linear') {
-            items.push(this.createToolboxItemSetYMin());
-            items.push(this.createToolboxItemSetYMax());
+            this.toolboxInputItems.push(this.createToolboxItemSetYMin());
+            this.toolboxInputItems.push(this.createToolboxItemSetYMax());
         }
+
+        // Add legend-related button items
         if (this._queryAllLegendCheckboxes().size() > 0 && !this.legendSingleSelect) {
-            items.push(this.createToolboxItemSelectAll());
-            items.push(this.createToolboxItemClearAll());
+            this.toolboxButtonItems.push(this.createToolboxItemSelectAll());
+            this.toolboxButtonItems.push(this.createToolboxItemClearAll());
         }
-        items.push(this.createToolboxItemReset());
-        items.push(this.createToolboxItemRefetch());
+
+        // Allow subclasses to add their own items
+        this._addCustomToolboxItems();
+
+        // Combine all items, ensuring Reset and Refetch are in the correct positions
+        const items = [
+            ...this.toolboxSelectorItems,
+            ...this.toolboxInputItems,
+            ...this.toolboxButtonItems,
+            this.createToolboxItemReset(),  // Always second to last
+            this.createToolboxItemRefetch() // Always last
+        ];
 
         this._setToolboxItems(items);
+    }
+
+    // New method for subclasses to override and add custom items
+    _addCustomToolboxItems() {
+        // To be overridden by subclasses
+    }
+
+    // Helper methods to add items
+    addToolboxSelectorItem(item) {
+        this.toolboxSelectorItems.push(item);
+    }
+
+    addToolboxInputItem(item) {
+        this.toolboxInputItems.push(item);
+    }
+
+    addToolboxButtonItem(item) {
+        this.toolboxButtonItems.push(item);
+    }
+
+    removeToolboxItem(itemId) {
+        // Remove from all toolbox item arrays
+        this.toolboxSelectorItems = this.toolboxSelectorItems.filter(item => item.id !== itemId);
+        this.toolboxInputItems = this.toolboxInputItems.filter(item => item.id !== itemId);
+        this.toolboxButtonItems = this.toolboxButtonItems.filter(item => item.id !== itemId);
+        
+        // Remove the actual DOM element
+        const element = document.getElementById(itemId);
+        if (element) {
+            element.remove();
+        }
     }
 
     clearLegend() {
@@ -1361,17 +1412,24 @@ export class BaseModule {
         /** 1. clear the existing svg */
         this.clearSVG();
 
-        /** 2. plot the axes from the fetched data */
+        /** 2. clear the custom params */
+        this.clearCustomParams();
+
+        /** 3. plot the axes from the fetched data */
         this._setAxesFromFetchedData();
         this._plotAxes();
 
-        /** 3. check all checkboxes */
+        /** 4. check all checkboxes */
         this._queryAllLegendCheckboxes().each(function () {
             this.checked = true;
         });
 
-        /** 4. plot the data */
+        /** 5. plot the data */
         this.plot();
+    }
+
+    clearCustomParams() {
+        this.customParams = {};
     }
 
     _setAxesFromFetchedData() {

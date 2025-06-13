@@ -24,6 +24,25 @@ export class TaskConcurrencyModule extends BaseModule {
         };
     }
 
+    _toolboxItemRecoveryTaskOnly() {
+        return this.toolbox.createButtonItem(`${this.id}-recovery-task-only`, 'Recovery Task Only', () => {
+            this.updateFetchDataParam('recovery-task-only', true);
+            this.fetchDataAndPlot();
+        });
+    }
+
+    _toolboxItemAllTasks() {
+        return this.toolbox.createButtonItem(`${this.id}-all-tasks`, 'All Tasks', () => {
+            this.updateFetchDataParam('recovery-task-only', false);
+            this.fetchDataAndPlot();
+        });
+    }
+
+    _addCustomToolboxItems() {
+        this.addToolboxButtonItem(this._toolboxItemRecoveryTaskOnly());
+        this.addToolboxButtonItem(this._toolboxItemAllTasks());
+    }
+
     legendOnToggle(id, visible) {
         const path = this.svg.selectAll(`#${id}`);
         path.style('display', visible ? null : 'none');

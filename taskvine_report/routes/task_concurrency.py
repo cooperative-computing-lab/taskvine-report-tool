@@ -1,5 +1,5 @@
 from taskvine_report.utils import *
-from flask import Blueprint, jsonify, current_app
+from flask import Blueprint, jsonify, current_app, request
 
 task_concurrency_bp = Blueprint(
     'task_concurrency', __name__, url_prefix='/api')
@@ -8,7 +8,15 @@ task_concurrency_bp = Blueprint(
 @check_and_reload_data()
 def get_task_concurrency():
     try:
-        df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_task_concurrency)
+        # check if recovery-task-only parameter is set
+        recovery_only = request.args.get('recovery-task-only', 'false').lower() == 'true'
+        
+        # select appropriate CSV file based on parameter
+        csv_file = (current_app.config["RUNTIME_STATE"].csv_file_task_concurrency_recovery_only 
+                   if recovery_only 
+                   else current_app.config["RUNTIME_STATE"].csv_file_task_concurrency)
+        
+        df = read_csv_to_fd(csv_file)
         phase_data = {}
         for phase in ['Waiting', 'Committing', 'Executing', 'Retrieving', 'Done']:
             phase_data[f"tasks_{phase.lower()}"] = extract_points_from_df(df, 'Time (s)', phase)
