@@ -1,3 +1,5 @@
+from taskvine_report.utils import TASK_STATUS_NAMES
+
 class TaskInfo:
     def __init__(self, task_id: int, task_try_id: int):
         # basic info
@@ -35,6 +37,7 @@ class TaskInfo:
         """
 
         self.task_status = None
+        self.task_status_name = None
 
         self.exit_status = None
         self.output_length = None
@@ -113,6 +116,7 @@ class TaskInfo:
     def set_task_status(self, timestamp, task_status):
         # we can change the task status multiple times
         self.task_status = int(task_status)
+        self.task_status_name = TASK_STATUS_NAMES[self.task_status]
         if self.task_status != 0:
             self.set_when_failure_happens(timestamp)
         else:
@@ -202,6 +206,7 @@ class TaskInfo:
         print("is_recovery_task: ", self.is_recovery_task)
         print("exhausted_resources: ", self.exhausted_resources)
         print("task_status: ", self.task_status)
+        print("task_status_name: ", self.task_status_name)
         print("exit_status: ", self.exit_status)
         print("output_length: ", self.output_length)
         print("bytes_sent: ", self.bytes_sent)

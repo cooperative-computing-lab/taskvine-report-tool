@@ -8,7 +8,9 @@ file_sizes_bp = Blueprint('file_sizes', __name__, url_prefix='/api')
 def get_file_sizes():
     try:
         df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_sizes)
-        points, unit = extract_size_points_from_df(df, 'File Index', 'Size (MB)')
+        # find the size column by looking for a column that starts with 'Size ('
+        size_col = next(col for col in df.columns if col.startswith('Size ('))
+        points, unit = extract_size_points_from_df(df, 'File Index', size_col)
         x_domain = extract_x_range_from_points(points)
         y_domain = extract_y_range_from_points(points)
 

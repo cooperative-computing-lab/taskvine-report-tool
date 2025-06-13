@@ -62,6 +62,7 @@ setup(
         "bitarray>=2.0.0",
         "pytz>=2021.1",
         "graphviz>=0.17",
+        "rich",
     ],
     extras_require={
         "dev": [

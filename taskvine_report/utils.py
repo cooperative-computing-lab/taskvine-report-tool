@@ -534,3 +534,29 @@ def get_current_runtime_template():
 
 def request_template_matches_current_runtime_template(request):
     return request.args.get('folder') == get_current_runtime_template()
+
+# Task status mappings
+TASK_STATUS_NAMES = {
+    0: 'successful',
+    1: 'unsuccessful-input-missing',
+    2: 'unsuccessful-output-missing', 
+    4: 'unsuccessful-stdout-missing',
+    1 << 3: 'unsuccessful-signal',
+    2 << 3: 'unsuccessful-resource-exhaustion',
+    3 << 3: 'unsuccessful-max-end-time',
+    4 << 3: 'unsuccessful-unknown',
+    5 << 3: 'unsuccessful-forsaken',
+    6 << 3: 'unsuccessful-max-retries',
+    7 << 3: 'unsuccessful-max-wall-time',
+    8 << 3: 'unsuccessful-monitor-error',
+    9 << 3: 'unsuccessful-output-transfer-error',
+    10 << 3: 'unsuccessful-location-missing',
+    11 << 3: 'unsuccessful-cancelled',
+    12 << 3: 'unsuccessful-library-exit',
+    13 << 3: 'unsuccessful-sandbox-exhaustion',
+    14 << 3: 'unsuccessful-missing-library',
+    15 << 3: 'unsuccessful-worker-disconnected',
+
+    42 << 3: 'undispatched',
+    43 << 3: 'failed-to-dispatch',
+}

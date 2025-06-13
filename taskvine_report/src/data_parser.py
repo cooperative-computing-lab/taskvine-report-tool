@@ -329,7 +329,7 @@ class DataParser:
             task_id = int(parts[parts.index("task") + 1])
             task_entry = (task_id, self.current_try_id[task_id])
             task = self.tasks[task_entry]
-            task.set_task_status(timestamp, 4 << 3)
+            task.set_task_status(timestamp, 43 << 3)   # failed to dispatch
             return
 
         if "exhausted resources on" in line:
@@ -593,8 +593,8 @@ class DataParser:
                         else:
                             task.set_task_status(timestamp, 4 << 3)
                     else:
-                        # if the task was not committed to a worker, we donot know the reason
-                        task.set_task_status(timestamp, 4 << 3)
+                        # if the task was not dispatched to a worker, set to undispatched
+                        task.set_task_status(timestamp, 42 << 3)
 
                 # create a new task entry for the next try
                 self.current_try_id[task_id] += 1
@@ -934,9 +934,12 @@ class DataParser:
 
         # post-processing for tasks
         for task in self.tasks.values():
-            # if a task's status is None, we set it to 4 << 3, which means the task failed but not yet reported
+            # if a task's status is None, we examine if it was dispatched
             if task.task_status is None:
-                task.set_task_status(self.manager.current_max_time, 4 << 3)
+                if task.when_running is None:
+                    task.set_task_status(self.manager.current_max_time, 42 << 3)   # undispatched
+                else:
+                    task.set_task_status(self.manager.current_max_time, 4 << 3)    # unknown
             # task was retrieved but not yet done
             if task.when_done is None and task.when_retrieved is not None:
                 task.set_when_done(self.manager.current_max_time)
@@ -1669,28 +1672,6 @@ class DataParser:
     def generate_task_execution_details_metrics(self):
         base_time = self.MIN_TIME
         rows = []
-
-        # Task status mappings
-        TASK_STATUS_NAMES = {
-            1: 'unsuccessful-input-missing',
-            2: 'unsuccessful-output-missing', 
-            4: 'unsuccessful-stdout-missing',
-            1 << 3: 'unsuccessful-signal',
-            2 << 3: 'unsuccessful-resource-exhaustion',
-            3 << 3: 'unsuccessful-max-end-time',
-            4 << 3: 'unsuccessful-unknown',
-            5 << 3: 'unsuccessful-forsaken',
-            6 << 3: 'unsuccessful-max-retries',
-            7 << 3: 'unsuccessful-max-wall-time',
-            8 << 3: 'unsuccessful-monitor-error',
-            9 << 3: 'unsuccessful-output-transfer-error',
-            10 << 3: 'unsuccessful-location-missing',
-            11 << 3: 'unsuccessful-cancelled',
-            12 << 3: 'unsuccessful-library-exit',
-            13 << 3: 'unsuccessful-sandbox-exhaustion',
-            14 << 3: 'unsuccessful-missing-library',
-            15 << 3: 'unsuccessful-worker-disconnected',
-        }
 
         for task in self.tasks.values():
             if not hasattr(task, 'core_id') or not task.core_id:
