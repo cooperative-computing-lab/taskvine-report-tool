@@ -819,11 +819,11 @@ class DataParser:
         
         with self._create_progress_bar() as progress:
             task_id = progress.add_task(f"[green]Parsing debug ({debug_file_size_str})", total=total_lines)
-            
+            pbar_update_interval = 100
             with open(self.debug, 'rb') as file:
                 for i, raw_line in enumerate(file):
-                    if i % 100 == 0:   # minimize the progress bar update frequency
-                        progress.update(task_id, advance=100)
+                    if i % pbar_update_interval == 0:   # minimize the progress bar update frequency
+                        progress.update(task_id, advance=pbar_update_interval)
                     try:
                         line = raw_line.decode('utf-8').strip()
                         self.parse_debug_line(line)
@@ -832,6 +832,7 @@ class DataParser:
                     except Exception as e:
                         print(f"Error parsing line: {line}")
                         raise e
+            progress.update(task_id, advance=total_lines % pbar_update_interval)
 
     def parse_logs(self):
         self.set_time_zone()
