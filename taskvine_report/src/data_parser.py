@@ -32,8 +32,9 @@ def count_lines(file_name):
 
 
 class DataParser:
-    def __init__(self, runtime_template):
+    def __init__(self, runtime_template, checkpoint_pkl_files=False):
         self.runtime_template = runtime_template
+        self.checkpoint_pkl_files = checkpoint_pkl_files
 
         self.ip = None
         self.port = None
@@ -810,17 +811,14 @@ class DataParser:
             return
 
     def parse_debug(self):
-        time_start = time.time()
-
         self.current_try_id = defaultdict(int)
         total_lines = count_lines(self.debug)
         debug_file_size_mb = floor_decimal(os.path.getsize(self.debug) / 1024 / 1024, 2)
         unit, scale = get_size_unit_and_scale(debug_file_size_mb)
-
-        print(f"Debug file size: {floor_decimal(debug_file_size_mb * scale, 2)} {unit}")
+        debug_file_size_str = f"{floor_decimal(debug_file_size_mb * scale, 2)} {unit}"
         
         with self._create_progress_bar() as progress:
-            task_id = progress.add_task("Parsing debug", total=total_lines)
+            task_id = progress.add_task(f"[green]Parsing debug ({debug_file_size_str})", total=total_lines)
             
             with open(self.debug, 'rb') as file:
                 for raw_line in file:
@@ -834,16 +832,21 @@ class DataParser:
                         print(f"Error parsing line: {line}")
                         raise e
 
-        time_end = time.time()
-        print(f"Parsing debug took {round(time_end - time_start, 4)} seconds")
-
-        self.postprocess_debug()
-        self.checkpoint_debug()
-
     def parse_logs(self):
         self.set_time_zone()
 
+        # parse the debug file
         self.parse_debug()
+        
+        # postprocess the debug
+        self.postprocess_debug()
+
+        # generate the subgraphs
+        self.generate_subgraphs()
+
+        # checkpoint pkl files so that later analysis can be done without re-parsing the debug file
+        if self.checkpoint_pkl_files:
+            self.checkpoint_pkl_files()
 
     def generate_subgraphs(self):
         # exclude library tasks from subgraph generation to match RUNTIME_STATE filtering
@@ -900,32 +903,36 @@ class DataParser:
         self.subgraphs = {i: subgraph for i,
                           subgraph in enumerate(sorted_subgraphs, 1)}
 
-        self.checkpoint_subgraphs()
+    def checkpoint_pkl_files(self):
+        with self._create_progress_bar() as progress:
+            pbar = progress.add_task(f"[green]Checkpointing pkl files", total=5)
 
-    def checkpoint_debug(self):
-        time_start = time.time()
-        with open(os.path.join(self.pkl_files_dir, 'workers.pkl'), 'wb') as f:
-            cloudpickle.dump(self.workers, f)
-        time_end = time.time()
-        print(f"Checkpointing workers.pkl took {round(time_end - time_start, 4)} seconds")
-        time_start = time.time()
-        with open(os.path.join(self.pkl_files_dir, 'files.pkl'), 'wb') as f:
-            cloudpickle.dump(self.files, f)
-        time_end = time.time()
-        print(f"Checkpointing files.pkl took {round(time_end - time_start, 4)} seconds")
-        time_start = time.time()
-        with open(os.path.join(self.pkl_files_dir, 'tasks.pkl'), 'wb') as f:
-            cloudpickle.dump(self.tasks, f)
-        time_end = time.time()
-        print(f"Checkpointing tasks.pkl took {round(time_end - time_start, 4)} seconds")
-        time_start = time.time()
-        with open(os.path.join(self.pkl_files_dir, 'manager.pkl'), 'wb') as f:
-            cloudpickle.dump(self.manager, f)
-        time_end = time.time()
-        print(f"Checkpointing manager.pkl took {round(time_end - time_start, 4)} seconds")
+            progress.update(pbar, description=f"[green]Checkpointing workers.pkl")
+            with open(os.path.join(self.pkl_files_dir, 'workers.pkl'), 'wb') as f:
+                cloudpickle.dump(self.workers, f)
+            progress.advance(pbar)
+
+            progress.update(pbar, description=f"[green]Checkpointing files.pkl")
+            with open(os.path.join(self.pkl_files_dir, 'files.pkl'), 'wb') as f:
+                cloudpickle.dump(self.files, f)
+            progress.advance(pbar)
+
+            progress.update(pbar, description=f"[green]Checkpointing tasks.pkl")
+            with open(os.path.join(self.pkl_files_dir, 'tasks.pkl'), 'wb') as f:
+                cloudpickle.dump(self.tasks, f)
+            progress.advance(pbar)
+            
+            progress.update(pbar, description=f"[green]Checkpointing manager.pkl")
+            with open(os.path.join(self.pkl_files_dir, 'manager.pkl'), 'wb') as f:
+                cloudpickle.dump(self.manager, f)
+            progress.advance(pbar)
+
+            progress.update(pbar, description=f"[green]Checkpointing subgraphs.pkl")
+            with open(os.path.join(self.pkl_files_dir, 'subgraphs.pkl'), 'wb') as f:
+                cloudpickle.dump(self.subgraphs, f)
+            progress.advance(pbar)
 
     def postprocess_debug(self):
-        time_start = time.time()
         # some post-processing in case the manager does not exit normally or has not finished yet
         # if the manager has not finished yet, we do something to set up the None values to make the plotting tool work
         # 1. if the manager's time_end is None, we set it to the current timestamp
@@ -988,9 +995,6 @@ class DataParser:
             with open(self.time_domain_file, 'wb') as f:
                 cloudpickle.dump(self.time_domain, f)
 
-        time_end = time.time()
-        print(f"Postprocessing debug took {round(time_end - time_start, 4)} seconds")
-
     def restore_pkl_files(self):
         time_start = time.time()
         try:
@@ -1018,13 +1022,6 @@ class DataParser:
             raise ValueError("The debug file has not been successfully parsed yet")
         time_end = time.time()
         print(f"Restored workers, files, tasks, manager from checkpoint in {round(time_end - time_start, 4)} seconds")
-
-    def checkpoint_subgraphs(self):
-        time_start = time.time()
-        with open(os.path.join(self.pkl_files_dir, 'subgraphs.pkl'), 'wb') as f:
-            cloudpickle.dump(self.subgraphs, f)
-        time_end = time.time()
-        print(f"Checkpointing subgraphs.pkl took {round(time_end - time_start, 4)} seconds")
 
     def restore_from_checkpoint(self):
         try:
@@ -1067,33 +1064,23 @@ class DataParser:
             return
 
         with self._create_progress_bar() as progress:
-            task_id = progress.add_task("[blue]Starting...", total=7)
+            task_id = progress.add_task("[green]Generating plotting data", total=6)
 
-            progress.update(task_id, description="[green]Generating file metrics")
             self.generate_file_metrics()
             progress.advance(task_id)
 
-            progress.update(task_id, description="[green]Generating task metrics")
             self.generate_task_metrics()
             progress.advance(task_id)
 
-            progress.update(task_id, description="[green]Generating task concurrency data")
             self.generate_task_concurrency_data()
             progress.advance(task_id)
 
-            progress.update(task_id, description="[green]Generating task exec details")
             self.generate_task_execution_details_metrics()
             progress.advance(task_id)
 
-            progress.update(task_id, description="[green]Generating worker metrics")
             self.generate_worker_metrics()
             progress.advance(task_id)
 
-            progress.update(task_id, description="[green]Generating file dependencies")
-            self.generate_subgraphs()
-            progress.advance(task_id)
-
-            progress.update(task_id, description="[green]Generating graph metrics")
             self.generate_graph_metrics()
             progress.advance(task_id)
 
@@ -1453,8 +1440,6 @@ class DataParser:
     def generate_graph_metrics(self):
         unique_tasks = {}
         task_failure_counts = {}
-        
-        total_tasks = len([task for task in self.tasks.values() if not getattr(task, 'is_library_task', False)])
         
         for (tid, try_id), task in self.tasks.items():
             if getattr(task, 'is_library_task', False):
