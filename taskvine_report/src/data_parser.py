@@ -821,8 +821,9 @@ class DataParser:
             task_id = progress.add_task(f"[green]Parsing debug ({debug_file_size_str})", total=total_lines)
             
             with open(self.debug, 'rb') as file:
-                for raw_line in file:
-                    progress.update(task_id, advance=1)
+                for i, raw_line in enumerate(file):
+                    if i % 100 == 0:   # minimize the progress bar update frequency
+                        progress.update(task_id, advance=100)
                     try:
                         line = raw_line.decode('utf-8').strip()
                         self.parse_debug_line(line)
