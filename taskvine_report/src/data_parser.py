@@ -120,7 +120,7 @@ class DataParser:
         # for plotting
         self.MIN_TIME = None
         self.MAX_TIME = None
-        self.time_domain_file = os.path.join(self.pkl_files_dir, 'time_domain.pkl')
+        self.time_domain_file = os.path.join(self.csv_files_dir, 'time_domain.csv')
 
     def _create_progress_bar(self):
         return Progress(
@@ -991,9 +991,11 @@ class DataParser:
 
         if self.MAX_TIME and self.MIN_TIME:
             self.time_domain = [0, self.MAX_TIME - self.MIN_TIME]
-            # pkl store the time domain
-            with open(self.time_domain_file, 'wb') as f:
-                cloudpickle.dump(self.time_domain, f)
+            df = pd.DataFrame({
+                'MIN_TIME': [self.MIN_TIME],
+                'MAX_TIME': [self.MAX_TIME]
+            })
+            self.write_df_to_csv(df, self.time_domain_file, index=False)
 
     def restore_pkl_files(self):
         time_start = time.time()
