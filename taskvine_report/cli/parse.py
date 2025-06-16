@@ -81,6 +81,12 @@ def main():
     )
 
     parser.add_argument(
+        '--debug',
+        action='store_true',
+        help='Enable debug mode'
+    )
+
+    parser.add_argument(
         '-v', '--version',
         action='version',
         version=f'%(prog)s {__version__}'
@@ -136,7 +142,7 @@ def main():
     for template in full_paths:
         print(f"\n=== Start parsing: {template}")
         try:
-            data_parser = DataParser(template)
+            data_parser = DataParser(template, debug_mode=args.debug)
             data_parser.parse_logs()
             data_parser.generate_csv_files()
             success += 1

@@ -32,7 +32,7 @@ def count_lines(file_name):
 
 
 class DataParser:
-    def __init__(self, runtime_template, checkpoint_pkl_files=False):
+    def __init__(self, runtime_template, checkpoint_pkl_files=False, debug_mode=False):
         self.runtime_template = runtime_template
         self.checkpoint_pkl_files = checkpoint_pkl_files
 
@@ -112,6 +112,7 @@ class DataParser:
         self.subgraphs = {}   # key: subgraph_id, value: set()
 
         # status
+        self.debug_mode = debug_mode
         self.receiving_resources_from_worker = None
         self.sending_task = None
         self.mini_task_transferring = None
@@ -119,6 +120,108 @@ class DataParser:
         self.debug_current_line = None
         self.debug_current_parts = None
         self.debug_current_timestamp = None
+
+        def H(name, cond, action):
+            action.__name__ = name
+            return (cond, action)
+
+        self.debug_handlers = [
+
+            H("send_task",
+            lambda l, p, ctx: "task" in p or ctx.sending_task,
+            lambda l, p, ctx: ctx._handle_debug_line_send_task_to_worker()),
+
+            H("puturl",
+            lambda l, p, ctx: "puturl" in p or "puturl_now" in p,
+            lambda l, p, ctx: ctx._handle_debug_line_puturl()),
+
+            H("cache_update",
+            lambda l, p, ctx: "cache-update" in p,
+            lambda l, p, ctx: ctx._handle_debug_line_cache_update()),
+
+            H("task_state_change",
+            lambda l, p, ctx: "state change:" in l,
+            lambda l, p, ctx: ctx._handle_debug_line_task_state_change()),
+
+            H("unlink",
+            lambda l, p, ctx: "unlink" in p,
+            lambda l, p, ctx: ctx._handle_debug_line_unlink()),
+
+            H("worker_removed",
+            lambda l, p, ctx: "removed" in p and "worker" in p,
+            lambda l, p, ctx: ctx._handle_debug_line_worker_removed()),
+
+            H("complete",
+            lambda l, p, ctx: "complete" in p,
+            lambda l, p, ctx: ctx._handle_debug_line_complete()),
+
+            H("worker_received",
+            lambda l, p, ctx: "received" in p,
+            lambda l, p, ctx: ctx._handle_debug_line_worker_received()),
+
+            H("receive_info",
+            lambda l, p, ctx: "info" in p,
+            lambda l, p, ctx: ctx._handle_debug_line_receive_worker_info(ctx.debug_current_timestamp, p)),
+
+            H("cache_invalid",
+            lambda l, p, ctx: "cache-invalid" in p,
+            lambda l, p, ctx: ctx._handle_debug_line_cache_invalid()),
+
+            H("worker_resources",
+            lambda l, p, ctx: "resources" in p or ctx.receiving_resources_from_worker,
+            lambda l, p, ctx: ctx._handle_debug_line_worker_resources()),
+
+            H("stdout",
+            lambda l, p, ctx: "stdout" in p,
+            lambda l, p, ctx: ctx._handle_debug_line_stdout()),
+
+            H("recovery_task",
+            lambda l, p, ctx: "Submitted recovery task" in l,
+            lambda l, p, ctx: ctx._handle_debug_line_submitted_recovery_task()),
+
+            H("sending_back",
+            lambda l, p, ctx: "sending back" in l or ctx.sending_back,
+            lambda l, p, ctx: ctx._handle_debug_line_sending_back()),
+
+            H("put_file",
+            lambda l, p, ctx: "put" in p,
+            lambda l, p, ctx: ctx._handle_debug_line_put_file()),
+
+            H("failed_to_send_task",
+            lambda l, p, ctx: "Failed to send task" in l,
+            lambda l, p, ctx: ctx._handle_debug_line_failed_to_send_task()),
+
+            H("transfer_port",
+            lambda l, p, ctx: "transfer-port" in p,
+            lambda l, p, ctx: ctx._handle_debug_line_get_worker_transfer_port()),
+
+            H("mini_task",
+            lambda l, p, ctx: "mini_task" in p,
+            lambda l, p, ctx: ctx._handle_debug_line_mini_task()),
+
+            H("exhausted_resources",
+            lambda l, p, ctx: "exhausted" in p and "resources" in p,
+            lambda l, p, ctx: ctx._handle_debug_line_exhausted_resources_on_worker()),
+
+            H("listening",
+            lambda l, p, ctx: "listening on port" in l,
+            lambda l, p, ctx: ctx._handle_debug_line_listening_on_port()),
+
+            H("worker_connected",
+            lambda l, p, ctx: "worker" in p and "connected" in p,
+            lambda l, p, ctx: ctx._handle_debug_line_worker_connected()),
+
+            H("manager_end",
+            lambda l, p, ctx: "manager end" in l,
+            lambda l, p, ctx: ctx.manager.set_time_end(ctx.debug_current_timestamp)),
+
+            H("remove_instances",
+            lambda l, p, ctx: "Removing instances of worker" in l,
+            lambda l, p, ctx: None),
+
+        ]
+
+        self.debug_handler_profiling = {}
 
         # for plotting
         self.MIN_TIME = None
@@ -791,81 +894,28 @@ class DataParser:
             else:
                 pass
 
+    def _resort_debug_handlers(self):
+        # sort handlers in-place by descending hit count
+        self.debug_handlers.sort(
+            key=lambda pair: -self.debug_handler_profiling.get(pair[1], {}).get("hits", 0)
+        )
+
     def parse_debug_line(self):
         line = self.debug_current_line
         parts = self.debug_current_parts
         timestamp = self.debug_current_timestamp
         self.manager.set_current_max_time(timestamp)
 
-        if "listening on port" in line:
-            self._handle_debug_line_listening_on_port()
-        elif "worker" in parts and "connected" in parts:
-            self._handle_debug_line_worker_connected()
-        elif "info" in parts:
-            self._handle_debug_line_receive_worker_info(timestamp, parts)
-        elif "resources" in parts or self.receiving_resources_from_worker:
-            self._handle_debug_line_worker_resources()
-        elif "removed" in parts and "worker" in parts:
+        for i in range(len(self.debug_handlers)):
+            cond_fn, handler_fn = self.debug_handlers[i]
+            try:
+                if cond_fn(line, parts, self):
+                    handler_fn(line, parts, self)
 
-            self._handle_debug_line_worker_removed()
-        if "put" in parts:
-            self._handle_debug_line_put_file()
-            return
-
-        if "received" in parts:
-            self._handle_debug_line_worker_received()
-            return
-
-        if "Failed to send task" in line:
-            self._handle_debug_line_failed_to_send_task()
-            return
-
-        if "puturl" in parts or "puturl_now" in parts:
-            self._handle_debug_line_puturl()
-            return
-
-        if "mini_task" in parts:
-            self._handle_debug_line_mini_task()
-            return
-
-        if "task" in parts or self.sending_task:
-            return self._handle_debug_line_send_task_to_worker()
-
-        if "state change:" in line:
-            return self._handle_debug_line_task_state_change()
-
-        if "complete" in parts:
-            return self._handle_debug_line_complete()
-
-        if "stdout" in parts:
-            return self._handle_debug_line_stdout()
-
-        if "cache-update" in parts:
-            return self._handle_debug_line_cache_update()
-
-        if "cache-invalid" in parts:
-            return self._handle_debug_line_cache_invalid()
-
-        if "unlink" in parts:
-            return self._handle_debug_line_unlink()
-
-        if "Submitted recovery task" in line:
-            return self._handle_debug_line_submitted_recovery_task()
-
-        if "exhausted" in parts and "resources" in parts:
-            return self._handle_debug_line_exhausted_resources_on_worker()
-
-        if "sending back" in line or self.sending_back:
-            return self._handle_debug_line_sending_back()
-
-        if "manager end" in line:
-            self.manager.set_time_end(timestamp)
-
-        if "Removing instances of worker" in line:
-            pass
-
-        if "transfer-port" in parts:
-            return self._handle_debug_line_get_worker_transfer_port()
+                    self.debug_handler_profiling.setdefault(handler_fn, {"hits": 0})
+                    self.debug_handler_profiling[handler_fn]["hits"] += 1
+            except Exception as e:
+                print(f"⚠️ handler {handler_fn} raised error: {e}")
 
     def parse_debug(self):
         self.current_try_id = defaultdict(int)
@@ -877,10 +927,13 @@ class DataParser:
         with self._create_progress_bar() as progress:
             task_id = progress.add_task(f"[green]Parsing debug ({debug_file_size_str})", total=total_lines)
             pbar_update_interval = 100
+            resort_debug_handlers_interval = 10000
             with open(self.debug, 'rb') as file:
                 for i, raw_line in enumerate(file):
                     if i % pbar_update_interval == 0:   # minimize the progress bar update frequency
                         progress.update(task_id, advance=pbar_update_interval)
+                    if i % resort_debug_handlers_interval == 0:
+                        self._resort_debug_handlers()
                     try:
                         self.debug_current_line = raw_line.decode('utf-8').strip()
                         self.debug_current_parts = self.debug_current_line.strip().split(" ")
@@ -897,6 +950,17 @@ class DataParser:
                         print(f"Error parsing line: {self.debug_current_line}")
                         raise e
             progress.update(task_id, advance=total_lines % pbar_update_interval)
+
+        if self.debug_mode:
+            print("\n=== Handler Profiling Summary ===")
+            self._resort_debug_handlers()
+            print(f"{'Handler':<20} {'Hits':>10}")
+            print("-" * 30)
+            for cond_fn, handler_fn in self.debug_handlers:
+                name = getattr(handler_fn, "__name__", repr(handler_fn))
+                stats = self.debug_handler_profiling.get(handler_fn, {})
+                hits = stats.get("hits", 0)
+                print(f"{name:<20} {hits:>10}")
 
     def parse_logs(self):
         self.set_time_zone()
