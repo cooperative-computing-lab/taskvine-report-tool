@@ -33,15 +33,8 @@ class ManagerInfo:
         self.equivalent_tz = None
         self.checkpoint_processing_time_us = 0
 
-    def update_current_max_time(self, time):
-        try:
-            time = float(time)
-        except Exception:
-            return
-        if self.current_max_time is None:
-            self.current_max_time = time
-        else:
-            self.current_max_time = max(self.current_max_time, time)
+    def set_current_max_time(self, time):
+        self.current_max_time = time
 
     def set_time_start(self, time_start):
         self.time_start = time_start

@@ -795,8 +795,7 @@ class DataParser:
         line = self.debug_current_line
         parts = self.debug_current_parts
         timestamp = self.debug_current_timestamp
-
-        self.manager.update_current_max_time(timestamp)
+        self.manager.set_current_max_time(timestamp)
 
         if "listening on port" in line:
             self._handle_debug_line_listening_on_port()
