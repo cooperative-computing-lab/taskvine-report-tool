@@ -939,15 +939,17 @@ class DataParser:
                     try:
                         self.debug_current_line = raw_line.decode('utf-8').strip()
                         self.debug_current_parts = self.debug_current_line.strip().split(" ")
-                        try:
-                            datestring = self.debug_current_parts[0] + " " + self.debug_current_parts[1]
-                            self.debug_current_timestamp = floor_decimal(self.datestring_to_timestamp(datestring), 2)
-                        except Exception:
-                            # this line does not start with a timestamp, which sometimes happens
-                            continue
-                        self.parse_debug_line()
                     except UnicodeDecodeError:
                         print(f"Error decoding line to utf-8: {raw_line}")
+                        continue
+                    try:
+                        datestring = self.debug_current_parts[0] + " " + self.debug_current_parts[1]
+                        self.debug_current_timestamp = floor_decimal(self.datestring_to_timestamp(datestring), 2)
+                    except Exception:
+                        # this line does not start with a timestamp, which sometimes happens
+                        continue
+                    try:
+                        self.parse_debug_line()
                     except Exception as e:
                         print(f"Error parsing line: {self.debug_current_line}")
                         raise e
