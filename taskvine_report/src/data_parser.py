@@ -791,21 +791,12 @@ class DataParser:
             else:
                 pass
 
-    def parse_debug_line(self, line):
-        parts = line.strip().split(" ")
-        try:
-            datestring = parts[0] + " " + parts[1]
-            timestamp = self.datestring_to_timestamp(datestring)
-            timestamp = floor_decimal(timestamp, 2)
-        except Exception:
-            # this line does not start with a timestamp, which sometimes happens
-            return
+    def parse_debug_line(self):
+        line = self.debug_current_line
+        parts = self.debug_current_parts
+        timestamp = self.debug_current_timestamp
 
         self.manager.update_current_max_time(timestamp)
-
-        self.debug_current_line = line
-        self.debug_current_parts = parts
-        self.debug_current_timestamp = timestamp
 
         if "listening on port" in line:
             self._handle_debug_line_listening_on_port()
@@ -816,6 +807,7 @@ class DataParser:
         elif "resources" in parts or self.receiving_resources_from_worker:
             self._handle_debug_line_worker_resources()
         elif "removed" in parts and "worker" in parts:
+
             self._handle_debug_line_worker_removed()
         if "put" in parts:
             self._handle_debug_line_put_file()
@@ -891,12 +883,19 @@ class DataParser:
                     if i % pbar_update_interval == 0:   # minimize the progress bar update frequency
                         progress.update(task_id, advance=pbar_update_interval)
                     try:
-                        line = raw_line.decode('utf-8').strip()
-                        self.parse_debug_line(line)
+                        self.debug_current_line = raw_line.decode('utf-8').strip()
+                        self.debug_current_parts = self.debug_current_line.strip().split(" ")
+                        try:
+                            datestring = self.debug_current_parts[0] + " " + self.debug_current_parts[1]
+                            self.debug_current_timestamp = floor_decimal(self.datestring_to_timestamp(datestring), 2)
+                        except Exception:
+                            # this line does not start with a timestamp, which sometimes happens
+                            continue
+                        self.parse_debug_line()
                     except UnicodeDecodeError:
                         print(f"Error decoding line to utf-8: {raw_line}")
                     except Exception as e:
-                        print(f"Error parsing line: {line}")
+                        print(f"Error parsing line: {self.debug_current_line}")
                         raise e
             progress.update(task_id, advance=total_lines % pbar_update_interval)
 
