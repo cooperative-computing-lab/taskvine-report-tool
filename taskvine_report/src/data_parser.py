@@ -120,7 +120,14 @@ class DataParser:
         self.debug_current_line = None
         self.debug_current_parts = None
         self.debug_current_timestamp = None
+        self._init_debug_handlers()
 
+        # for plotting
+        self.MIN_TIME = None
+        self.MAX_TIME = None
+        self.time_domain_file = os.path.join(self.csv_files_dir, 'time_domain.csv')
+
+    def _init_debug_handlers(self):
         def H(name, cond, action):
             action.__name__ = name
             return (cond, action)
@@ -220,13 +227,7 @@ class DataParser:
             lambda l, p, ctx: None),
 
         ]
-
-        self.debug_handler_profiling = {}
-
-        # for plotting
-        self.MIN_TIME = None
-        self.MAX_TIME = None
-        self.time_domain_file = os.path.join(self.csv_files_dir, 'time_domain.csv')
+        self.debug_handler_profiling = defaultdict(lambda: {"hits": 0})
 
     def _create_progress_bar(self):
         return Progress(
@@ -906,16 +907,17 @@ class DataParser:
         timestamp = self.debug_current_timestamp
         self.manager.set_current_max_time(timestamp)
 
-        for i in range(len(self.debug_handlers)):
-            cond_fn, handler_fn = self.debug_handlers[i]
-            try:
+        if self.debug_mode:
+            for cond_fn, handler_fn in self.debug_handlers:
                 if cond_fn(line, parts, self):
                     handler_fn(line, parts, self)
-
-                    self.debug_handler_profiling.setdefault(handler_fn, {"hits": 0})
                     self.debug_handler_profiling[handler_fn]["hits"] += 1
-            except Exception as e:
-                print(f"⚠️ handler {handler_fn} raised error: {e}")
+                    return
+        else:
+            for cond_fn, handler_fn in self.debug_handlers:
+                if cond_fn(line, parts, self):
+                    handler_fn(line, parts, self)
+                    return
 
     def parse_debug(self):
         self.current_try_id = defaultdict(int)
