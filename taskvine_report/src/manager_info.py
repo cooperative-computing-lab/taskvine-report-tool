@@ -44,11 +44,11 @@ class ManagerInfo:
             self.current_max_time = max(self.current_max_time, time)
 
     def set_time_start(self, time_start):
-        self.time_start = float(time_start)
+        self.time_start = time_start
         self.time_start_human = self.timestamp_to_datestring(self.time_start)
 
     def set_time_end(self, time_end):
-        self.time_end = float(time_end)
+        self.time_end = time_end
         self.lifetime_s = round(self.time_end - self.time_start, 2)
         self.time_end_human = self.timestamp_to_datestring(self.time_end)
 

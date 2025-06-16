@@ -116,6 +116,9 @@ class DataParser:
         self.sending_task = None
         self.mini_task_transferring = None
         self.sending_back = None
+        self.debug_current_line = None
+        self.debug_current_parts = None
+        self.debug_current_timestamp = None
 
         # for plotting
         self.MIN_TIME = None
@@ -230,205 +233,501 @@ class DataParser:
         worker.add_connection(time_connected)
         worker.id = len(self.workers)
         return worker
+    
+    def _handle_debug_line_worker_connected(self):
+        worker_idx = self.debug_current_parts.index("worker")
+        ip, port = WorkerInfo.extract_ip_port_from_string(self.debug_current_parts[worker_idx + 1])
+        self.add_new_worker(ip, port, self.debug_current_timestamp)
+        self.manager.set_when_first_worker_connect(self.debug_current_timestamp)
 
-    def parse_debug_line(self, line):
-        parts = line.strip().split(" ")
-        try:
-            datestring = parts[0] + " " + parts[1]
-            timestamp = self.datestring_to_timestamp(datestring)
-            timestamp = floor_decimal(timestamp, 2)
-        except Exception:
-            # this line does not start with a timestamp, which sometimes happens
-            return
+    def _handle_debug_line_worker_removed(self):
+        release_idx = self.debug_current_parts.index("removed")
+        ip, port = WorkerInfo.extract_ip_port_from_string(self.debug_current_parts[release_idx - 1])
+        worker = self.get_current_worker_by_ip_port(ip, port)
+        assert worker is not None
 
-        self.manager.update_current_max_time(timestamp)
+        worker.add_disconnection(self.debug_current_timestamp)
+        self.manager.update_when_last_worker_disconnect(self.debug_current_timestamp)
+        
+        worker_entry = (worker.ip, worker.port, worker.connect_id)
+        # files on the worker are removed
+        for filename in worker.active_files_or_transfers:
+            self.files[filename].prune_file_on_worker_entry(worker_entry, self.debug_current_timestamp)
 
-        if "listening on port" in line:
-            try:
-                self.manager.set_time_start(timestamp)
-            except Exception:
-                print(line)
-                exit(1)
-            return
+    def _handle_debug_line_put_file(self):
+        timestamp = self.debug_current_timestamp
+        parts = self.debug_current_parts
 
-        if "worker" in parts and "connected" in parts:
-            worker_idx = parts.index("worker")
-            ip, port = WorkerInfo.extract_ip_port_from_string(parts[worker_idx + 1])
-            self.add_new_worker(ip, port, timestamp)
-            self.manager.set_when_first_worker_connect(timestamp)
-            return
+        put_idx = parts.index("put")
+        ip, port = WorkerInfo.extract_ip_port_from_string(parts[put_idx - 1])
+        worker_entry = self.get_current_worker_entry_by_ip_port(ip, port)
+        file_name = parts[put_idx + 1]
 
-        if "info" in parts and "worker-id" in parts:
-            info_idx = parts.index("info")
-            ip, port = WorkerInfo.extract_ip_port_from_string(parts[info_idx - 1])
-            worker = self.get_current_worker_by_ip_port(ip, port)
-            worker.set_hash(parts[info_idx + 2])
-            worker.set_machine_name(parts[info_idx - 2])
-            return
+        file_cache_level = parts[put_idx + 2]
+        file_size_mb = int(parts[put_idx + 3]) / 2**20
 
-        if "removed" in parts and "worker" in parts:
-            release_idx = parts.index("removed")
-            ip, port = WorkerInfo.extract_ip_port_from_string(parts[release_idx - 1])
-            worker = self.get_current_worker_by_ip_port(ip, port)
-            assert worker is not None
+        if file_name.startswith('buffer'):
+            file_type = 4
+        elif file_name.startswith('file'):
+            file_type = 1
+        else:
+            raise ValueError(f"pending file type: {file_name}")
 
-            worker.add_disconnection(timestamp)
-            self.manager.update_when_last_worker_disconnect(timestamp)
-            
-            worker_entry = (worker.ip, worker.port, worker.connect_id)
-            # files on the worker are removed
-            for filename in worker.active_files_or_transfers:
-                self.files[filename].prune_file_on_worker_entry(worker_entry, timestamp)
-            return
+        file = self.ensure_file_info_entry(file_name, file_size_mb, timestamp)
+        transfer = file.add_transfer('manager', worker_entry, 'manager_put', file_type, file_cache_level)
+        transfer.start_stage_in(timestamp, "pending")
+        assert worker_entry not in self.putting_transfers
+        worker = self.workers[worker_entry]
+        worker.add_active_file_or_transfer(file_name)
 
-        if "transfer-port" in parts:
-            transfer_port_idx = parts.index("transfer-port")
-            transfer_port = int(parts[transfer_port_idx + 1])
-            ip, port = WorkerInfo.extract_ip_port_from_string(parts[transfer_port_idx - 1])
-            worker = self.get_current_worker_by_ip_port(ip, port)
-            worker.set_transfer_port(transfer_port)
-            self.map_ip_and_transfer_port_to_worker_port[(ip, transfer_port)] = port
-            return
+        self.putting_transfers[worker_entry] = transfer
 
-        if "put" in parts:
-            put_idx = parts.index("put")
-            ip, port = WorkerInfo.extract_ip_port_from_string(parts[put_idx - 1])
-            worker_entry = self.get_current_worker_entry_by_ip_port(ip, port)
-            file_name = parts[put_idx + 1]
+    def _handle_debug_line_worker_received(self):
+        parts = self.debug_current_parts
+        timestamp = self.debug_current_timestamp
 
-            file_cache_level = parts[put_idx + 2]
-            file_size_mb = int(parts[put_idx + 3]) / 2**20
+        dest_ip, dest_port = WorkerInfo.extract_ip_port_from_string(parts[parts.index("received") - 1])
+        dest_worker_entry = self.get_current_worker_entry_by_ip_port(dest_ip, dest_port)
+        # the worker must be in the putting_transfers
+        assert dest_worker_entry is not None and dest_worker_entry in self.putting_transfers
+        
+        transfer = self.putting_transfers[dest_worker_entry]
+        transfer.stage_in(timestamp, "worker_received")
+        del self.putting_transfers[dest_worker_entry]
 
-            if file_name.startswith('buffer'):
-                file_type = 4
-            elif file_name.startswith('file'):
-                file_type = 1
-            else:
-                raise ValueError(f"pending file type: {file_name}")
+    def _handle_debug_line_failed_to_send_task(self):
+        task_id = int(self.debug_current_parts[self.debug_current_parts.index("task") + 1])
+        task_entry = (task_id, self.current_try_id[task_id])
+        task = self.tasks[task_entry]
+        task.set_task_status(self.debug_current_timestamp, 43 << 3)   # failed to dispatch
 
-            file = self.ensure_file_info_entry(file_name, file_size_mb, timestamp)
-            transfer = file.add_transfer('manager', worker_entry, 'manager_put', file_type, file_cache_level)
-            transfer.start_stage_in(timestamp, "pending")
-            assert worker_entry not in self.putting_transfers
-            worker = self.workers[worker_entry]
-            worker.add_active_file_or_transfer(file_name)
+    def _handle_debug_line_puturl(self):
+        parts = self.debug_current_parts
+        timestamp = self.debug_current_timestamp
 
-            self.putting_transfers[worker_entry] = transfer
-            return
+        if "puturl" in parts:
+            transfer_event = 'puturl'
+        else:
+            transfer_event = 'puturl_now'
 
-        if "received" in parts:
-            dest_ip, dest_port = WorkerInfo.extract_ip_port_from_string(parts[parts.index("received") - 1])
-            dest_worker_entry = self.get_current_worker_entry_by_ip_port(dest_ip, dest_port)
-            # the worker must be in the putting_transfers
-            assert dest_worker_entry is not None and dest_worker_entry in self.putting_transfers
-            
-            transfer = self.putting_transfers[dest_worker_entry]
-            transfer.stage_in(timestamp, "worker_received")
-            del self.putting_transfers[dest_worker_entry]
-            return
+        puturl_id = parts.index("puturl") if "puturl" in parts else parts.index("puturl_now")
+        file_name = parts[puturl_id + 2]
+        file_cache_level = int(parts[puturl_id + 3])
+        size_in_mb = int(parts[puturl_id + 4]) / 2**20
 
-        if "Failed to send task" in line:
-            task_id = int(parts[parts.index("task") + 1])
-            task_entry = (task_id, self.current_try_id[task_id])
-            task = self.tasks[task_entry]
-            task.set_task_status(timestamp, 43 << 3)   # failed to dispatch
-            return
+        # the file name is the name on the worker's side
+        file = self.ensure_file_info_entry(file_name, size_in_mb, timestamp)
 
-        if "exhausted resources on" in line:
-            exhausted_idx = parts.index("exhausted")
-            task_id = int(parts[exhausted_idx - 1])
-            worker_ip, worker_port = WorkerInfo.extract_ip_port_from_string(parts[exhausted_idx + 4])
-            task = self.tasks[(task_id, self.current_try_id[task_id])]
-            return
+        # the destination is definitely an ip:port worker
+        dest_ip, dest_port = WorkerInfo.extract_ip_port_from_string(parts[puturl_id - 1])
+        dest_worker = self.get_current_worker_by_ip_port(dest_ip, dest_port)
+        assert dest_worker is not None
 
-        if parts[-1] == "resources":
+        dest_worker_entry = (dest_worker.ip, dest_worker.port, dest_worker.connect_id)
+        # the source can be a url or an ip:port
+        source = parts[puturl_id + 1]
+        if source.startswith('https://'):
+            transfer = file.add_transfer(source, dest_worker_entry, transfer_event, 2, file_cache_level)
+        elif source.startswith('workerip://'):
+            source_ip, source_transfer_port = WorkerInfo.extract_ip_port_from_string(source)
+            source_worker_port = self.map_ip_and_transfer_port_to_worker_port[(source_ip, source_transfer_port)]
+            source_worker_entry = self.get_current_worker_entry_by_ip_port(source_ip, source_worker_port)
+            assert source_worker_entry is not None
+
+            transfer = file.add_transfer(source_worker_entry, dest_worker_entry, transfer_event, 2, file_cache_level)
+        elif source.startswith('file://'):
+            transfer = file.add_transfer(source, dest_worker_entry, transfer_event, 2, file_cache_level)
+        else:
+            raise ValueError(f"unrecognized source: {source}, line: {line}")
+        
+        dest_worker.add_active_file_or_transfer(file_name)
+
+        transfer.start_stage_in(timestamp, "pending")
+
+    def _handle_debug_line_worker_resources(self):
+        parts = self.debug_current_parts
+
+        if not self.receiving_resources_from_worker:
+            if parts[-1] != "resources":
+                return
             resources_idx = parts.index("resources")
             ip, port = WorkerInfo.extract_ip_port_from_string(parts[resources_idx - 1])
             self.receiving_resources_from_worker = self.get_current_worker_by_ip_port(ip, port)
-            return
-        if self.receiving_resources_from_worker and "cores" in parts:
-            self.receiving_resources_from_worker.set_cores(
-                int(float(parts[parts.index("cores") + 1])))
-            return
-        if self.receiving_resources_from_worker and "memory" in parts:
-            self.receiving_resources_from_worker.set_memory_mb(
-                int(float(parts[parts.index("memory") + 1])))
-            return
-        if self.receiving_resources_from_worker and "disk" in parts:
-            self.receiving_resources_from_worker.set_disk_mb(
-                int(float(parts[parts.index("disk") + 1])))
-            return
-        if self.receiving_resources_from_worker and "gpus" in parts:
-            self.receiving_resources_from_worker.set_gpus(
-                int(float(parts[parts.index("gpus") + 1])))
-            return
-        if self.receiving_resources_from_worker and "end" in parts:
-            self.receiving_resources_from_worker = None
-            return
-
-        if "puturl" in parts or "puturl_now" in parts:
-            if "puturl" in parts:
-                transfer_event = 'puturl'
+        else:
+            if "cores" in parts:
+                self.receiving_resources_from_worker.set_cores(int(float(parts[parts.index("cores") + 1])))
+            elif "memory" in parts:
+                self.receiving_resources_from_worker.set_memory_mb(int(float(parts[parts.index("memory") + 1])))
+            elif "disk" in parts:
+                self.receiving_resources_from_worker.set_disk_mb(int(float(parts[parts.index("disk") + 1])))
+            elif "gpus" in parts:
+                self.receiving_resources_from_worker.set_gpus(int(float(parts[parts.index("gpus") + 1])))
+            elif "end" in parts:
+                self.receiving_resources_from_worker = None
             else:
-                transfer_event = 'puturl_now'
+                pass
 
-            puturl_id = parts.index("puturl") if "puturl" in parts else parts.index("puturl_now")
-            file_name = parts[puturl_id + 2]
-            file_cache_level = int(parts[puturl_id + 3])
-            size_in_mb = int(parts[puturl_id + 4]) / 2**20
+    def _handle_debug_line_receive_worker_info(self, timestamp, parts):
+        info_idx = parts.index("info")
+        ip, port = WorkerInfo.extract_ip_port_from_string(parts[info_idx - 1])
+        worker = self.get_current_worker_by_ip_port(ip, port)
+        if "worker-id" in parts:
+            worker.set_hash(parts[info_idx + 2])
+            worker.set_machine_name(parts[info_idx - 2])
+        elif "worker-end-time" in parts:
+            pass
+        elif "from-factory" in parts:
+            pass
+        else:
+            pass
 
-            # the file name is the name on the worker's side
-            file = self.ensure_file_info_entry(file_name, size_in_mb, timestamp)
+    def _handle_debug_line_mini_task(self):
+        parts = self.debug_current_parts
+        timestamp = self.debug_current_timestamp
 
-            # the destination is definitely an ip:port worker
-            dest_ip, dest_port = WorkerInfo.extract_ip_port_from_string(parts[puturl_id - 1])
-            dest_worker = self.get_current_worker_by_ip_port(dest_ip, dest_port)
-            assert dest_worker is not None
+        mini_task_idx = parts.index("mini_task")
+        source = parts[mini_task_idx + 1]
+        file_name = parts[mini_task_idx + 2]
+        cache_level = int(parts[mini_task_idx + 3])
+        file_size = int(parts[mini_task_idx + 4]) / 2**20
+        dest_worker_ip, dest_worker_port = WorkerInfo.extract_ip_port_from_string(parts[mini_task_idx - 1])
+        
+        dest_worker_entry = self.get_current_worker_entry_by_ip_port(dest_worker_ip, dest_worker_port)
+        assert dest_worker_entry is not None
+        
+        file = self.ensure_file_info_entry(file_name, file_size, timestamp)
+        transfer = file.add_transfer(source, dest_worker_entry, 'mini_task', 2, cache_level)
+        transfer.start_stage_in(timestamp, "pending")
+        dest_worker = self.workers[dest_worker_entry]
+        dest_worker.add_active_file_or_transfer(file_name)
 
-            dest_worker_entry = (dest_worker.ip, dest_worker.port, dest_worker.connect_id)
-            # the source can be a url or an ip:port
-            source = parts[puturl_id + 1]
-            if source.startswith('https://'):
-                transfer = file.add_transfer(source, dest_worker_entry, transfer_event, 2, file_cache_level)
-            elif source.startswith('workerip://'):
-                source_ip, source_transfer_port = WorkerInfo.extract_ip_port_from_string(source)
-                source_worker_port = self.map_ip_and_transfer_port_to_worker_port[(source_ip, source_transfer_port)]
-                source_worker_entry = self.get_current_worker_entry_by_ip_port(source_ip, source_worker_port)
+    def _handle_debug_line_task_state_change(self):
+        parts = self.debug_current_parts
+        line = self.debug_current_line
+        timestamp = self.debug_current_timestamp
+
+        task_id = int(parts[parts.index("Task") + 1])
+        if "INITIAL (0) to READY (1)" in line:                  # a brand new task
+            assert task_id not in self.current_try_id
+            # new task entry
+            self.current_try_id[task_id] += 1
+            task = TaskInfo(task_id, self.current_try_id[task_id])
+            task.set_when_ready(timestamp)
+            self.add_task(task)
+            return
+        elif "INITIAL (0) to RUNNING (2)" in line:
+            # this is a library task
+            if task_id not in self.current_try_id:
+                self.current_try_id[task_id] = 1
+                task = TaskInfo(task_id, self.current_try_id[task_id])
+                task.set_when_ready(timestamp)
+                self.add_task(task)
+            task = self.tasks[(task_id, self.current_try_id[task_id])]
+            task.set_when_running(timestamp)
+            task.is_library_task = True
+            return
+
+        task_entry = (task_id, self.current_try_id[task_id])
+        task = self.tasks[task_entry]
+        if "READY (1) to RUNNING (2)" in line:                  # as expected
+            # it could be that the task related info was unable to be sent (also comes with a "failed to send" message)
+            # in this case, even the state is switched to running, there is no worker info
+            if self.manager.when_first_task_start_commit is None:
+                self.manager.set_when_first_task_start_commit(timestamp)
+            task.set_when_running(timestamp)
+            if not task.worker_entry:
+                return
+            else:
+                # update the coremap
+                worker = self.workers[task.worker_entry]
+                task.committed_worker_hash = worker.hash
+                task.worker_id = worker.id
+                worker.run_task(task)
+                # check if this is the first try
+                if task_id not in self.current_try_id:
+                    self.current_try_id[task_id] = 1
+        elif "RUNNING (2) to RUNNING (2)" in line:
+            raise ValueError(
+                f"task {task_id} state change: from RUNNING (2) to RUNNING (2)")
+        elif "RETRIEVED (4) to RUNNING (2)" in line:
+            print(
+                f"Warning: task {task_id} state change: from RETRIEVED (4) to RUNNING (2)")
+            pass
+        elif "RUNNING (2) to DONE (5)" in line:
+            print(
+                f"Warning: task {task_id} state change: from RUNNING (2) to DONE (5)")
+            pass
+        elif "DONE (5) to WAITING_RETRIEVAL (3)" in line:
+            print(
+                f"Warning: task {task_id} state change: from DONE (5) to WAITING_RETRIEVAL (3)")
+            pass
+        elif "RUNNING (2) to WAITING_RETRIEVAL (3)" in line:    # as expected
+            task.set_when_waiting_retrieval(timestamp)
+            # update the coremap
+            worker = self.workers[task.worker_entry]
+            worker.reap_task(task)
+        elif "WAITING_RETRIEVAL (3) to RETRIEVED (4)" in line:  # as expected
+            task.set_when_retrieved(timestamp)
+        elif "RETRIEVED (4) to DONE (5)" in line:               # as expected
+            task.set_when_done(timestamp)
+            if task.worker_entry:
+                worker = self.workers[task.worker_entry]
+                self.manager.set_when_last_task_done(timestamp)
+                worker.tasks_completed.append(task)
+        elif "WAITING_RETRIEVAL (3) to READY (1)" in line or \
+                "RUNNING (2) to READY (1)" in line:             # task failure
+            # we need to set the task status if it was not set yet
+            if not task.task_status:
+                # if it was committed to a worker
+                if task.worker_entry:
+                    # update the worker's tasks_failed, if the task was successfully committed
+                    worker = self.workers[task.worker_entry]
+                    worker.tasks_failed.append(task)
+                    worker.reap_task(task)
+                    # it could be that the worker disconnected
+                    if len(worker.time_connected) == len(worker.time_disconnected):
+                        task.set_task_status(worker.time_disconnected[-1], 15 << 3)
+                    # it could be that its inputs are missing
+                    elif task.input_files:
+                        all_inputs_ready = True
+                        for input_file in task.input_files:
+                            this_input_ready = False
+                            for transfer in self.files[input_file].transfers:
+                                if transfer.destination == task.worker_entry and transfer.stage_in is not None:
+                                    this_input_ready = True
+                                    break
+                            if not this_input_ready:
+                                all_inputs_ready = False
+                                break
+                        if all_inputs_ready:
+                            task.set_task_status(timestamp, 1)
+                    # otherwise, we donot know the reason
+                    else:
+                        task.set_task_status(timestamp, 4 << 3)
+                else:
+                    # if the task was not dispatched to a worker, set to undispatched
+                    task.set_task_status(timestamp, 42 << 3)
+
+            # create a new task entry for the next try
+            self.current_try_id[task_id] += 1
+            new_task = TaskInfo(task_id, self.current_try_id[task_id])
+            new_task.set_when_ready(timestamp)
+            self.add_task(new_task)
+
+        elif "RUNNING (2) to RETRIEVED (4)" in line:
+            task.set_when_retrieved(timestamp)
+            if not task.is_library_task:
+                print(f"Warning: non-library task {task_id} state change: from RUNNING (2) to RETRIEVED (4)")
+            else:
+                task.set_task_status(timestamp, 12 << 3)
+        else:
+            raise ValueError(f"unrecognized state change: {line}")
+        
+    def _handle_debug_line_complete(self):
+        parts = self.debug_current_parts
+        timestamp = self.debug_current_timestamp
+
+        complete_idx = parts.index("complete")
+        task_status = int(parts[complete_idx + 1])
+        exit_status = int(parts[complete_idx + 2])
+        output_length = int(parts[complete_idx + 3])
+        bytes_sent = int(parts[complete_idx + 4])
+        time_worker_start = floor_decimal(float(parts[complete_idx + 5]) / 1e6, 2)
+        time_worker_end = floor_decimal(float(parts[complete_idx + 6]) / 1e6, 2)
+        sandbox_used = None
+        try:
+            task_id = int(parts[complete_idx + 8])
+            sandbox_used = int(parts[complete_idx + 7])
+        except Exception:
+            task_id = int(parts[complete_idx + 7])
+
+        task_entry = (task_id, self.current_try_id[task_id])
+        task = self.tasks[task_entry]
+
+        task.set_task_status(timestamp, task_status)
+
+        task.set_exit_status(exit_status)
+        task.set_output_length(output_length)
+        task.set_bytes_sent(bytes_sent)
+
+        task.set_time_worker_start(time_worker_start)
+        task.set_time_worker_end(time_worker_end)
+        task.set_sandbox_used(sandbox_used)
+
+    def _handle_debug_line_cache_update(self):
+        parts = self.debug_current_parts
+        timestamp = self.debug_current_timestamp
+
+        # cache-update cachename, &type, &cache_level, &size, &mtime, &transfer_time, &start_time, id
+        cache_update_id = parts.index("cache-update")
+        file_name = parts[cache_update_id + 1]
+        file_type = parts[cache_update_id + 2]
+        file_cache_level = parts[cache_update_id + 3]
+        size_in_mb = int(parts[cache_update_id + 4]) / 2**20
+        # start_sending_time = int(parts[cache_update_id + 7]) / 1e6
+
+        # if this is a task-generated file, it is the first time the file is cached on this worker, otherwise we only update the stage in time
+        file = self.ensure_file_info_entry(file_name, size_in_mb, timestamp)
+
+        ip, port = WorkerInfo.extract_ip_port_from_string(parts[cache_update_id - 1])
+        worker_entry = self.get_current_worker_entry_by_ip_port(ip, port)
+
+        # TODO: better handle a special case where the file is created by a previous manager
+        if worker_entry is None:
+            del self.files[file_name]
+            return
+        
+        worker = self.workers[worker_entry]
+        worker.add_active_file_or_transfer(file_name)
+
+        # let the file handle the cache update
+        file.cache_update(worker_entry, timestamp, file_type, file_cache_level)
+
+    def _handle_debug_line_cache_invalid(self):
+        parts = self.debug_current_parts
+        timestamp = self.debug_current_timestamp
+
+        cache_invalid_id = parts.index("cache-invalid")
+        file_name = parts[cache_invalid_id + 1]
+        if file_name not in self.files:
+            # special case: this file was created by a previous manager
+            return
+        ip, port = WorkerInfo.extract_ip_port_from_string(parts[cache_invalid_id - 1])
+        worker_entry = (ip, port, self.current_worker_connect_id[(ip, port)])
+        file = self.files[file_name]
+        file.cache_invalid(worker_entry, timestamp)
+
+    def _handle_debug_line_unlink(self):
+        parts = self.debug_current_parts
+        timestamp = self.debug_current_timestamp
+
+        unlink_id = parts.index("unlink")
+        file_name = parts[unlink_id + 1]
+        ip, port = WorkerInfo.extract_ip_port_from_string(parts[unlink_id - 1])
+        worker_entry = self.get_current_worker_entry_by_ip_port(ip, port)
+        assert worker_entry is not None
+
+        file = self.files[file_name]
+        file.unlink(worker_entry, timestamp)
+        worker = self.workers[worker_entry]
+        worker.remove_active_file_or_transfer(file_name)
+
+    def _handle_debug_line_exhausted_resources_on_worker(self):
+        parts = self.debug_current_parts
+
+        exhausted_idx = parts.index("exhausted resources on")
+        task_id = int(parts[exhausted_idx - 1])
+        task_try_id = self.current_try_id[task_id]
+        task = self.tasks[(task_id, task_try_id)]
+        task.exhausted_resources = True
+
+    def _handle_debug_line_get_worker_transfer_port(self):
+        parts = self.debug_current_parts
+
+        transfer_port_idx = parts.index("transfer-port")
+        transfer_port = int(parts[transfer_port_idx + 1])
+        ip, port = WorkerInfo.extract_ip_port_from_string(parts[transfer_port_idx - 1])
+        worker = self.get_current_worker_by_ip_port(ip, port)
+        worker.set_transfer_port(transfer_port)
+        self.map_ip_and_transfer_port_to_worker_port[(ip, transfer_port)] = port
+
+    def _handle_debug_line_sending_back(self):
+        # get an output file from a worker, one worker can only send one file back at a time
+        parts = self.debug_current_parts
+        timestamp = self.debug_current_timestamp
+
+        if not self.sending_back:
+            self.sending_back = True
+            back_idx = parts.index("back")
+            file_name = parts[back_idx + 1]
+            source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[back_idx - 2])
+            source_worker_entry = self.get_current_worker_entry_by_ip_port(source_ip, source_port)
+            assert source_worker_entry is not None
+            assert source_worker_entry not in self.sending_back_transfers
+
+            # note that the file might be a dir which has multiple files in it, we only receive a cache-update for the 
+            # dir itself, but we do not know the files in the dir yet, subfiles will be received recursively
+            file = self.files[file_name]
+            transfer = file.add_transfer(source_worker_entry, 'manager', 'manager_get', 1, 1)
+            transfer.start_stage_in(timestamp, "pending")
+            self.sending_back_transfers[source_worker_entry] = transfer
+            source_worker = self.workers[source_worker_entry]
+            source_worker.add_active_file_or_transfer(file_name)
+
+            """
+            if self.sending_back and "rx from" in line:
+                if "file" in parts:
+                    file_idx = parts.index("file")
+                    file_name = parts[file_idx + 1]
+                    file_size = int(parts[file_idx + 2])
+                    source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[file_idx - 1])
+                    assert source_ip is not None and source_port is not None
+                elif "symlink" in parts:
+                    # we do not support symlinks for now
+                    print(f"Warning: symlinks are not supported yet, line: {line}")
+                    return
+                elif "dir" in parts:
+                    # if this is a dir, we will call vine_manager_get_dir_contents recursively to get all files in the dir
+                    # therefore, we return here and process the subsequent lines to get files
+                    return 
+                elif "error" in parts:
+                    print(f"Warning: error in sending back, line: {line}")
+                    self.sending_back = False
+                    return
+                # the file might be an output file of a command-line task, which does not return a cache-update message
+                # thus it might not be in self.files, so we do not check it here, and do nothing at the moment
+            """
+        else:
+            if "sent" in parts:
+                send_idx = parts.index("sent")
+                source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[send_idx - 1])
+                source_worker_entry = self.get_current_worker_entry_by_ip_port(source_ip, source_port)
                 assert source_worker_entry is not None
+                assert source_worker_entry in self.sending_back_transfers
 
-                transfer = file.add_transfer(source_worker_entry, dest_worker_entry, transfer_event, 2, file_cache_level)
-            elif source.startswith('file://'):
-                transfer = file.add_transfer(source, dest_worker_entry, transfer_event, 2, file_cache_level)
+                transfer = self.sending_back_transfers[source_worker_entry]
+                transfer.stage_in(timestamp, "manager_received")
+                del self.sending_back_transfers[source_worker_entry]
+                self.sending_back = False
             else:
-                raise ValueError(f"unrecognized source: {source}, line: {line}")
-            
-            dest_worker.add_active_file_or_transfer(file_name)
+                # "get xxx" "file xxx" "Receiving xxx" may exist in between
+                pass
 
-            transfer.start_stage_in(timestamp, "pending")
+    def _handle_debug_line_stdout(self):
+        parts = self.debug_current_parts
+        if parts.index("stdout") + 3 != len(parts):
+            # filter out lines like "Receiving stdout of task xxx"
             return
 
-        if "mini_task" in line:
-            mini_task_idx = parts.index("mini_task")
-            source = parts[mini_task_idx + 1]
-            file_name = parts[mini_task_idx + 2]
-            cache_level = int(parts[mini_task_idx + 3])
-            file_size = int(parts[mini_task_idx + 4]) / 2**20
-            dest_worker_ip, dest_worker_port = WorkerInfo.extract_ip_port_from_string(parts[mini_task_idx - 1])
-            
-            dest_worker_entry = self.get_current_worker_entry_by_ip_port(dest_worker_ip, dest_worker_port)
-            assert dest_worker_entry is not None
-            
-            file = self.ensure_file_info_entry(file_name, file_size, timestamp)
-            transfer = file.add_transfer(source, dest_worker_entry, 'mini_task', 2, cache_level)
-            transfer.start_stage_in(timestamp, "pending")
-            dest_worker = self.workers[dest_worker_entry]
-            dest_worker.add_active_file_or_transfer(file_name)
-            return
+        stdout_idx = parts.index("stdout")
+        task_id = int(parts[stdout_idx + 1])
+        task_entry = (task_id, self.current_try_id[task_id])
+        task = self.tasks[task_entry]
+        stdout_size_mb = int(parts[stdout_idx + 2]) / 2**20
+        task.set_stdout_size_mb(stdout_size_mb)
 
-        if "tx to" in line and "task" in parts and parts.index("task") + 2 == len(parts):
+    def _handle_debug_line_submitted_recovery_task(self):
+        parts = self.debug_current_parts
+
+        task_id = int(parts[parts.index("task") + 1])
+        task_try_id = self.current_try_id[task_id]
+        task = self.tasks[(task_id, task_try_id)]
+        task.is_recovery_task = True
+
+    def _handle_debug_line_listening_on_port(self):
+        self.manager.set_time_start(self.debug_current_timestamp)
+
+    def _handle_debug_line_send_task_to_worker(self):
+        parts = self.debug_current_parts
+        line = self.debug_current_line
+        timestamp = self.debug_current_timestamp
+
+        if not self.sending_task:
             task_idx = parts.index("task")
-            task_id = int(parts[task_idx + 1])
+            if task_idx + 2 != len(parts) or "tx to" not in line:
+                return
 
+            task_id = int(parts[task_idx + 1])
             if (task_id, self.current_try_id[task_id]) not in self.tasks:
                 # this is a library task
                 self.current_try_id[task_id] += 1
@@ -437,8 +736,7 @@ class DataParser:
                 task.is_library_task = True
                 self.add_task(task)
 
-            self.sending_task = self.tasks[(
-                task_id, self.current_try_id[task_id])]
+            self.sending_task = self.tasks[(task_id, self.current_try_id[task_id])]
 
             try:
                 worker_ip, worker_port = WorkerInfo.extract_ip_port_from_string(parts[task_idx - 1])
@@ -447,8 +745,7 @@ class DataParser:
                     self.sending_task.set_worker_entry(worker_entry)
             except Exception:
                 raise
-            return
-        if self.sending_task:
+        else:
             if "tx to" not in line:
                 return
             if "end" in parts or "failed to send" in line:
@@ -493,322 +790,91 @@ class DataParser:
                 pass
             else:
                 pass
+
+    def parse_debug_line(self, line):
+        parts = line.strip().split(" ")
+        try:
+            datestring = parts[0] + " " + parts[1]
+            timestamp = self.datestring_to_timestamp(datestring)
+            timestamp = floor_decimal(timestamp, 2)
+        except Exception:
+            # this line does not start with a timestamp, which sometimes happens
             return
+
+        self.manager.update_current_max_time(timestamp)
+
+        self.debug_current_line = line
+        self.debug_current_parts = parts
+        self.debug_current_timestamp = timestamp
+
+        if "listening on port" in line:
+            self._handle_debug_line_listening_on_port()
+        elif "worker" in parts and "connected" in parts:
+            self._handle_debug_line_worker_connected()
+        elif "info" in parts:
+            self._handle_debug_line_receive_worker_info(timestamp, parts)
+        elif "resources" in parts or self.receiving_resources_from_worker:
+            self._handle_debug_line_worker_resources()
+        elif "removed" in parts and "worker" in parts:
+            self._handle_debug_line_worker_removed()
+        if "put" in parts:
+            self._handle_debug_line_put_file()
+            return
+
+        if "received" in parts:
+            self._handle_debug_line_worker_received()
+            return
+
+        if "Failed to send task" in line:
+            self._handle_debug_line_failed_to_send_task()
+            return
+
+        if "puturl" in parts or "puturl_now" in parts:
+            self._handle_debug_line_puturl()
+            return
+
+        if "mini_task" in parts:
+            self._handle_debug_line_mini_task()
+            return
+
+        if "task" in parts or self.sending_task:
+            return self._handle_debug_line_send_task_to_worker()
 
         if "state change:" in line:
-            task_id = int(parts[parts.index("Task") + 1])
-            if "INITIAL (0) to READY (1)" in line:                  # a brand new task
-                assert task_id not in self.current_try_id
-                # new task entry
-                self.current_try_id[task_id] += 1
-                task = TaskInfo(task_id, self.current_try_id[task_id])
-                task.set_when_ready(timestamp)
-                self.add_task(task)
-                return
-            elif "INITIAL (0) to RUNNING (2)" in line:
-                # this is a library task
-                if task_id not in self.current_try_id:
-                    self.current_try_id[task_id] = 1
-                    task = TaskInfo(task_id, self.current_try_id[task_id])
-                    task.set_when_ready(timestamp)
-                    self.add_task(task)
-                task = self.tasks[(task_id, self.current_try_id[task_id])]
-                task.set_when_running(timestamp)
-                task.is_library_task = True
-                return
-
-            task_entry = (task_id, self.current_try_id[task_id])
-            task = self.tasks[task_entry]
-            if "READY (1) to RUNNING (2)" in line:                  # as expected
-                # it could be that the task related info was unable to be sent (also comes with a "failed to send" message)
-                # in this case, even the state is switched to running, there is no worker info
-                if self.manager.when_first_task_start_commit is None:
-                    self.manager.set_when_first_task_start_commit(timestamp)
-                task.set_when_running(timestamp)
-                if not task.worker_entry:
-                    return
-                else:
-                    # update the coremap
-                    worker = self.workers[task.worker_entry]
-                    task.committed_worker_hash = worker.hash
-                    task.worker_id = worker.id
-                    worker.run_task(task)
-                    # check if this is the first try
-                    if task_id not in self.current_try_id:
-                        self.current_try_id[task_id] = 1
-            elif "RUNNING (2) to RUNNING (2)" in line:
-                raise ValueError(
-                    f"task {task_id} state change: from RUNNING (2) to RUNNING (2)")
-            elif "RETRIEVED (4) to RUNNING (2)" in line:
-                print(
-                    f"Warning: task {task_id} state change: from RETRIEVED (4) to RUNNING (2)")
-                pass
-            elif "RUNNING (2) to DONE (5)" in line:
-                print(
-                    f"Warning: task {task_id} state change: from RUNNING (2) to DONE (5)")
-                pass
-            elif "DONE (5) to WAITING_RETRIEVAL (3)" in line:
-                print(
-                    f"Warning: task {task_id} state change: from DONE (5) to WAITING_RETRIEVAL (3)")
-                pass
-            elif "RUNNING (2) to WAITING_RETRIEVAL (3)" in line:    # as expected
-                task.set_when_waiting_retrieval(timestamp)
-                # update the coremap
-                worker = self.workers[task.worker_entry]
-                worker.reap_task(task)
-            elif "WAITING_RETRIEVAL (3) to RETRIEVED (4)" in line:  # as expected
-                task.set_when_retrieved(timestamp)
-            elif "RETRIEVED (4) to DONE (5)" in line:               # as expected
-                task.set_when_done(timestamp)
-                if task.worker_entry:
-                    worker = self.workers[task.worker_entry]
-                    self.manager.set_when_last_task_done(timestamp)
-                    worker.tasks_completed.append(task)
-            elif "WAITING_RETRIEVAL (3) to READY (1)" in line or \
-                    "RUNNING (2) to READY (1)" in line:             # task failure
-                # we need to set the task status if it was not set yet
-                if not task.task_status:
-                    # if it was committed to a worker
-                    if task.worker_entry:
-                        # update the worker's tasks_failed, if the task was successfully committed
-                        worker = self.workers[task.worker_entry]
-                        worker.tasks_failed.append(task)
-                        worker.reap_task(task)
-                        # it could be that the worker disconnected
-                        if len(worker.time_connected) == len(worker.time_disconnected):
-                            task.set_task_status(worker.time_disconnected[-1], 15 << 3)
-                        # it could be that its inputs are missing
-                        elif task.input_files:
-                            all_inputs_ready = True
-                            for input_file in task.input_files:
-                                this_input_ready = False
-                                for transfer in self.files[input_file].transfers:
-                                    if transfer.destination == task.worker_entry and transfer.stage_in is not None:
-                                        this_input_ready = True
-                                        break
-                                if not this_input_ready:
-                                    all_inputs_ready = False
-                                    break
-                            if all_inputs_ready:
-                                task.set_task_status(timestamp, 1)
-                        # otherwise, we donot know the reason
-                        else:
-                            task.set_task_status(timestamp, 4 << 3)
-                    else:
-                        # if the task was not dispatched to a worker, set to undispatched
-                        task.set_task_status(timestamp, 42 << 3)
-
-                # create a new task entry for the next try
-                self.current_try_id[task_id] += 1
-                new_task = TaskInfo(task_id, self.current_try_id[task_id])
-                new_task.set_when_ready(timestamp)
-                self.add_task(new_task)
-
-            elif "RUNNING (2) to RETRIEVED (4)" in line:
-                task.set_when_retrieved(timestamp)
-                if not task.is_library_task:
-                    print(f"Warning: non-library task {task_id} state change: from RUNNING (2) to RETRIEVED (4)")
-                else:
-                    task.set_task_status(timestamp, 12 << 3)
-            else:
-                raise ValueError(f"unrecognized state change: {line}")
-            return
+            return self._handle_debug_line_task_state_change()
 
         if "complete" in parts:
-            complete_idx = parts.index("complete")
-            ip, port = WorkerInfo.extract_ip_port_from_string(parts[complete_idx - 1])
-            worker_entry = (ip, port, self.current_worker_connect_id[(ip, port)])
-            worker = self.workers[worker_entry]
-            task_status = int(parts[complete_idx + 1])
-            exit_status = int(parts[complete_idx + 2])
-            output_length = int(parts[complete_idx + 3])
-            bytes_sent = int(parts[complete_idx + 4])
-            time_worker_start = floor_decimal(float(parts[complete_idx + 5]) / 1e6, 2)
-            time_worker_end = floor_decimal(float(parts[complete_idx + 6]) / 1e6, 2)
-            sandbox_used = None
-            try:
-                task_id = int(parts[complete_idx + 8])
-                sandbox_used = int(parts[complete_idx + 7])
-            except Exception:
-                task_id = int(parts[complete_idx + 7])
+            return self._handle_debug_line_complete()
 
-            task_entry = (task_id, self.current_try_id[task_id])
-            task = self.tasks[task_entry]
-
-            task.set_task_status(timestamp, task_status)
-
-            task.set_exit_status(exit_status)
-            task.set_output_length(output_length)
-            task.set_bytes_sent(bytes_sent)
-
-            task.set_time_worker_start(time_worker_start)
-            task.set_time_worker_end(time_worker_end)
-            task.set_sandbox_used(sandbox_used)
-
-            return
-
-        if "stdout" in parts and (parts.index("stdout") + 3 == len(parts)):
-            stdout_idx = parts.index("stdout")
-            task_id = int(parts[stdout_idx + 1])
-            task_entry = (task_id, self.current_try_id[task_id])
-            task = self.tasks[task_entry]
-            stdout_size_mb = int(parts[stdout_idx + 2]) / 2**20
-            task.set_stdout_size_mb(stdout_size_mb)
-            return
-
-        if "has a ready transfer source for all files" in line:
-            # skip as of now
-            return
+        if "stdout" in parts:
+            return self._handle_debug_line_stdout()
 
         if "cache-update" in parts:
-            # cache-update cachename, &type, &cache_level, &size, &mtime, &transfer_time, &start_time, id
-            cache_update_id = parts.index("cache-update")
-            file_name = parts[cache_update_id + 1]
-            file_type = parts[cache_update_id + 2]
-            file_cache_level = parts[cache_update_id + 3]
-            size_in_mb = int(parts[cache_update_id + 4]) / 2**20
-            # start_sending_time = int(parts[cache_update_id + 7]) / 1e6
-
-            # if this is a task-generated file, it is the first time the file is cached on this worker, otherwise we only update the stage in time
-            file = self.ensure_file_info_entry(file_name, size_in_mb, timestamp)
-
-            ip, port = WorkerInfo.extract_ip_port_from_string(parts[cache_update_id - 1])
-            worker_entry = self.get_current_worker_entry_by_ip_port(ip, port)
-
-            # TODO: better handle a special case where the file is created by a previous manager
-            if worker_entry is None:
-                del self.files[file_name]
-                return
-            
-            worker = self.workers[worker_entry]
-            worker.add_active_file_or_transfer(file_name)
-
-            # let the file handle the cache update
-            file.cache_update(worker_entry, timestamp, file_type, file_cache_level)
-
-            return
+            return self._handle_debug_line_cache_update()
 
         if "cache-invalid" in parts:
-            cache_invalid_id = parts.index("cache-invalid")
-            file_name = parts[cache_invalid_id + 1]
-            if file_name not in self.files:
-                # special case: this file was created by a previous manager
-                return
-            ip, port = WorkerInfo.extract_ip_port_from_string(parts[cache_invalid_id - 1])
-            worker_entry = (ip, port, self.current_worker_connect_id[(ip, port)])
-            file = self.files[file_name]
-            file.cache_invalid(worker_entry, timestamp)
-            return
+            return self._handle_debug_line_cache_invalid()
 
         if "unlink" in parts:
-            unlink_id = parts.index("unlink")
-            file_name = parts[unlink_id + 1]
-            ip, port = WorkerInfo.extract_ip_port_from_string(parts[unlink_id - 1])
-            worker_entry = self.get_current_worker_entry_by_ip_port(ip, port)
-            assert worker_entry is not None
-
-            file = self.files[file_name]
-            file.unlink(worker_entry, timestamp)
-            worker = self.workers[worker_entry]
-            worker.remove_active_file_or_transfer(file_name)
-            return
+            return self._handle_debug_line_unlink()
 
         if "Submitted recovery task" in line:
-            task_id = int(parts[parts.index("task") + 1])
-            task_try_id = self.current_try_id[task_id]
-            task = self.tasks[(task_id, task_try_id)]
-            task.is_recovery_task = True
-            return
+            return self._handle_debug_line_submitted_recovery_task()
 
         if "exhausted" in parts and "resources" in parts:
-            exhausted_idx = parts.index("exhausted")
-            task_id = int(parts[exhausted_idx - 1])
-            task_try_id = self.current_try_id[task_id]
-            task = self.tasks[(task_id, task_try_id)]
-            task.exhausted_resources = True
+            return self._handle_debug_line_exhausted_resources_on_worker()
 
-        # get an output file from a worker, one worker can only send one file back at a time
-        if "sending back" in line:
-            self.sending_back = True
-            back_idx = parts.index("back")
-            file_name = parts[back_idx + 1]
-            source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[back_idx - 2])
-            source_worker_entry = self.get_current_worker_entry_by_ip_port(source_ip, source_port)
-            assert source_worker_entry is not None
-            assert source_worker_entry not in self.sending_back_transfers
-
-            # note that the file might be a dir which has multiple files in it, we only receive a cache-update for the 
-            # dir itself, but we do not know the files in the dir yet, subfiles will be received recursively
-            file = self.files[file_name]
-            transfer = file.add_transfer(source_worker_entry, 'manager', 'manager_get', 1, 1)
-            transfer.start_stage_in(timestamp, "pending")
-            self.sending_back_transfers[source_worker_entry] = transfer
-            source_worker = self.workers[source_worker_entry]
-            source_worker.add_active_file_or_transfer(file_name)
-            return
-        """
-        if self.sending_back and "rx from" in line:
-            if "file" in parts:
-                file_idx = parts.index("file")
-                file_name = parts[file_idx + 1]
-                file_size = int(parts[file_idx + 2])
-                source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[file_idx - 1])
-                assert source_ip is not None and source_port is not None
-            elif "symlink" in parts:
-                # we do not support symlinks for now
-                print(f"Warning: symlinks are not supported yet, line: {line}")
-                return
-            elif "dir" in parts:
-                # if this is a dir, we will call vine_manager_get_dir_contents recursively to get all files in the dir
-                # therefore, we return here and process the subsequent lines to get files
-                return 
-            elif "error" in parts:
-                print(f"Warning: error in sending back, line: {line}")
-                self.sending_back = False
-                return
-            # the file might be an output file of a command-line task, which does not return a cache-update message
-            # thus it might not be in self.files, so we do not check it here, and do nothing at the moment
-        """
-        if self.sending_back and "sent" in parts:
-            send_idx = parts.index("sent")
-            source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[send_idx - 1])
-            source_worker_entry = self.get_current_worker_entry_by_ip_port(source_ip, source_port)
-            assert source_worker_entry is not None
-            assert source_worker_entry in self.sending_back_transfers
-
-            transfer = self.sending_back_transfers[source_worker_entry]
-            transfer.stage_in(timestamp, "manager_received")
-            del self.sending_back_transfers[source_worker_entry]
-            self.sending_back = False
-            return
+        if "sending back" in line or self.sending_back:
+            return self._handle_debug_line_sending_back()
 
         if "manager end" in line:
             self.manager.set_time_end(timestamp)
 
-        if "calculated penalty for file" in line:
-            file_idx = parts.index("file")
-            file_name = parts[file_idx + 1][:-1]
-            penalty = float(parts[file_idx + 2])
-            self.files[file_name].set_penalty(penalty)
-            return
-
-        if "designated as the PBB (checkpoint) worker" in line:
-            designated_idx = parts.index("designated")
-            ip, port = WorkerInfo.extract_ip_port_from_string(
-                parts[designated_idx - 1])
-            worker_entry = (ip, port, self.current_worker_connect_id[(ip, port)])
-            worker = self.workers[worker_entry]
-            worker.set_checkpoint_worker()
-            return
-
         if "Removing instances of worker" in line:
             pass
 
-        if "Checkpoint queue processing time" in line:
-            time_idx = parts.index("time:")
-            time_us = float(parts[time_idx + 1])
-            self.manager.aggregate_checkpoint_processing_time(time_us)
-            return
+        if "transfer-port" in parts:
+            return self._handle_debug_line_get_worker_transfer_port()
 
     def parse_debug(self):
         self.current_try_id = defaultdict(int)
