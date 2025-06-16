@@ -952,7 +952,7 @@ class DataParser:
                         self.parse_debug_line()
                     except Exception as e:
                         print(f"Error parsing line: {self.debug_current_line}")
-                        raise e
+                        continue
             progress.update(task_id, advance=total_lines % pbar_update_interval)
 
         if self.debug_mode:
