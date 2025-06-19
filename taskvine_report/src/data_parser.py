@@ -442,7 +442,7 @@ class DataParser:
         elif source.startswith('file://'):
             transfer = file.add_transfer(source, dest_worker_entry, transfer_event, 2, file_cache_level)
         else:
-            raise ValueError(f"unrecognized source: {source}, line: {line}")
+            raise ValueError(f"unrecognized source: {source}, line: {self.debug_current_line}")
         
         dest_worker.add_active_file_or_transfer(file_name)
 

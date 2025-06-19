@@ -162,10 +162,19 @@ class FileInfo:
 
         # this means a task-created file
         if not has_started_staging_in:
-            producer_task_name = f"{list(self.producers)[-1]}"
-            transfer = self.add_transfer(producer_task_name, worker_entry, "task_created", file_type, file_cache_level)
-            transfer.start_stage_in(time_stage_in, "pending")
-            transfer.stage_in(time_stage_in, "cache_update")
+            try:
+                producer_task_name = f"{list(self.producers)[-1]}"
+                transfer = self.add_transfer(producer_task_name, worker_entry, "task_created", file_type, file_cache_level)
+                transfer.start_stage_in(time_stage_in, "pending")
+                transfer.stage_in(time_stage_in, "cache_update")
+            except Exception as e:
+                print(f"error adding transfer for file {self.filename} on worker {worker_entry} at time {time_stage_in}")
+                print(f"all transfers for this file on this worker")
+                for transfer in self.transfers:
+                    if transfer.destination != worker_entry:
+                        continue
+                    print(f"transfer: {transfer.source} -> {transfer.destination} {transfer.eventual_state}")
+                raise e
 
     def unlink(self, worker_entry, time_stage_out):
         # this affects the incoming transfers on the destination worker
