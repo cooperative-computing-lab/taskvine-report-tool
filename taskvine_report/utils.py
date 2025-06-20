@@ -302,8 +302,6 @@ def get_size_unit_and_scale(max_file_size_mb) -> tuple[str, float]:
         return 'KB', 1024
     else:
         return 'Bytes', 1024 * 1024
-    
-
 
 def read_csv_to_fd(csv_path):
     if not os.path.exists(csv_path):
@@ -554,3 +552,42 @@ def downsample_np_rows(arr, target_count=10000, value_col=1):
     points = arr.tolist()
     downsampled = downsample_points(points, target_point_count=target_count, y_index=value_col)
     return np.array(downsampled)
+
+def downsample_df(df, target_count=10000, y_col=None, y_index=None):
+    """
+    Downsample a DataFrame using the same logic as downsample_np_rows.
+    
+    Args:
+        df: pandas DataFrame to downsample
+        target_count: target number of rows after downsampling
+        y_col: column name for y values (for preserving extremes)
+        y_index: column index for y values (alternative to y_col)
+        
+    Returns:
+        pandas DataFrame with downsampled data
+    """
+    if len(df) <= target_count:
+        return df
+    
+    # Determine y_index if y_col is provided
+    if y_col is not None:
+        y_index = df.columns.get_loc(y_col)
+    elif y_index is None:
+        y_index = 1  # Default to second column
+    
+    # Convert to numpy array, downsample, then back to DataFrame
+    arr = df.values
+    downsampled_arr = downsample_np_rows(arr, target_count=target_count, value_col=y_index)
+    
+    # Create new DataFrame with same columns and preserve dtypes
+    result = pd.DataFrame(downsampled_arr, columns=df.columns)
+    
+    # Try to preserve original dtypes where possible
+    for col in df.columns:
+        try:
+            if df[col].dtype in ['int64', 'int32', 'float64', 'float32']:
+                result[col] = result[col].astype(df[col].dtype)
+        except:
+            pass  # Keep as-is if conversion fails
+            
+    return result
