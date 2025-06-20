@@ -566,6 +566,8 @@ def downsample_df(df, target_count=10000, y_col=None, y_index=None):
     Returns:
         pandas DataFrame with downsampled data
     """
+    if not target_count or target_count <= 0:
+        return df
     if len(df) <= target_count:
         return df
     

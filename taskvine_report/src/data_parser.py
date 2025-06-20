@@ -33,7 +33,7 @@ def count_lines(file_name):
 
 
 class DataParser:
-    def __init__(self, runtime_template, enablee_checkpoint_pkl_files=False, debug_mode=False):
+    def __init__(self, runtime_template, enablee_checkpoint_pkl_files=False, debug_mode=False, downsampling=True):
         self.runtime_template = runtime_template
         self.enablee_checkpoint_pkl_files = enablee_checkpoint_pkl_files
 
@@ -43,6 +43,10 @@ class DataParser:
 
         if not self.runtime_template:
             return
+        if downsampling:
+            self.target_count = 10000
+        else:
+            self.target_count = None
 
         # log files
         self.vine_logs_dir = os.path.join(self.runtime_template, 'vine-logs')
@@ -1267,7 +1271,7 @@ class DataParser:
                 if df['cumulative'].isna().all():
                     continue
 
-                downsampled_df = downsample_df(df[['time', 'cumulative']], y_col='cumulative')
+                downsampled_df = downsample_df(df[['time', 'cumulative']], y_col='cumulative', target_count=self.target_count)
                 timeline = downsampled_df.values
 
                 wid = f"{worker_entry[0]}:{worker_entry[1]}:{worker_entry[2]}"
@@ -1319,7 +1323,7 @@ class DataParser:
                 df = pd.concat([df, new_row], ignore_index=True)
             
             export_df = df[['time', 'active']].rename(columns={'time': 'Time (s)', 'active': 'Active Workers (count)'})
-            export_df = downsample_df(export_df, y_col='Active Workers (count)')
+            export_df = downsample_df(export_df, y_col='Active Workers (count)', target_count=self.target_count)
             self.write_df_to_csv(export_df, self.csv_file_worker_concurrency, index=False)
         
         # 3. Worker Executing Tasks
@@ -1395,7 +1399,7 @@ class DataParser:
 
         time_df.fillna(0, inplace=True)
         if len(time_df) > 0:
-            time_df = downsample_df(time_df, y_index=1)  # Use second column as y-value
+            time_df = downsample_df(time_df, y_index=1, target_count=self.target_count)  # Use second column as y-value
         self.write_df_to_csv(time_df, self.csv_file_task_concurrency, index=False)
 
         recovery_phases = defaultdict(list)
@@ -1452,7 +1456,7 @@ class DataParser:
 
         time_df.fillna(0, inplace=True)
         if len(time_df) > 0:
-            time_df = downsample_df(time_df, y_index=1)  # Use second column as y-value
+            time_df = downsample_df(time_df, y_index=1, target_count=self.target_count)  # Use second column as y-value
         self.write_df_to_csv(time_df, self.csv_file_task_concurrency_recovery_only, index=False)
 
     def generate_task_metrics(self):
@@ -1532,7 +1536,7 @@ class DataParser:
         def write_csv(data, cols, path):
             if data:
                 df = pd.DataFrame(data, columns=cols)
-                df = downsample_df(df, y_index=1)
+                df = downsample_df(df, y_index=1, target_count=self.target_count)
                 self.write_df_to_csv(df, path, index=False)
 
         write_csv(execution_time_rows, ['Global Index', 'Execution Time', 'Task ID', 'Task Try ID', 'Ran to Completion'], self.csv_file_task_execution_time)
@@ -1546,7 +1550,7 @@ class DataParser:
             n = len(finish_times)
             percentiles = [(p, floor_decimal(finish_times[min(n - 1, max(0, math.ceil(p / 100 * n) - 1))], 2)) for p in range(1, 101)]
             df = pd.DataFrame(percentiles, columns=['Percentile', 'Completion Time'])
-            df = downsample_df(df, y_col='Completion Time')
+            df = downsample_df(df, y_col='Completion Time', target_count=self.target_count)
             self.write_df_to_csv(df, self.csv_file_task_completion_percentiles, index=False)
 
     def generate_graph_metrics(self):
@@ -1753,7 +1757,7 @@ class DataParser:
             df = pd.DataFrame(rows_concurrent, columns=['file_name', 'max_simul_replicas', 'created_time'])
             df = df.sort_values(by='created_time')
             df.insert(0, 'file_idx', range(1, len(df) + 1))
-            downsampled_df = downsample_df(df[['file_idx', 'max_simul_replicas']], y_col='max_simul_replicas')
+            downsampled_df = downsample_df(df[['file_idx', 'max_simul_replicas']], y_col='max_simul_replicas', target_count=self.target_count)
             downsampled_df['file_idx'] = downsampled_df['file_idx'].astype(int)
             idx_to_name = dict(zip(df['file_idx'], df['file_name']))
             downsampled_df['file_name'] = downsampled_df['file_idx'].map(idx_to_name).fillna('')
@@ -1765,7 +1769,7 @@ class DataParser:
             df['time'] = df['time'].apply(lambda x: floor_decimal(x, 2))
             df = df.groupby('time', as_index=False)['delta'].sum()
             df['cumulative'] = df['delta'].cumsum().clip(lower=0)
-            df = downsample_df(df[['time', 'cumulative']], y_col='cumulative')
+            df = downsample_df(df[['time', 'cumulative']], y_col='cumulative', target_count=self.target_count)
             df.insert(0, 'file_idx', range(1, len(df) + 1))
             df = df[['file_idx', 'time', 'cumulative']]
             write_df(df, ['File Index', 'Time (s)', 'Cumulative Size (MB)'], self.csv_file_file_created_size)
@@ -1778,14 +1782,14 @@ class DataParser:
             np.add.at(delta_sum, idx, arr[:, 1])
             cumulative = np.clip(np.cumsum(delta_sum), 0, None)
             result = pd.DataFrame({'Time (s)': times, 'Cumulative Size (MB)': cumulative})
-            result = downsample_df(result, y_col='Cumulative Size (MB)')
+            result = downsample_df(result, y_col='Cumulative Size (MB)', target_count=self.target_count)
             self.write_df_to_csv(result, self.csv_file_file_transferred_size, index=False)
 
         if rows_retention:
             df = pd.DataFrame(rows_retention, columns=['file_name', 'retention_time', 'created_time'])
             df = df.sort_values(by='created_time')
             df.insert(0, 'file_idx', range(1, len(df) + 1))
-            downsampled_df = downsample_df(df[['file_idx', 'retention_time']], y_col='retention_time')
+            downsampled_df = downsample_df(df[['file_idx', 'retention_time']], y_col='retention_time', target_count=self.target_count)
             downsampled_df['file_idx'] = downsampled_df['file_idx'].astype(int)
             idx_to_name = dict(zip(df['file_idx'], df['file_name']))
             downsampled_df['file_name'] = downsampled_df['file_idx'].map(idx_to_name).fillna('')
@@ -1798,7 +1802,7 @@ class DataParser:
             df.insert(0, 'file_idx', range(1, len(df) + 1))
             unit, scale = get_size_unit_and_scale(max_size)
             df['file_size_scaled'] = df['file_size'] * scale
-            downsampled_df = downsample_df(df[['file_idx', 'file_size_scaled']], y_col='file_size_scaled')
+            downsampled_df = downsample_df(df[['file_idx', 'file_size_scaled']], y_col='file_size_scaled', target_count=self.target_count)
             downsampled_df['file_idx'] = downsampled_df['file_idx'].astype(int)
             idx_to_name = dict(zip(df['file_idx'], df['file_name']))
             downsampled_df['file_name'] = downsampled_df['file_idx'].map(idx_to_name).fillna('')
@@ -1817,7 +1821,7 @@ class DataParser:
                 np.add.at(delta_sum, idx, arr[:, 1])
                 cumulative = np.clip(np.cumsum(delta_sum), 0, None)
                 temp_df = pd.DataFrame({'time': times, 'cumulative': cumulative})
-                downsampled_df = downsample_df(temp_df, y_col='cumulative')
+                downsampled_df = downsample_df(temp_df, y_col='cumulative', target_count=self.target_count)
                 key = f"{wid[0]}:{wid[1]}:{wid[2]}"
                 col_data[key] = {t: v for t, v in downsampled_df.values}
             if not col_data:
@@ -1844,7 +1848,7 @@ class DataParser:
                         continue
                     cumulative = cumulative / worker.disk_mb * 100
                 temp_df = pd.DataFrame({'time': times, 'cumulative': cumulative})
-                downsampled_df = downsample_df(temp_df, y_col='cumulative')
+                downsampled_df = downsample_df(temp_df, y_col='cumulative', target_count=self.target_count)
                 key = f"{wid[0]}:{wid[1]}:{wid[2]}"
                 col_data[key] = {t: v for t, v in downsampled_df.values}
                 all_times.update(col_data[key].keys())

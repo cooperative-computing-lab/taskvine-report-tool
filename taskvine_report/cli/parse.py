@@ -103,6 +103,12 @@ def main():
         action='version',
         version=f'%(prog)s {__version__}'
     )
+
+    parser.add_argument(
+        '--disable-downsampling',
+        action='store_true',
+        help='Disable downsampling'
+    )
     
     args = parser.parse_args()
 
@@ -154,7 +160,10 @@ def main():
     for template in full_paths:
         print(f"\n=== Start parsing: {template}")
         try:
-            data_parser = DataParser(template, debug_mode=args.debug, enablee_checkpoint_pkl_files=args.checkpoint_pkl_files)
+            data_parser = DataParser(template, debug_mode=args.debug, 
+                                     enablee_checkpoint_pkl_files=args.checkpoint_pkl_files, 
+                                     downsampling=not args.disable_downsampling
+                        )
             if args.load_pkl_files:
                 data_parser.load_pkl_files()
             else:
