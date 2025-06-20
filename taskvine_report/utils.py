@@ -1,6 +1,5 @@
 from pathlib import Path
 import math
-import bisect
 import random
 import os
 import hashlib
@@ -140,6 +139,10 @@ def downsample_points(points, target_point_count=10000, y_index=1):
     return [points[i] for i in sorted(keep_indices)]
 
 def downsample_series_points(series_points_dict, y_index=1):
+    # Quick check: if all series are already small, return as-is
+    if all(len(points) <= 10000 for points in series_points_dict.values()):
+        return series_points_dict
+    
     return {
         series: downsample_points(points, y_index=y_index)
         for series, points in series_points_dict.items()
@@ -300,61 +303,7 @@ def get_size_unit_and_scale(max_file_size_mb) -> tuple[str, float]:
     else:
         return 'Bytes', 1024 * 1024
     
-def compress_time_based_critical_points(points, max_points=10000):
-    n = len(points)
-    if n <= max_points:
-        return [tuple(p) for p in points]
 
-    points = [tuple(p) for p in points]
-    peak_indices = []
-    valley_indices = []
-
-    for i in range(1, n - 1):
-        prev_y, curr_y, next_y = points[i - 1][1], points[i][1], points[i + 1][1]
-        if curr_y > prev_y and curr_y >= next_y:
-            peak_indices.append(i)
-        elif curr_y < prev_y and curr_y <= next_y:
-            valley_indices.append(i)
-
-    keep_indices = set(peak_indices + valley_indices)
-
-    def add_nearest_opposite(from_list, to_list):
-        to_list_sorted = sorted(to_list)
-        for idx in from_list:
-            pos = bisect.bisect_right(to_list_sorted, idx)
-            if pos > 0:
-                keep_indices.add(to_list_sorted[pos - 1])
-            if pos < len(to_list_sorted):
-                keep_indices.add(to_list_sorted[pos])
-
-    add_nearest_opposite(peak_indices, valley_indices)
-    add_nearest_opposite(valley_indices, peak_indices)
-
-    keep_indices.update([0, n - 1])
-
-    sorted_indices = sorted(keep_indices)
-    meaningful_indices = [sorted_indices[0]]
-
-    for i in range(1, len(sorted_indices) - 1):
-        a = points[sorted_indices[i - 1]][1]
-        b = points[sorted_indices[i]][1]
-        c = points[sorted_indices[i + 1]][1]
-        if not (a <= b <= c or a >= b >= c):
-            meaningful_indices.append(sorted_indices[i])
-
-    meaningful_indices.append(sorted_indices[-1])
-    selected_set = set(meaningful_indices)
-
-    if len(selected_set) < max_points:
-        remaining = max_points - len(selected_set)
-        all_indices = set(range(n))
-        candidates = list(all_indices - selected_set)
-        if candidates:
-            extra = random.sample(candidates, min(remaining, len(candidates)))
-            selected_set.update(extra)
-
-    final_indices = sorted(selected_set)
-    return [points[i] for i in final_indices]
 
 def read_csv_to_fd(csv_path):
     if not os.path.exists(csv_path):
@@ -566,3 +515,42 @@ TASK_STATUS_NAMES = {
     42 << 3: 'undispatched',
     43 << 3: 'failed-to-dispatch',
 }
+
+def max_interval_overlap(intervals: list[tuple[float, float]]) -> int:
+    """
+    Compute the maximum number of overlapping intervals at any point in time.
+
+    This function takes a list of (start, end) time intervals and returns
+    the highest number of intervals that are active (i.e., overlapping) at the same time.
+
+    Example:
+        intervals = [(1.0, 3.0), (2.0, 4.0), (2.5, 5.0)]
+        # At time 2.5, all three intervals overlap
+        max_interval_overlap(intervals) -> 3
+
+    Args:
+        intervals: a list of (start_time, end_time) tuples
+
+    Returns:
+        The maximum number of overlapping intervals (int)
+    """
+    if not intervals:
+        return 0
+
+    n = len(intervals)
+    arr = np.empty((n * 2, 2), dtype=np.float64)
+    arr[0::2, 0] = [start for start, _ in intervals]
+    arr[0::2, 1] = 1
+    arr[1::2, 0] = [end for _, end in intervals]
+    arr[1::2, 1] = -1
+
+    sort_idx = np.argsort(arr[:, 0], kind='stable')
+    return int(np.cumsum(arr[sort_idx, 1]).max())
+
+def downsample_np_rows(arr, target_count=10000, value_col=1):
+    if len(arr) <= target_count:
+        return arr
+    
+    points = arr.tolist()
+    downsampled = downsample_points(points, target_point_count=target_count, y_index=value_col)
+    return np.array(downsampled)

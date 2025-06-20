@@ -81,6 +81,18 @@ def main():
     )
 
     parser.add_argument(
+        '--checkpoint-pkl-files',
+        action='store_true',
+        help='Checkpoint pkl files'
+    )
+
+    parser.add_argument(
+        '--load-pkl-files',
+        action='store_true',
+        help='Load pkl files'
+    )
+
+    parser.add_argument(
         '--debug',
         action='store_true',
         help='Enable debug mode'
@@ -142,8 +154,11 @@ def main():
     for template in full_paths:
         print(f"\n=== Start parsing: {template}")
         try:
-            data_parser = DataParser(template, debug_mode=args.debug)
-            data_parser.parse_logs()
+            data_parser = DataParser(template, debug_mode=args.debug, enablee_checkpoint_pkl_files=args.checkpoint_pkl_files)
+            if args.load_pkl_files:
+                data_parser.load_pkl_files()
+            else:
+                data_parser.parse_logs()
             data_parser.generate_csv_files()
             success += 1
             print(f"✅ Successfully processed: {template}")
