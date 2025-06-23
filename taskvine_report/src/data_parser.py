@@ -36,6 +36,7 @@ class DataParser:
     def __init__(self, runtime_template, enablee_checkpoint_pkl_files=False, debug_mode=False, downsampling=True):
         self.runtime_template = runtime_template
         self.enablee_checkpoint_pkl_files = enablee_checkpoint_pkl_files
+        self.downsampling = downsampling
 
         self.ip = None
         self.port = None
@@ -43,7 +44,7 @@ class DataParser:
 
         if not self.runtime_template:
             return
-        if downsampling:
+        if self.downsampling:
             self.target_count = 10000
         else:
             self.target_count = None
@@ -94,6 +95,9 @@ class DataParser:
         self.pkl_files = []
         for pkl_file_name in self.pkl_file_names:
             self.pkl_files.append(os.path.join(self.pkl_files_dir, pkl_file_name))
+
+        # metadata pkl file
+        self.pkl_file_metadata = os.path.join(self.pkl_files_dir, 'metadata.pkl')
 
         # output csv files
         self.manager = ManagerInfo()
@@ -980,6 +984,9 @@ class DataParser:
         # postprocess the debug
         self.postprocess_debug()
 
+        # generate metadata
+        self.generate_metadata()
+
         # generate the subgraphs
         self.generate_subgraphs()
 
@@ -1165,7 +1172,7 @@ class DataParser:
             with open(os.path.join(self.pkl_files_dir, 'subgraphs.pkl'), 'rb') as f:
                 self.subgraphs = cloudpickle.load(f)
             progress.advance(pbar)
-            
+
     def generate_csv_files(self):
         # return if no tasks were dispatched
         if not self.MIN_TIME:
@@ -1941,9 +1948,10 @@ class DataParser:
         other_rows = [row for row in rows if row.get('record_type') not in ['successful_tasks', 'unsuccessful_tasks']]
 
         # Downsample each type separately (same as routes)
-        successful_task_rows = downsample_task_rows(successful_task_rows)
-        unsuccessful_task_rows = downsample_task_rows(unsuccessful_task_rows)
-        
+        if self.downsampling:
+            successful_task_rows = downsample_task_rows(successful_task_rows)
+            unsuccessful_task_rows = downsample_task_rows(unsuccessful_task_rows)
+
         # Combine all rows back
         rows = other_rows + successful_task_rows + unsuccessful_task_rows
 
@@ -2008,8 +2016,94 @@ class DataParser:
             
             # Reorder columns and fill missing ones with None
             for col in columns:
-                if col not in df.columns:
+                if col not in df.columns: 
                     df[col] = None
             df = df[columns]
             
             self.write_df_to_csv(df, self.csv_file_task_execution_details, index=False)
+
+    def generate_metadata(self):
+        metadata = {}
+        
+        # Worker statistics
+        metadata['total_workers'] = len(self.workers)
+        
+        # Task statistics
+        # Filter non-library tasks for main statistics
+        non_library_tasks = [task for task in self.tasks.values() if not getattr(task, 'is_library_task', False)]
+        library_tasks = [task for task in self.tasks.values() if getattr(task, 'is_library_task', False)]
+        
+        metadata['total_tasks'] = len(non_library_tasks)
+        metadata['total_library_tasks'] = len(library_tasks)
+        metadata['total_all_tasks'] = len(self.tasks)
+        
+        # Task status statistics
+        task_status_counts = {}
+        successful_tasks = 0
+        unsuccessful_tasks = 0
+        recovery_tasks = 0
+        dispatched_tasks = 0
+        undispatched_tasks = 0
+        failed_tasks = 0
+        
+        for task in non_library_tasks:
+            task_status = getattr(task, 'task_status', None)
+            is_recovery = getattr(task, 'is_recovery_task', False)
+            when_running = getattr(task, 'when_running', None)
+            
+            # Count by task status
+            if task_status is not None:
+                task_status_counts[task_status] = task_status_counts.get(task_status, 0) + 1
+                
+                # Successful vs unsuccessful
+                if task_status == 0:
+                    successful_tasks += 1
+                else:
+                    unsuccessful_tasks += 1
+                    failed_tasks += 1
+                    
+                # Dispatched vs undispatched
+                if task_status == (42 << 3):  # undispatched
+                    undispatched_tasks += 1
+                elif when_running is not None:
+                    dispatched_tasks += 1
+                else:
+                    undispatched_tasks += 1
+            
+            # Recovery tasks
+            if is_recovery:
+                recovery_tasks += 1
+        
+        metadata['task_status_counts'] = task_status_counts
+        metadata['successful_tasks'] = successful_tasks
+        metadata['unsuccessful_tasks'] = unsuccessful_tasks
+        metadata['recovery_tasks'] = recovery_tasks
+        metadata['dispatched_tasks'] = dispatched_tasks
+        metadata['undispatched_tasks'] = undispatched_tasks
+        metadata['failed_tasks'] = failed_tasks
+        
+        # Recovery task breakdown
+        recovery_successful = 0
+        recovery_unsuccessful = 0
+        for task in non_library_tasks:
+            if getattr(task, 'is_recovery_task', False):
+                task_status = getattr(task, 'task_status', None)
+                if task_status == 0:
+                    recovery_successful += 1
+                else:
+                    recovery_unsuccessful += 1
+        
+        metadata['recovery_successful'] = recovery_successful
+        metadata['recovery_unsuccessful'] = recovery_unsuccessful
+        
+        metadata['total_files'] = len(self.files)
+        
+        metadata['manager_start_time'] = self.manager.time_start
+        metadata['manager_end_time'] = self.manager.time_end
+        metadata['manager_duration'] = (self.manager.time_end - self.manager.time_start) if (self.manager.time_start and self.manager.time_end) else None
+        
+        with open(self.pkl_file_metadata, 'wb') as f:
+            cloudpickle.dump(metadata, f)
+        
+        self.metadata = metadata
+        

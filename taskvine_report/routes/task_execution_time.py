@@ -14,6 +14,10 @@ def get_task_execution_time():
         x_domain = extract_x_range_from_points(points, x_index=0)
         y_domain = extract_y_range_from_points(points, y_index=1)
 
+        metadata = current_app.config["RUNTIME_STATE"].metadata
+        ran_to_completion_count = metadata.get('successful_tasks', 0)
+        failed_count = metadata.get('unsuccessful_tasks', 0)
+
         return jsonify({
             'points': downsample_points(points, y_index=1),
             'x_domain': x_domain,
@@ -22,8 +26,8 @@ def get_task_execution_time():
             'y_tick_values': compute_linear_tick_values(y_domain),
             'x_tick_formatter': d3_int_formatter(),
             'y_tick_formatter': d3_time_formatter(),
-            'ran_to_completion_count': int(df['Ran to Completion'].sum()),
-            'failed_count': int(len(df) - int(df['Ran to Completion'].sum()))
+            'ran_to_completion_count': ran_to_completion_count,
+            'failed_count': failed_count
         })
 
     except Exception as e:

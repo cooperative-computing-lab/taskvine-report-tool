@@ -59,23 +59,32 @@ LEGEND_SCHEMA = {
 }
 
 def calculate_legend(successful_tasks, unsuccessful_tasks, workers):
+    # Get metadata from preloaded RUNTIME_STATE
+    metadata = current_app.config["RUNTIME_STATE"].metadata
+    
     counts = defaultdict(int)
 
-    for task in successful_tasks:
-        counts['successful-committing-to-worker'] += 1
-        counts['successful-executing-on-worker'] += 1
-        counts['successful-retrieving-to-manager'] += 1
-        if task['is_recovery_task']:
-            counts['recovery-successful'] += 1
-
-    for task in unsuccessful_tasks:
-        key = TASK_STATUS_TO_CHECKBOX_NAME.get(task['task_status'])
-        if key:
-            counts[key] += 1
-            if task['is_recovery_task']:
-                counts['recovery-unsuccessful'] += 1
-
-    counts['workers'] = len(workers)
+    # Use metadata for accurate counts based on original data
+    # Successful task phases - each successful task contributes to all 3 phases
+    successful_count = metadata.get('successful_tasks', 0)
+    counts['successful-committing-to-worker'] = successful_count
+    counts['successful-executing-on-worker'] = successful_count
+    counts['successful-retrieving-to-manager'] = successful_count
+    
+    # Recovery tasks
+    counts['recovery-successful'] = metadata.get('recovery_successful', 0)
+    counts['recovery-unsuccessful'] = metadata.get('recovery_unsuccessful', 0)
+    
+    # Unsuccessful tasks by status
+    task_status_counts = metadata.get('task_status_counts', {})
+    for status, count in task_status_counts.items():
+        if status != 0:  # Not successful
+            key = TASK_STATUS_TO_CHECKBOX_NAME.get(status)
+            if key:
+                counts[key] = count
+    
+    # Workers
+    counts['workers'] = metadata.get('total_workers', 0)
 
     group_map = defaultdict(lambda: {'total': 0, 'items': []})
     for key, (group, label, color) in LEGEND_SCHEMA.items():
@@ -89,11 +98,11 @@ def calculate_legend(successful_tasks, unsuccessful_tasks, workers):
             'color': color,
         })
 
-    for group in ['Successful Tasks', 'Unsuccessful Tasks']:
-        group_map[group]['total'] = len(successful_tasks if group == 'Successful Tasks' else unsuccessful_tasks)
-
-    for group in ['Recovery Tasks', 'Workers']:
-        group_map[group]['total'] = sum(item['count'] for item in group_map[group]['items'])
+    # Set group totals using metadata
+    group_map['Successful Tasks']['total'] = metadata.get('successful_tasks', 0)
+    group_map['Unsuccessful Tasks']['total'] = metadata.get('unsuccessful_tasks', 0)
+    group_map['Recovery Tasks']['total'] = metadata.get('recovery_tasks', 0)
+    group_map['Workers']['total'] = metadata.get('total_workers', 0)
 
     legend = []
     for group in ['Successful Tasks', 'Unsuccessful Tasks', 'Recovery Tasks', 'Workers']:

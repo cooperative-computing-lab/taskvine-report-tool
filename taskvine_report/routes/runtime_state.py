@@ -222,6 +222,20 @@ class RuntimeState(DataParser):
         # exclude library tasks
         self.tasks = {tid: t for tid, t in self.tasks.items() if not t.is_library_task}
 
+        # load metadata if available
+        try:
+            import cloudpickle
+            if os.path.exists(self.pkl_file_metadata):
+                with open(self.pkl_file_metadata, 'rb') as f:
+                    self.metadata = cloudpickle.load(f)
+                self.log_info(f"Loaded metadata with {self.metadata.get('total_tasks', 0)} tasks")
+            else:
+                self.metadata = {}
+                self.log_warning("Metadata file not found, using empty metadata")
+        except Exception as e:
+            self.metadata = {}
+            self.log_error(f"Failed to load metadata: {e}")
+
         # init task stats
         self.get_task_stats()
 

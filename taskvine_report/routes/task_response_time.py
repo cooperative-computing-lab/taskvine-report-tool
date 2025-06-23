@@ -14,6 +14,11 @@ def get_task_response_time():
         x_domain = extract_x_range_from_points(points, x_index=0)
         y_domain = extract_y_range_from_points(points, y_index=1)
 
+        # Get dispatch statistics from preloaded metadata
+        metadata = current_app.config["RUNTIME_STATE"].metadata
+        dispatched_count = metadata.get('dispatched_tasks', 0)
+        undispatched_count = metadata.get('undispatched_tasks', 0)
+
         return jsonify({
             'points': downsample_points(points, y_index=1),
             'x_domain': x_domain,
@@ -22,8 +27,8 @@ def get_task_response_time():
             'y_tick_values': compute_linear_tick_values(y_domain),
             'x_tick_formatter': d3_int_formatter(),
             'y_tick_formatter': d3_time_formatter(),
-            'dispatched_count': int(df['Was Dispatched'].sum()),
-            'undispatched_count': int(len(df) - int(df['Was Dispatched'].sum()))
+            'dispatched_count': dispatched_count,
+            'undispatched_count': undispatched_count
         })
 
     except Exception as e:
