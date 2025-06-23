@@ -930,7 +930,7 @@ class DataParser:
         debug_file_size_mb = floor_decimal(os.path.getsize(self.debug) / 1024 / 1024, 2)
         unit, scale = get_size_unit_and_scale(debug_file_size_mb)
         debug_file_size_str = f"{floor_decimal(debug_file_size_mb * scale, 2)} {unit}"
-        
+
         with self._create_progress_bar() as progress:
             task_id = progress.add_task(f"[green]Parsing debug ({debug_file_size_str})", total=total_lines)
             pbar_update_interval = 100
