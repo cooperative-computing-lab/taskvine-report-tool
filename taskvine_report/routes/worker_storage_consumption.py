@@ -8,8 +8,14 @@ worker_storage_consumption_bp = Blueprint(
 
 def aggregate_storage_data(df):
     df_indexed = df.set_index('Time (s)')
-    aggregated = df_indexed.sum(axis=1).reset_index()
+    
+    df_filled = df_indexed.fillna(method='ffill').fillna(0)
+    
+    aggregated_series = df_filled.sum(axis=1)
+
+    aggregated = aggregated_series.reset_index()
     aggregated.columns = ['Time (s)', 'Total Storage']
+    
     return extract_points_from_df(aggregated, 'Time (s)', 'Total Storage')
 
 @worker_storage_consumption_bp.route('/worker-storage-consumption')
