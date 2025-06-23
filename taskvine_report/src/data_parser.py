@@ -140,7 +140,7 @@ class DataParser:
         self.debug_handlers = [
 
             H("send_task",
-            lambda l, p, ctx: "task" in p or ctx.sending_task,
+            lambda l, p, ctx: ("task" in p and p.index("task") == len(p) - 2) or ctx.sending_task,
             lambda l, p, ctx: ctx._handle_debug_line_send_task_to_worker()),
 
             H("puturl",
