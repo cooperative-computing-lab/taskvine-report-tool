@@ -105,9 +105,9 @@ def main():
     )
 
     parser.add_argument(
-        '--disable-downsampling',
+        '--downsampling',
         action='store_true',
-        help='Disable downsampling'
+        help='Enable downsampling'
     )
     
     args = parser.parse_args()
@@ -162,7 +162,7 @@ def main():
         try:
             data_parser = DataParser(template, debug_mode=args.debug, 
                                      enablee_checkpoint_pkl_files=args.checkpoint_pkl_files, 
-                                     downsampling=not args.disable_downsampling
+                                     downsampling=args.downsampling
                         )
             if args.load_pkl_files:
                 data_parser.load_pkl_files()

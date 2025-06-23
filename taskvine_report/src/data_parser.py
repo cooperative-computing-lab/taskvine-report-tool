@@ -1887,7 +1887,7 @@ class DataParser:
                 'worker_entry': f"{task.worker_entry[0]}:{task.worker_entry[1]}:{task.worker_entry[2]}",
                 'worker_id': worker_id,
                 'core_id': core_id,
-                'is_recovery_task': getattr(task, 'is_recovery_task', False),
+                'is_recovery_task': task.is_recovery_task,
                 'input_files': file_list_formatter(task.input_files) if task.input_files else '',
                 'output_files': file_list_formatter(task.output_files) if task.output_files else '',
                 'num_input_files': len(task.input_files) if task.input_files else 0,
