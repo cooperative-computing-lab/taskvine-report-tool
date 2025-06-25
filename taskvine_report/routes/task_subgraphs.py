@@ -19,6 +19,18 @@ def sanitize_filename(filename):
         filename = filename[:200]
     return filename
 
+def generate_legend(df_subgraphs, selected_subgraph_id=None):
+    unique_subgraphs = df_subgraphs['subgraph_id'].unique()
+    return [
+        {
+            'id': str(int(sg_id)),
+            'label': f"Subgraph {int(sg_id)} ({len(df_subgraphs[df_subgraphs['subgraph_id'] == sg_id])} task{'s' if len(df_subgraphs[df_subgraphs['subgraph_id'] == sg_id]) != 1 else ''})",
+            'color': '',
+            'checked': bool(selected_subgraph_id and int(sg_id) == int(selected_subgraph_id))
+        }
+        for sg_id in sorted(unique_subgraphs)
+    ]
+
 @task_subgraphs_bp.route('/task-subgraphs')
 @check_and_reload_data()
 def get_task_subgraphs():
@@ -33,18 +45,24 @@ def get_task_subgraphs():
         except Exception:
             return jsonify({'error': 'Invalid subgraph ID'}), 400
 
-        plot_unsuccessful_task = request.args.get('plot_failed_task', 'true').lower() == 'true'
-        plot_recovery_task = request.args.get('plot_recovery_task', 'true').lower() == 'true'
-
-        # Read CSV file
         csv_dir = current_app.config["RUNTIME_STATE"].csv_files_dir
         if not csv_dir:
             return jsonify({'error': 'CSV directory not configured'}), 500
 
         import pandas as pd
         
-        # Read the single CSV file
         df_subgraphs = read_csv_to_fd(os.path.join(csv_dir, 'task_subgraphs.csv'))
+        
+        if subgraph_id == 0:
+            data['legend'] = generate_legend(df_subgraphs)
+            data['subgraph_id'] = 0
+            data['num_task_tries'] = 0
+            data['subgraph_svg_content'] = ''
+            return jsonify(data)
+
+        plot_unsuccessful_task = request.args.get('plot_failed_task', 'true').lower() == 'true'
+        plot_recovery_task = request.args.get('plot_recovery_task', 'true').lower() == 'true'
+
         subgraph_tasks = df_subgraphs[df_subgraphs['subgraph_id'] == subgraph_id]
         if subgraph_tasks.empty:
             return jsonify({'error': 'Subgraph not found'}), 404
@@ -115,11 +133,11 @@ def get_task_subgraphs():
                     
                     input_files = parse_files_with_timing(task_row.get('input_files', ''))
                     output_files = parse_files_with_timing(task_row.get('output_files', ''))
-                    
+
                     # Remove empty strings
                     input_files = [(f, t) for f, t in input_files if f]
                     output_files = [(f, t) for f, t in output_files if f]
-                    
+
                     tasks_dict[task_id] = {
                         'task_id': int(task_id),
                         'is_recovery_task': is_recovery,
@@ -239,17 +257,7 @@ def get_task_subgraphs():
         else:
             data['subgraph_svg_content'] = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="100"><text x="10" y="30" font-family="Arial" font-size="14">Error: SVG file could not be generated</text></svg>'
 
-        # Generate legend from CSV data
-        unique_subgraphs = df_subgraphs['subgraph_id'].unique()
-        data['legend'] = [
-            {
-                'id': str(int(sg_id)),
-                'label': f"Subgraph {int(sg_id)} ({len(df_subgraphs[df_subgraphs['subgraph_id'] == sg_id])} task{'s' if len(df_subgraphs[df_subgraphs['subgraph_id'] == sg_id]) != 1 else ''})",
-                'color': '',
-                'checked': bool(int(sg_id) == int(subgraph_id))
-            }
-            for sg_id in sorted(unique_subgraphs)
-        ]
+        data['legend'] = generate_legend(df_subgraphs, subgraph_id)
 
         # Test JSON serialization before returning
         try:

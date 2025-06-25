@@ -5,7 +5,7 @@ export class TaskSubgraphsModule extends BaseModule {
         super(id, title, api_url);
         
         this.defineFetchDataParams({
-            subgraph_id: 1,
+            subgraph_id: 0,
             plot_failed_task: true,
             plot_recovery_task: true
         });
@@ -15,7 +15,7 @@ export class TaskSubgraphsModule extends BaseModule {
         super.resetPlot();
 
         this.data = null;
-        this.updateFetchDataParam('subgraph_id', 1);
+        this.updateFetchDataParam('subgraph_id', 0);
     }
 
     legendOnToggle(id, visible) {
@@ -52,7 +52,7 @@ export class TaskSubgraphsModule extends BaseModule {
 
     plot() {
         this.clearSVG();
-        if (!this.data) return;
+        if (!this.data || !this.data.subgraph_svg_content || this.data.subgraph_id === 0) return;
 
         const svgElement = new DOMParser().parseFromString(this.data.subgraph_svg_content, 'image/svg+xml').documentElement;
         this.svgNode.parentNode.replaceChild(svgElement, this.svgNode);
