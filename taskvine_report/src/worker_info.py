@@ -96,8 +96,8 @@ class WorkerInfo:
 
     def set_cores(self, cores: int):
         if self.cores and cores != self.cores:
-            raise ValueError(
-                f"cores mismatch for worker {self.ip}:{self.port}, {self.cores} != {cores}")
+            # cores should always match at the moment
+            raise ValueError(f"cores mismatch for worker {self.ip}:{self.port}, {self.cores} != {cores}")
         self.cores = cores
         if not self.coremap:
             self.coremap = bitarray(self.cores + 1)
@@ -107,19 +107,17 @@ class WorkerInfo:
 
     def set_gpus(self, gpus: int):
         if self.gpus and gpus != self.gpus:
-            raise ValueError(f"gpus mismatch for worker {self.ip}:{self.port}")
+            print(f"Warning: gpus mismatch for worker {self.ip}:{self.port}, {self.gpus} != {gpus}")
         self.gpus = gpus
 
     def set_memory_mb(self, memory_mb: int):
         if self.memory_mb and memory_mb != self.memory_mb:
-            raise ValueError(
-                f"memory mismatch for worker {self.ip}:{self.port}")
+            print(f"Warning: memory mismatch for worker {self.ip}:{self.port}, {self.memory_mb} != {memory_mb}")
         self.memory_mb = memory_mb
 
     def set_disk_mb(self, disk_mb: int):
         if self.disk_mb and disk_mb != self.disk_mb:
-            # raise ValueError(f"disk mismatch for worker {self.ip}:{self.port}, {self.disk_mb} != {disk_mb}")
-            pass
+            print(f"Warning: disk mismatch for worker {self.ip}:{self.port}, {self.disk_mb} != {disk_mb}")
         self.disk_mb = disk_mb
 
     def to_json(self):
