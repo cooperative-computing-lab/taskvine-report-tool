@@ -55,7 +55,6 @@ def generate_legend(df_subgraphs, selected_subgraph_id=None):
     ]
 
 def find_subgraph_by_filename(df_subgraphs, filename):
-    """find which subgraph contains the given filename (supports substring matching)"""
     if not filename:
         return None
     
@@ -86,7 +85,6 @@ def find_subgraph_by_filename(df_subgraphs, filename):
     return None
 
 def find_subgraph_by_task_id(df_subgraphs, task_id):
-    """find which subgraph contains the given task ID (exact match)"""
     if not task_id:
         return None
     
@@ -107,7 +105,6 @@ def find_subgraph_by_task_id(df_subgraphs, task_id):
     return None
 
 def parse_files_with_timing(files_str):
-    """parse file string and filter empty names"""
     files_with_timing = []
     if pd.notna(files_str) and str(files_str).strip():
         for item in str(files_str).split('|'):
@@ -127,7 +124,6 @@ def parse_files_with_timing(files_str):
     return files_with_timing
 
 def build_tasks_and_files(subgraph_tasks):
-    """build tasks_dict and files_dict from csv data"""
     tasks_dict = {}
     files_dict = {}
     
@@ -232,7 +228,6 @@ def generate_error_svg(message, subgraph_id=None, task_count=None):
     return f'<svg xmlns="http://www.w3.org/2000/svg" width="500" height="150"><rect width="500" height="150" fill="#f8f9fa" stroke="#dee2e6"/>{"".join(lines)}</svg>'
 
 def read_valid_svg(svg_file_path):
-    """read and validate SVG file"""
     if not Path(svg_file_path).exists():
         return None
     with open(svg_file_path, 'r', encoding='utf-8') as f:
@@ -280,12 +275,10 @@ def generate_subgraph_metadata(subgraph_tasks, subgraph_id):
     return metadata
 
 def write_metadata(metadata, metadata_file_path):
-    """write metadata to JSON file"""
     with open(metadata_file_path, 'w', encoding='utf-8') as f:
         json.dump(metadata, f, indent=2, ensure_ascii=False)
 
 def load_metadata(metadata_file_path):
-    """load metadata from JSON file"""
     if not Path(metadata_file_path).exists():
         return None
     
@@ -301,12 +294,10 @@ def load_metadata(metadata_file_path):
     return metadata
 
 def compare_metadata_structure(metadata1, metadata2):
-    """compare two metadata structures excluding timestamp"""
     if not metadata1 or not metadata2:
         return False
     
     try:
-        # compare basic counts
         if (metadata1['subgraph_id'] != metadata2['subgraph_id'] or
             metadata1['num_tasks'] != metadata2['num_tasks'] or
             metadata1['num_files'] != metadata2['num_files']):
