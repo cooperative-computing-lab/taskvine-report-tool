@@ -1,6 +1,6 @@
 // toolbox.js
 export class ToolboxItem {
-    constructor({ buttonLabel, id, type = "button", selectorOptions = [], handler = null }) {
+    constructor({ buttonLabel, id, type = "button", selectorOptions = [], handler = null, inputType = "number", placeholder = "Input" }) {
         if (type !== "button" && type !== "input" && type !== "selector") {
             throw new Error("Invalid type");
         }
@@ -10,6 +10,8 @@ export class ToolboxItem {
         this._type = type;
         this._selectorOptions = selectorOptions;
         this._handler = handler;
+        this._inputType = inputType;
+        this._placeholder = placeholder;
     }
 
     render() {
@@ -40,14 +42,14 @@ export class ToolboxItem {
         return row;
     }
 
-    _createInput(type = "number") {
+    _createInput() {
         if (this._type !== "input") {
             return;
         }
 
         this._input = document.createElement("input");
-        this._input.placeholder = "Input";
-        this._input.type = type;
+        this._input.placeholder = this._placeholder;
+        this._input.type = this._inputType;
         this._input.className = "toolbox-input";
         this._input.id = `input-${this._id}`;
     }
@@ -175,12 +177,14 @@ export class Toolbox {
         };
     }
 
-    createInputItem(id, label, handler) {
+    createInputItem(id, label, handler, inputType = "number", placeholder = "Input") {
         return {
             id,
             buttonLabel: label,
             type: "input",
             handler,
+            inputType,
+            placeholder,
         };
     }
 

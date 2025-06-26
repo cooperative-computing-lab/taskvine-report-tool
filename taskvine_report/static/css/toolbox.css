@@ -15,7 +15,9 @@
     border-radius: 3rem;
     padding: 2rem;
     position: absolute;
-    width: 180px;
+    width: max-content;
+    min-width: 180px;
+    max-width: 250px;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
     z-index: 9999;
     right: 100%;

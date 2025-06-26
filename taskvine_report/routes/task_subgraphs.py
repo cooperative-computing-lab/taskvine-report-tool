@@ -13,6 +13,27 @@ import pandas as pd
 
 task_subgraphs_bp = Blueprint('task_subgraphs', __name__, url_prefix='/api')
 
+def create_response(legend=None, subgraph_id=0, num_task_tries=0, svg_content='', error=None, status_code=200):
+    """create standardized JSON response for task subgraphs"""
+    response_data = {}
+    
+    if legend is not None:
+        response_data['legend'] = legend
+    
+    response_data.update({
+        'subgraph_id': subgraph_id,
+        'num_task_tries': num_task_tries,
+        'subgraph_svg_content': svg_content
+    })
+    
+    if error:
+        response_data['error'] = error
+        if status_code == 200:  # if no specific status code provided for error, use 404
+            status_code = 404
+    
+    response = make_response(jsonify(response_data), status_code)
+    return response
+
 def sanitize_filename(filename):
     # remove or replace characters that might cause issues on different filesystems
     filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
@@ -32,6 +53,58 @@ def generate_legend(df_subgraphs, selected_subgraph_id=None):
         }
         for sg_id in sorted(unique_subgraphs)
     ]
+
+def find_subgraph_by_filename(df_subgraphs, filename):
+    """find which subgraph contains the given filename (supports substring matching)"""
+    if not filename:
+        return None
+    
+    filename = filename.strip()
+    if not filename:
+        return None
+    
+    # search in both input_files and output_files columns
+    for _, row in df_subgraphs.iterrows():
+        subgraph_id = row['subgraph_id']
+        
+        # check input files
+        input_files_str = row.get('input_files', '')
+        if pd.notna(input_files_str) and str(input_files_str).strip():
+            input_files = parse_files_with_timing(input_files_str)
+            for file_name, _ in input_files:
+                if filename in file_name:  # substring match
+                    return int(subgraph_id)
+        
+        # check output files
+        output_files_str = row.get('output_files', '')
+        if pd.notna(output_files_str) and str(output_files_str).strip():
+            output_files = parse_files_with_timing(output_files_str)
+            for file_name, _ in output_files:
+                if filename in file_name:  # substring match
+                    return int(subgraph_id)
+    
+    return None
+
+def find_subgraph_by_task_id(df_subgraphs, task_id):
+    """find which subgraph contains the given task ID (exact match)"""
+    if not task_id:
+        return None
+    
+    try:
+        task_id = int(task_id)
+    except (ValueError, TypeError):
+        return None
+    
+    # search in task_id column - ensure both sides are int for comparison
+    for _, row in df_subgraphs.iterrows():
+        try:
+            row_task_id = int(row['task_id'])
+            if row_task_id == task_id:
+                return int(row['subgraph_id'])
+        except (ValueError, TypeError):
+            continue  # skip invalid task_id entries
+    
+    return None
 
 def parse_files_with_timing(files_str):
     """parse file string and filter empty names"""
@@ -106,9 +179,9 @@ def build_tasks_and_files(subgraph_tasks):
 def plot_task_graph(dot, tasks_dict, files_dict, params_dict=None):
     if params_dict is None:
         params_dict = {}
-    
+
     label_file_waiting_time = params_dict.get('label_file_waiting_time', False)
-    
+
     # plot all task nodes
     for task_data in tasks_dict.values():
         task_id = str(task_data['task_id'])
@@ -206,37 +279,66 @@ def get_task_subgraphs():
     try:
         # parse arguments
         subgraph_id = request.args.get('subgraph_id')
+        filename = request.args.get('filename')
+        task_id = request.args.get('task_id')
+        
         if not subgraph_id:
-            return jsonify({'error': 'Subgraph ID is required'}), 400
+            return create_response(error='Subgraph ID is required', status_code=400)
         try:
             subgraph_id = int(subgraph_id)
         except Exception:
-            return jsonify({'error': 'Invalid subgraph ID'}), 400
+            return create_response(error='Invalid subgraph ID', status_code=400)
 
         # read df_subgraphs
         csv_dir = current_app.config["RUNTIME_STATE"].csv_files_dir
         if not csv_dir:
-            return jsonify({'error': 'CSV directory not configured'}), 500
+            return create_response(error='CSV directory not configured', status_code=500)
 
         df_subgraphs = read_csv_to_fd(os.path.join(csv_dir, 'task_subgraphs.csv'))
         
+        # handle filename search when subgraph_id=0 and filename is provided
+        if subgraph_id == 0 and filename:
+            current_app.config["RUNTIME_STATE"].logger.info(f"Searching for filename pattern '{filename}' (substring match) in {len(df_subgraphs)} tasks across {len(df_subgraphs['subgraph_id'].unique())} subgraphs")
+            found_subgraph_id = find_subgraph_by_filename(df_subgraphs, filename.strip())
+            if found_subgraph_id:
+                subgraph_id = found_subgraph_id
+                current_app.config["RUNTIME_STATE"].logger.info(f"Found filename pattern '{filename}' in subgraph {subgraph_id}")
+            else:
+                current_app.config["RUNTIME_STATE"].logger.warning(f"Filename pattern '{filename}' not found")
+                return create_response(
+                    legend=generate_legend(df_subgraphs),
+                    error=f"Filename pattern '{filename}' not found in any subgraph"
+                )
+        
+        # handle task_id search when subgraph_id=0 and task_id is provided
+        if subgraph_id == 0 and task_id:
+            current_app.config["RUNTIME_STATE"].logger.info(f"Searching for task ID '{task_id}' (exact match) in {len(df_subgraphs)} tasks across {len(df_subgraphs['subgraph_id'].unique())} subgraphs")
+            found_subgraph_id = find_subgraph_by_task_id(df_subgraphs, task_id.strip())
+            if found_subgraph_id:
+                subgraph_id = found_subgraph_id
+                current_app.config["RUNTIME_STATE"].logger.info(f"Found task ID '{task_id}' in subgraph {subgraph_id}")
+            else:
+                current_app.config["RUNTIME_STATE"].logger.warning(f"Task ID '{task_id}' not found")
+                return create_response(
+                    legend=generate_legend(df_subgraphs),
+                    error=f"Task ID '{task_id}' not found in any subgraph"
+                )
+        
         # get tasks for subgraph_id
         if subgraph_id == 0:
-            return jsonify({
-                'legend': generate_legend(df_subgraphs),
-                'subgraph_id': 0,
-                'num_task_tries': 0,
-                'subgraph_svg_content': ''
-            })
+            return create_response(legend=generate_legend(df_subgraphs))
 
         subgraph_tasks = df_subgraphs[df_subgraphs['subgraph_id'] == subgraph_id]
         if subgraph_tasks.empty:
-            return jsonify({'error': 'Subgraph not found'}), 404
+            return create_response(
+                legend=generate_legend(df_subgraphs),
+                error='Subgraph not found'
+            )
 
         # setup svg path
         svg_dir = current_app.config["RUNTIME_STATE"].svg_files_dir
         if not svg_dir:
-            return jsonify({'error': 'SVG directory not configured'}), 500
+            return create_response(error='SVG directory not configured', status_code=500)
         os.makedirs(svg_dir, exist_ok=True)
         
         base_filename = f'task-subgraph-{subgraph_id}'
@@ -263,12 +365,12 @@ def get_task_subgraphs():
         if not svg_content:
             svg_content = generate_error_svg("SVG file could not be generated")
 
-        return jsonify({
-            'subgraph_id': int(subgraph_id),
-            'num_task_tries': int(len(subgraph_tasks)),
-            'subgraph_svg_content': svg_content,
-            'legend': generate_legend(df_subgraphs, subgraph_id)
-        })
+        return create_response(
+            legend=generate_legend(df_subgraphs, subgraph_id),
+            subgraph_id=int(subgraph_id),
+            num_task_tries=int(len(subgraph_tasks)),
+            svg_content=svg_content
+        )
     except Exception as e:
         current_app.config["RUNTIME_STATE"].logger.error(f'Error in get_task_subgraphs: {e}')
-        return jsonify({'error': str(e)}), 500
+        return create_response(error=str(e), status_code=500)
