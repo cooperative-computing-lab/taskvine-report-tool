@@ -85,6 +85,32 @@ def d3_percentage_formatter(digits=2):
 def d3_worker_core_formatter():
     return '(d) => d.split("-")[0]'
 
+def _apply_start_point_zero_condition(points, y_index=1):
+    """
+    Apply special condition: if first point has x > 0 and y > 0, set y to 0.
+    
+    Args:
+        points: List of points (tuples)
+        y_index: Index of y coordinate in the tuple
+        
+    Returns:
+        Modified points list
+    """
+    if not points or len(points[0]) <= y_index:
+        return points
+        
+    first_point = points[0]
+    x_val, y_val = first_point[0], first_point[y_index]
+    
+    # Only modify if both x > 0 and y > 0
+    if x_val > 0 and y_val > 0:
+        # Create new tuple with y set to 0
+        modified_point = list(first_point)
+        modified_point[y_index] = 0
+        points[0] = tuple(modified_point)
+    
+    return points
+
 def downsample_points(points, target_point_count=10000, y_index=1):
     if not points:
         return []
@@ -108,12 +134,26 @@ def downsample_points(points, target_point_count=10000, y_index=1):
     if not valid_points:
         return points[:target_point_count]
 
+    # Find the best start and end points (minimum y value if multiple points at same x)
+    x_index = 0  # x is always at index 0
+    
+    # Find best start point (minimum y value among points with same x as first point)
+    start_x = points[0][x_index]
+    start_candidates = [(i, p) for i, p in enumerate(points) if p[x_index] == start_x and p[y_index] is not None]
+    start_idx = min(start_candidates, key=lambda x: x[1][y_index])[0] if start_candidates else 0
+    
+    # Find best end point (minimum y value among points with same x as last point)
+    end_x = points[-1][x_index]
+    end_candidates = [(i, p) for i, p in enumerate(points) if p[x_index] == end_x and p[y_index] is not None]
+    end_idx = min(end_candidates, key=lambda x: x[1][y_index])[0] if end_candidates else len(points) - 1
+    
     y_max_idx = max(valid_points, key=lambda x: x[1][y_index])[0]
-    keep_indices = {0, len(points) - 1, y_max_idx}
+    keep_indices = {start_idx, end_idx, y_max_idx}
 
     remaining = target_point_count - len(keep_indices)
     if remaining <= 0:
-        return [points[i] for i in sorted(keep_indices)]
+        result_points = [points[i] for i in sorted(keep_indices)]
+        return _apply_start_point_zero_condition(result_points, y_index)
 
     sorted_indices = sorted(keep_indices)
     points_per_gap = remaining // (len(sorted_indices) - 1)
@@ -136,7 +176,8 @@ def downsample_points(points, target_point_count=10000, y_index=1):
                 sampled = [available[int(i * step)] for i in range(n)]
             keep_indices.update(sampled)
 
-    return [points[i] for i in sorted(keep_indices)]
+    result_points = [points[i] for i in sorted(keep_indices)]
+    return _apply_start_point_zero_condition(result_points, y_index)
 
 def downsample_series_points(series_points_dict, y_index=1):
     # Quick check: if all series are already small, return as-is
