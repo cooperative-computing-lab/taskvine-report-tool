@@ -315,8 +315,7 @@ class DataParser:
         else:
             raise ValueError("Could not match to a known time zone.")
 
-        print(
-            f"Set time zone to {self.manager.equivalent_tz} offset {self.manager.time_zone_offset_hours}")
+        print(f"Set time zone to {self.manager.equivalent_tz} offset {self.manager.time_zone_offset_hours}")
 
     @lru_cache(maxsize=4096)
     def datestring_to_timestamp(self, datestring):

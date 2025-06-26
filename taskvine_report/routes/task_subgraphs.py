@@ -10,11 +10,11 @@ import shutil
 from taskvine_report.utils import *
 import re
 import pandas as pd
+import time
 
 task_subgraphs_bp = Blueprint('task_subgraphs', __name__, url_prefix='/api')
 
 def create_response(legend=None, subgraph_id=0, num_task_tries=0, svg_content='', error=None, status_code=200):
-    """create standardized JSON response for task subgraphs"""
     response_data = {}
     
     if legend is not None:
@@ -231,21 +231,157 @@ def generate_error_svg(message, subgraph_id=None, task_count=None):
     
     return f'<svg xmlns="http://www.w3.org/2000/svg" width="500" height="150"><rect width="500" height="150" fill="#f8f9fa" stroke="#dee2e6"/>{"".join(lines)}</svg>'
 
-def read_valid_svg(path):
-    if not Path(path).exists():
+def read_valid_svg(svg_file_path):
+    """read and validate SVG file"""
+    if not Path(svg_file_path).exists():
         return None
-    with open(path, 'r', encoding='utf-8') as f:
+    with open(svg_file_path, 'r', encoding='utf-8') as f:
         content = f.read().strip()
         if content and (content.startswith('<?xml') or content.startswith('<svg')):
             return content
     return None
 
+def generate_subgraph_metadata(subgraph_tasks, subgraph_id):
+    tasks_dict, files_dict = build_tasks_and_files(subgraph_tasks)
+    
+    # prepare tasks metadata (structure only, ensure consistent types)
+    tasks_metadata = []
+    for task_data in tasks_dict.values():
+        tasks_metadata.append({
+            'task_id': int(task_data['task_id']),  # ensure int type
+            'input_files': sorted([str(name) for name, _ in task_data['input_files']]),  # ensure string type and sorted for consistency
+            'output_files': sorted([str(name) for name, _ in task_data['output_files']])  # ensure string type and sorted for consistency
+        })
+    
+    # sort tasks by task_id for consistent ordering
+    tasks_metadata.sort(key=lambda x: x['task_id'])
+    
+    # prepare files metadata (structure only, ensure consistent types)
+    files_metadata = []
+    for file_data in files_dict.values():
+        files_metadata.append({
+            'filename': str(file_data['filename']),  # ensure string type
+            'producers': sorted([int(p) for p in file_data['producers']]),  # ensure int type and sorted
+            'consumers': sorted([int(c) for c in file_data['consumers']])   # ensure int type and sorted
+        })
+    
+    # sort files by filename for consistent ordering
+    files_metadata.sort(key=lambda x: x['filename'])
+    
+    metadata = {
+        'subgraph_id': int(subgraph_id),
+        'generated_timestamp': time.time(),
+        'num_tasks': len(tasks_metadata),
+        'num_files': len(files_metadata),
+        'tasks': tasks_metadata,
+        'files': files_metadata
+    }
+    
+    return metadata
+
+def write_metadata(metadata, metadata_file_path):
+    """write metadata to JSON file"""
+    with open(metadata_file_path, 'w', encoding='utf-8') as f:
+        json.dump(metadata, f, indent=2, ensure_ascii=False)
+
+def load_metadata(metadata_file_path):
+    """load metadata from JSON file"""
+    if not Path(metadata_file_path).exists():
+        return None
+    
+    with open(metadata_file_path, 'r', encoding='utf-8') as f:
+        metadata = json.load(f)
+    
+    # basic validation
+    required_fields = ['subgraph_id', 'num_tasks', 'num_files', 'tasks', 'files']
+    for field in required_fields:
+        if field not in metadata:
+            return None
+    
+    return metadata
+
+def compare_metadata_structure(metadata1, metadata2):
+    """compare two metadata structures excluding timestamp"""
+    if not metadata1 or not metadata2:
+        return False
+    
+    try:
+        # compare basic counts
+        if (metadata1['subgraph_id'] != metadata2['subgraph_id'] or
+            metadata1['num_tasks'] != metadata2['num_tasks'] or
+            metadata1['num_files'] != metadata2['num_files']):
+            return False
+        
+        # compare task structures
+        tasks1 = {task['task_id']: task for task in metadata1['tasks']}
+        tasks2 = {task['task_id']: task for task in metadata2['tasks']}
+        
+        if set(tasks1.keys()) != set(tasks2.keys()):
+            return False
+        
+        for task_id in tasks1:
+            task1, task2 = tasks1[task_id], tasks2[task_id]
+            if (task1['input_files'] != task2['input_files'] or
+                task1['output_files'] != task2['output_files']):
+                return False
+        
+        # compare file structures
+        files1 = {f['filename']: f for f in metadata1['files']}
+        files2 = {f['filename']: f for f in metadata2['files']}
+        
+        if set(files1.keys()) != set(files2.keys()):
+            return False
+        
+        for filename in files1:
+            file1, file2 = files1[filename], files2[filename]
+            if (file1['producers'] != file2['producers'] or
+                file1['consumers'] != file2['consumers']):
+                return False
+        
+        return True
+    except (KeyError, TypeError, ValueError) as e:
+        current_app.config["RUNTIME_STATE"].logger.info(f"Metadata structure comparison error: {e}")
+        return False
+
+def validate_metadata_against_current_data(metadata, subgraph_tasks):
+    if not metadata:
+        return False
+    
+    try:
+        current_metadata = generate_subgraph_metadata(subgraph_tasks, metadata['subgraph_id'])
+        
+        if not compare_metadata_structure(metadata, current_metadata):
+            current_app.config["RUNTIME_STATE"].logger.info(f"Metadata structure mismatch for subgraph {metadata['subgraph_id']}")
+            return False
+        
+        return True
+    except Exception as e:
+        current_app.config["RUNTIME_STATE"].logger.info(f"Metadata validation error: {e}")
+        return False
+
 def render_svg(subgraph_tasks, svg_file_path, params_dict=None):
+    if params_dict is None:
+        params_dict = {}
+    
+    use_cached = params_dict.get('use_cached_svg', False)
+    metadata_file_path = svg_file_path.replace('.svg', '.metadata.json')
+    
+    # check cache if enabled
+    if use_cached:
+        svg_content = read_valid_svg(svg_file_path)
+        if svg_content:
+            metadata = load_metadata(metadata_file_path)
+            if metadata and validate_metadata_against_current_data(metadata, subgraph_tasks):
+                current_app.config["RUNTIME_STATE"].logger.info(f"Using cached SVG for {svg_file_path}")
+                return svg_content
+    
+    # generate new SVG
+    current_app.config["RUNTIME_STATE"].logger.info(f"Cache miss for {svg_file_path}, generating a new SVG")
     if not shutil.which('dot'):
         error_svg = generate_error_svg("Graphviz not installed. Please install graphviz package.")
         with open(svg_file_path, 'w') as f:
             f.write(error_svg)
-        return
+        return error_svg
 
     tasks_dict, files_dict = build_tasks_and_files(subgraph_tasks)
     
@@ -259,7 +395,7 @@ def render_svg(subgraph_tasks, svg_file_path, params_dict=None):
     svg_file_path_without_suffix = svg_file_path.rsplit('.', 1)[0]
     try:
         dot.render(svg_file_path_without_suffix, format='svg', view=False, cleanup=True)
-        
+
         # validate generated svg
         if not (Path(svg_file_path).exists() and Path(svg_file_path).stat().st_size > 0):
             raise Exception("SVG file was not generated or is empty")
@@ -267,11 +403,19 @@ def render_svg(subgraph_tasks, svg_file_path, params_dict=None):
         content = read_valid_svg(svg_file_path)
         if not content:
             raise Exception("Generated file is not valid SVG")
+        
+        # generate and save metadata after successful SVG generation
+        subgraph_id = subgraph_tasks.iloc[0]['subgraph_id'] if not subgraph_tasks.empty else 0
+        metadata = generate_subgraph_metadata(subgraph_tasks, subgraph_id)
+        write_metadata(metadata, metadata_file_path)
+        
+        return content
             
     except Exception as e:
         fallback_svg = generate_error_svg(f"SVG generation failed: {str(e)}")
         with open(svg_file_path, 'w', encoding='utf-8') as f:
             f.write(fallback_svg)
+        return fallback_svg
 
 @task_subgraphs_bp.route('/task-subgraphs')
 @check_and_reload_data()
@@ -344,23 +488,16 @@ def get_task_subgraphs():
         base_filename = f'task-subgraph-{subgraph_id}'
         safe_filename = sanitize_filename(base_filename)
         svg_file_path = os.path.join(svg_dir, f'{safe_filename}.svg')
+        metadata_file_path = os.path.join(svg_dir, f'{safe_filename}.metadata.json')
 
         # manually specify plotting parameters
         plot_params = {
             'label_file_waiting_time': False,
-            'overwrite_existing_svg': True
+            'use_cached_svg': True,
         }
         
-        svg_content = None
-        if not plot_params['overwrite_existing_svg']:
-            svg_content = read_valid_svg(svg_file_path)
-        
-        if not svg_content:
-            current_app.config["RUNTIME_STATE"].logger.info(f"Generating subgraph {subgraph_id} from CSV")
-            render_svg(subgraph_tasks, svg_file_path, plot_params)
-            svg_content = read_valid_svg(svg_file_path)
-        else:
-            current_app.config["RUNTIME_STATE"].logger.info(f"Using existing subgraph {subgraph_id} SVG file")
+        # render SVG (with cache check if enabled)
+        svg_content = render_svg(subgraph_tasks, svg_file_path, plot_params)
 
         if not svg_content:
             svg_content = generate_error_svg("SVG file could not be generated")

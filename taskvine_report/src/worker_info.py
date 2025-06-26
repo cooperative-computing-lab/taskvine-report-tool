@@ -97,7 +97,8 @@ class WorkerInfo:
     def set_cores(self, cores: int):
         if self.cores and cores != self.cores:
             # cores should always match at the moment
-            raise ValueError(f"cores mismatch for worker {self.ip}:{self.port}, {self.cores} != {cores}")
+            print(f"Warning: worker {self.ip}:{self.port}, reported different cores than before {self.cores} -> {cores}")
+            return
         self.cores = cores
         if not self.coremap:
             self.coremap = bitarray(self.cores + 1)
@@ -107,17 +108,17 @@ class WorkerInfo:
 
     def set_gpus(self, gpus: int):
         if self.gpus and gpus != self.gpus:
-            print(f"Warning: gpus mismatch for worker {self.ip}:{self.port}, {self.gpus} != {gpus}")
+            print(f"Warning: worker {self.ip}:{self.port}, reported different gpus than before {self.gpus} -> {gpus}")
         self.gpus = gpus
 
     def set_memory_mb(self, memory_mb: int):
         if self.memory_mb and memory_mb != self.memory_mb:
-            print(f"Warning: memory mismatch for worker {self.ip}:{self.port}, {self.memory_mb} != {memory_mb}")
+            print(f"Warning: worker {self.ip}:{self.port}, reported different memory than before {self.memory_mb} -> {memory_mb}")
         self.memory_mb = memory_mb
 
     def set_disk_mb(self, disk_mb: int):
         if self.disk_mb and disk_mb != self.disk_mb:
-            print(f"Warning: disk mismatch for worker {self.ip}:{self.port}, {self.disk_mb} != {disk_mb}")
+            print(f"Warning: worker {self.ip}:{self.port}, reported different disk than before {self.disk_mb} -> {disk_mb}")
         self.disk_mb = disk_mb
 
     def to_json(self):
