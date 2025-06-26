@@ -8,6 +8,7 @@ from .manager_info import ManagerInfo
 import os
 import math
 import pandas as pd
+import traceback
 from functools import lru_cache
 from datetime import datetime
 import numpy as np
@@ -955,8 +956,8 @@ class DataParser:
                         continue
                     try:
                         self.parse_debug_line()
-                    except Exception as e:
-                        print(f"Error parsing line: {self.debug_current_line}")
+                    except Exception:
+                        print(f"Error parsing line: {self.debug_current_line}, error: {traceback.format_exc()}")
                         continue
             progress.update(task_id, advance=total_lines % pbar_update_interval)
 
