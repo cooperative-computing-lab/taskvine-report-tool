@@ -191,7 +191,7 @@ def plot_task_graph(dot, tasks_dict, files_dict, params_dict=None):
         if show_failed_count:
             failure_count = task_data.get('failure_count', 0)
             if failure_count and failure_count > 0:
-                node_label = f"{task_id} (Failed: {failure_count})"
+                node_label = f"{task_id} (Failure: {failure_count})"
         
         dot.node(task_id, node_label, shape='ellipse', style='solid', color='#000000', fontcolor='#000000', fillcolor='#FFFFFF')
     
@@ -221,7 +221,7 @@ def plot_task_graph(dot, tasks_dict, files_dict, params_dict=None):
                     if show_recovery_count:
                         recovery_count = task_data.get('recovery_count', 0)
                         if recovery_count and recovery_count > 0:
-                            file_label = f"{file_name} (Recovered: {recovery_count})"
+                            file_label = f"{file_name} (Recovery: {recovery_count})"
                     
                     dot.node(file_name, file_label, shape='box')
                     plotted_files.add(file_name)
