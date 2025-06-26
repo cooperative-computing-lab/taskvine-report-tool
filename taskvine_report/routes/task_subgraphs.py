@@ -6,12 +6,14 @@ from io import StringIO
 import csv
 from flask import make_response
 import json
+import shutil
 from taskvine_report.utils import *
+import re
+import pandas as pd
 
 task_subgraphs_bp = Blueprint('task_subgraphs', __name__, url_prefix='/api')
 
 def sanitize_filename(filename):
-    import re
     # remove or replace characters that might cause issues on different filesystems
     filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
     # limit length to avoid filesystem limits
@@ -31,12 +33,178 @@ def generate_legend(df_subgraphs, selected_subgraph_id=None):
         for sg_id in sorted(unique_subgraphs)
     ]
 
+def parse_files_with_timing(files_str):
+    """parse file string and filter empty names"""
+    files_with_timing = []
+    if pd.notna(files_str) and str(files_str).strip():
+        for item in str(files_str).split('|'):
+            if ':' in item:
+                file_name, timing = item.rsplit(':', 1)
+                try:
+                    timing = float(timing)
+                except ValueError:
+                    timing = 0.0
+                file_name = file_name.strip()
+                if file_name:  # filter empty names here
+                    files_with_timing.append((file_name, timing))
+            else:
+                file_name = item.strip()
+                if file_name:  # filter empty names here
+                    files_with_timing.append((file_name, 0.0))
+    return files_with_timing
+
+def build_tasks_and_files(subgraph_tasks):
+    """build tasks_dict and files_dict from csv data"""
+    tasks_dict = {}
+    files_dict = {}
+    
+    for _, task_row in subgraph_tasks.iterrows():
+        task_id = task_row['task_id']
+        failure_count = int(task_row.get('failure_count', 0))
+        
+        # get task execution time
+        task_execution_time = task_row.get('task_execution_time', None)
+        if pd.notna(task_execution_time):
+            try:
+                task_execution_time = float(task_execution_time)
+            except (ValueError, TypeError):
+                task_execution_time = None
+        else:
+            task_execution_time = None
+        
+        input_files = parse_files_with_timing(task_row.get('input_files', ''))
+        output_files = parse_files_with_timing(task_row.get('output_files', ''))
+
+        tasks_dict[task_id] = {
+            'task_id': int(task_id),
+            'failure_count': failure_count,
+            'task_execution_time': task_execution_time,
+            'input_files': input_files,
+            'output_files': output_files
+        }
+
+    # build file dependencies from task data
+    for task_data in tasks_dict.values():
+        for file_name, _ in task_data['input_files'] + task_data['output_files']:
+            if file_name not in files_dict:
+                files_dict[file_name] = {
+                    'filename': file_name,
+                    'producers': [],
+                    'consumers': []
+                }
+        
+        for file_name, _ in task_data['output_files']:
+            if task_data['task_id'] not in files_dict[file_name]['producers']:
+                files_dict[file_name]['producers'].append(task_data['task_id'])
+        
+        for file_name, _ in task_data['input_files']:
+            if task_data['task_id'] not in files_dict[file_name]['consumers']:
+                files_dict[file_name]['consumers'].append(task_data['task_id'])
+
+    return tasks_dict, files_dict
+
+def plot_task_graph(dot, tasks_dict, files_dict, params_dict=None):
+    if params_dict is None:
+        params_dict = {}
+    
+    label_file_waiting_time = params_dict.get('label_file_waiting_time', False)
+    
+    # plot all task nodes
+    for task_data in tasks_dict.values():
+        task_id = str(task_data['task_id'])
+        dot.node(task_id, task_id, shape='ellipse', style='solid', 
+                color='#000000', fontcolor='#000000', fillcolor='#FFFFFF')
+    
+    # plot file nodes and edges
+    plotted_files = set()
+    for task_data in tasks_dict.values():
+        # input file edges (file -> task)
+        for file_name, waiting_time in task_data['input_files']:
+            if file_name in files_dict and files_dict[file_name]['producers']:
+                if file_name not in plotted_files:
+                    dot.node(file_name, file_name, shape='box')
+                    plotted_files.add(file_name)
+                
+                # use waiting time label based on parameter
+                if label_file_waiting_time and waiting_time is not None:
+                    label = f"{waiting_time:.2f}s"
+                else:
+                    label = ""
+                dot.edge(file_name, str(task_data['task_id']), label=label)
+        
+        # output file edges (task -> file)
+        for file_name, _ in task_data['output_files']:
+            if file_name in files_dict and files_dict[file_name]['producers']:
+                if file_name not in plotted_files:
+                    dot.node(file_name, file_name, shape='box')
+                    plotted_files.add(file_name)
+                
+                # use task execution time as label
+                execution_time = task_data.get('task_execution_time')
+                if execution_time is not None:
+                    label = f"{execution_time:.2f}s"
+                else:
+                    label = ""
+                dot.edge(str(task_data['task_id']), file_name, label=label)
+
+def generate_error_svg(message, subgraph_id=None, task_count=None):
+    lines = [
+        f'<text x="10" y="30" font-family="Arial" font-size="14" fill="#dc3545">Error: {message}</text>'
+    ]
+    if subgraph_id is not None:
+        lines.append(f'<text x="10" y="50" font-family="Arial" font-size="12" fill="#6c757d">Subgraph ID: {subgraph_id}</text>')
+    if task_count is not None:
+        lines.append(f'<text x="10" y="70" font-family="Arial" font-size="12" fill="#6c757d">Tasks: {task_count}</text>')
+    
+    return f'<svg xmlns="http://www.w3.org/2000/svg" width="500" height="150"><rect width="500" height="150" fill="#f8f9fa" stroke="#dee2e6"/>{"".join(lines)}</svg>'
+
+def read_valid_svg(path):
+    if not Path(path).exists():
+        return None
+    with open(path, 'r', encoding='utf-8') as f:
+        content = f.read().strip()
+        if content and (content.startswith('<?xml') or content.startswith('<svg')):
+            return content
+    return None
+
+def render_svg(subgraph_tasks, svg_file_path, params_dict=None):
+    if not shutil.which('dot'):
+        error_svg = generate_error_svg("Graphviz not installed. Please install graphviz package.")
+        with open(svg_file_path, 'w') as f:
+            f.write(error_svg)
+        return
+
+    tasks_dict, files_dict = build_tasks_and_files(subgraph_tasks)
+    
+    dot = graphviz.Digraph()
+    dot.format = 'svg'
+    dot.engine = 'dot'
+    dot.attr(rankdir='TB')
+    
+    plot_task_graph(dot, tasks_dict, files_dict, params_dict)
+    
+    svg_file_path_without_suffix = svg_file_path.rsplit('.', 1)[0]
+    try:
+        dot.render(svg_file_path_without_suffix, format='svg', view=False, cleanup=True)
+        
+        # validate generated svg
+        if not (Path(svg_file_path).exists() and Path(svg_file_path).stat().st_size > 0):
+            raise Exception("SVG file was not generated or is empty")
+        
+        content = read_valid_svg(svg_file_path)
+        if not content:
+            raise Exception("Generated file is not valid SVG")
+            
+    except Exception as e:
+        fallback_svg = generate_error_svg(f"SVG generation failed: {str(e)}")
+        with open(svg_file_path, 'w', encoding='utf-8') as f:
+            f.write(fallback_svg)
+
 @task_subgraphs_bp.route('/task-subgraphs')
 @check_and_reload_data()
 def get_task_subgraphs():
     try:
-        data = {}
-
+        # parse arguments
         subgraph_id = request.args.get('subgraph_id')
         if not subgraph_id:
             return jsonify({'error': 'Subgraph ID is required'}), 400
@@ -45,233 +213,62 @@ def get_task_subgraphs():
         except Exception:
             return jsonify({'error': 'Invalid subgraph ID'}), 400
 
+        # read df_subgraphs
         csv_dir = current_app.config["RUNTIME_STATE"].csv_files_dir
         if not csv_dir:
             return jsonify({'error': 'CSV directory not configured'}), 500
 
-        import pandas as pd
-        
         df_subgraphs = read_csv_to_fd(os.path.join(csv_dir, 'task_subgraphs.csv'))
         
+        # get tasks for subgraph_id
         if subgraph_id == 0:
-            data['legend'] = generate_legend(df_subgraphs)
-            data['subgraph_id'] = 0
-            data['num_task_tries'] = 0
-            data['subgraph_svg_content'] = ''
-            return jsonify(data)
-
-        plot_unsuccessful_task = request.args.get('plot_failed_task', 'true').lower() == 'true'
-        plot_recovery_task = request.args.get('plot_recovery_task', 'true').lower() == 'true'
+            return jsonify({
+                'legend': generate_legend(df_subgraphs),
+                'subgraph_id': 0,
+                'num_task_tries': 0,
+                'subgraph_svg_content': ''
+            })
 
         subgraph_tasks = df_subgraphs[df_subgraphs['subgraph_id'] == subgraph_id]
         if subgraph_tasks.empty:
             return jsonify({'error': 'Subgraph not found'}), 404
 
-        # ensure the SVG directory exists
+        # setup svg path
         svg_dir = current_app.config["RUNTIME_STATE"].svg_files_dir
         if not svg_dir:
             return jsonify({'error': 'SVG directory not configured'}), 500
         os.makedirs(svg_dir, exist_ok=True)
         
-        # Generate filename for subgraph
-        base_filename = f'task-subgraph-{subgraph_id}-{str(plot_unsuccessful_task).lower()}-{str(plot_recovery_task).lower()}'
+        base_filename = f'task-subgraph-{subgraph_id}'
         safe_filename = sanitize_filename(base_filename)
-        svg_file_path_without_suffix = os.path.normpath(os.path.join(svg_dir, safe_filename))
-        svg_file_path = f'{svg_file_path_without_suffix}.svg'
+        svg_file_path = os.path.join(svg_dir, f'{safe_filename}.svg')
 
-        # Check if SVG file already exists
-        if Path(svg_file_path).exists():
-            current_app.config["RUNTIME_STATE"].logger.info(f"Using existing subgraph {subgraph_id} SVG file")
-        else:
-            current_app.config["RUNTIME_STATE"].logger.info(f"Generating subgraph {subgraph_id} from CSV")
-            
-            # check if graphviz is available on the system
-            import shutil
-            if not shutil.which('dot'):
-                error_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="100"><text x="10" y="30" font-family="Arial" font-size="14">Error: Graphviz not installed. Please install graphviz package.</text><text x="10" y="50" font-family="Arial" font-size="12">Linux: sudo apt-get install graphviz</text><text x="10" y="70" font-family="Arial" font-size="12">macOS: brew install graphviz</text></svg>'
-                with open(svg_file_path, 'w') as f:
-                    f.write(error_svg)
-            else:
-                dot = graphviz.Digraph()
-                dot.format = 'svg'
-                dot.engine = 'dot'
-                dot.attr(rankdir='TB')
-
-                # Build task and file data structures from CSV
-                tasks_dict = {}
-                files_dict = {}
-                
-                # Process tasks
-                for _, task_row in subgraph_tasks.iterrows():
-                    task_id = task_row['task_id']
-                    
-                    # Apply filtering based on parameters
-                    is_recovery = bool(task_row.get('is_recovery_task', False))
-                    if not plot_recovery_task and is_recovery:
-                        continue
-                    
-                    # Check failure count and apply filtering
-                    failure_count = int(task_row.get('failure_count', 0))
-                    if not plot_unsuccessful_task and failure_count > 0:
-                        continue
-                    
-                    # Parse input and output files with timing info
-                    def parse_files_with_timing(files_str):
-                        files_with_timing = []
-                        if pd.notna(files_str) and str(files_str).strip():
-                            for item in str(files_str).split('|'):
-                                if ':' in item:
-                                    file_name, timing = item.rsplit(':', 1)
-                                    try:
-                                        timing = float(timing)
-                                    except ValueError:
-                                        timing = 0.0
-                                    files_with_timing.append((file_name.strip(), timing))
-                                else:
-                                    files_with_timing.append((item.strip(), 0.0))
-                        return files_with_timing
-                    
-                    input_files = parse_files_with_timing(task_row.get('input_files', ''))
-                    output_files = parse_files_with_timing(task_row.get('output_files', ''))
-
-                    # Remove empty strings
-                    input_files = [(f, t) for f, t in input_files if f]
-                    output_files = [(f, t) for f, t in output_files if f]
-
-                    tasks_dict[task_id] = {
-                        'task_id': int(task_id),
-                        'is_recovery_task': is_recovery,
-                        'failure_count': failure_count,
-                        'input_files': input_files,
-                        'output_files': output_files
-                    }
-
-                # Build file dependencies from task data
-                for task_data in tasks_dict.values():
-                    # Add files to files_dict
-                    for file_name, _ in task_data['input_files'] + task_data['output_files']:
-                        if file_name not in files_dict:
-                            files_dict[file_name] = {
-                                'filename': file_name,
-                                'producers': [],
-                                'consumers': []
-                            }
-                    
-                    # Add task as producer for output files
-                    for file_name, _ in task_data['output_files']:
-                        if task_data['task_id'] not in files_dict[file_name]['producers']:
-                            files_dict[file_name]['producers'].append(task_data['task_id'])
-                    
-                    # Add task as consumer for input files  
-                    for file_name, _ in task_data['input_files']:
-                        if task_data['task_id'] not in files_dict[file_name]['consumers']:
-                            files_dict[file_name]['consumers'].append(task_data['task_id'])
-
-                # Plot nodes and edges
-                def plot_task_node(dot, task_data):
-                    task_id = task_data['task_id']
-                    node_id = str(task_id)
-                    node_label = str(task_id)
-
-                    style = 'solid'
-                    color = '#000000'
-                    fontcolor = '#000000'
-                    fillcolor = '#FFFFFF'
-
-                    if task_data['is_recovery_task']:
-                        node_label = f'{node_label} (recovery)'
-                        style = 'filled,dashed'
-                        fillcolor = '#FF69B4'
-
-                    dot.node(node_id, node_label, shape='ellipse', style=style, color=color, fontcolor=fontcolor, fillcolor=fillcolor)
-
-                def plot_file_node(dot, file_data):
-                    if not file_data['producers']:
-                        return
-                    filename = file_data['filename']
-                    dot.node(filename, filename, shape='box')
-
-                def plot_task2file_edge(dot, task_data, file_data, timing=None):
-                    if not file_data['producers']:
-                        return
-                    label = f"{timing:.2f}s" if timing is not None else ""
-                    dot.edge(str(task_data['task_id']), file_data['filename'], label=label)
-
-                def plot_file2task_edge(dot, file_data, task_data, timing=None):
-                    if not file_data['producers']:
-                        return
-                    label = f"{timing:.2f}s" if timing is not None else ""
-                    dot.edge(file_data['filename'], str(task_data['task_id']), label=label)
-
-                # Add all tasks and files to the graph
-                for task_id, task_data in tasks_dict.items():
-                    plot_task_node(dot, task_data)
-                    
-                    # Add input file edges with waiting times
-                    for file_name, waiting_time in task_data['input_files']:
-                        if file_name in files_dict and files_dict[file_name]['producers']:
-                            plot_file_node(dot, files_dict[file_name])
-                            plot_file2task_edge(dot, files_dict[file_name], task_data, waiting_time)
-                    
-                    # Add output file edges with creation times
-                    for file_name, creation_time in task_data['output_files']:
-                        if file_name in files_dict and files_dict[file_name]['producers']:
-                            plot_file_node(dot, files_dict[file_name])
-                            plot_task2file_edge(dot, task_data, files_dict[file_name], creation_time)
-                
-                # Generate SVG
-                svg_generated = False
-                error_message = ""
-                
-                try:
-                    dot.render(svg_file_path_without_suffix, format='svg', view=False, cleanup=True)
-                    
-                    if Path(svg_file_path).exists() and Path(svg_file_path).stat().st_size > 0:
-                        with open(svg_file_path, 'r') as f:
-                            content = f.read().strip()
-                            if content and (content.startswith('<?xml') or content.startswith('<svg')):
-                                svg_generated = True
-                            else:
-                                error_message = "Generated file is not valid SVG"
-                    else:
-                        error_message = "SVG file was not generated or is empty"
-                except Exception as e:
-                    error_message = f"Exception during SVG generation: {str(e)}"
-                
-                if not svg_generated:
-                    fallback_svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="500" height="150"><rect width="500" height="150" fill="#f8f9fa" stroke="#dee2e6"/><text x="10" y="30" font-family="Arial" font-size="14" fill="#dc3545">Error: Failed to generate subgraph visualization</text><text x="10" y="50" font-family="Arial" font-size="12" fill="#6c757d">Reason: {error_message}</text><text x="10" y="80" font-family="Arial" font-size="12" fill="#6c757d">Subgraph ID: {subgraph_id}</text><text x="10" y="100" font-family="Arial" font-size="12" fill="#6c757d">Tasks: {len(subgraph_tasks)}</text><text x="10" y="130" font-family="Arial" font-size="10" fill="#6c757d">CSV-based rendering</text></svg>'
-                    with open(svg_file_path, 'w', encoding='utf-8') as f:
-                        f.write(fallback_svg)
-
-        data['subgraph_id'] = int(subgraph_id)
-        data['num_task_tries'] = int(len(subgraph_tasks))
+        # manually specify plotting parameters
+        plot_params = {
+            'label_file_waiting_time': False,
+            'overwrite_existing_svg': True
+        }
         
-        # Read and return SVG content
-        if Path(svg_file_path).exists():
-            with open(svg_file_path, 'r', encoding='utf-8') as f:
-                svg_content = f.read().strip()
-                if svg_content and (svg_content.startswith('<?xml') or svg_content.startswith('<svg')):
-                    data['subgraph_svg_content'] = svg_content
-                else:
-                    data['subgraph_svg_content'] = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="100"><text x="10" y="30" font-family="Arial" font-size="14">Error: Invalid SVG content generated</text></svg>'
+        svg_content = None
+        if not plot_params['overwrite_existing_svg']:
+            svg_content = read_valid_svg(svg_file_path)
+        
+        if not svg_content:
+            current_app.config["RUNTIME_STATE"].logger.info(f"Generating subgraph {subgraph_id} from CSV")
+            render_svg(subgraph_tasks, svg_file_path, plot_params)
+            svg_content = read_valid_svg(svg_file_path)
         else:
-            data['subgraph_svg_content'] = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="100"><text x="10" y="30" font-family="Arial" font-size="14">Error: SVG file could not be generated</text></svg>'
+            current_app.config["RUNTIME_STATE"].logger.info(f"Using existing subgraph {subgraph_id} SVG file")
 
-        data['legend'] = generate_legend(df_subgraphs, subgraph_id)
+        if not svg_content:
+            svg_content = generate_error_svg("SVG file could not be generated")
 
-        # Test JSON serialization before returning
-        try:
-            json.dumps(data)
-        except TypeError as e:
-            current_app.config["RUNTIME_STATE"].logger.error(f"JSON serialization test failed: {e}")
-            current_app.config["RUNTIME_STATE"].logger.error(f"Data keys: {list(data.keys())}")
-            for key, value in data.items():
-                try:
-                    json.dumps({key: value})
-                except TypeError as sub_e:
-                    current_app.config["RUNTIME_STATE"].logger.error(f"Field '{key}' serialization failed: {sub_e}, type: {type(value)}")
-
-        return jsonify(data)
+        return jsonify({
+            'subgraph_id': int(subgraph_id),
+            'num_task_tries': int(len(subgraph_tasks)),
+            'subgraph_svg_content': svg_content,
+            'legend': generate_legend(df_subgraphs, subgraph_id)
+        })
     except Exception as e:
         current_app.config["RUNTIME_STATE"].logger.error(f'Error in get_task_subgraphs: {e}')
         return jsonify({'error': str(e)}), 500

@@ -211,7 +211,6 @@ export class LogManager {
                     console.warn('Callback failed:', err);
                 }
             }
-            console.info('Reload successful.');
         } catch (err) {
             console.error('Reload error:', err);
         } finally {

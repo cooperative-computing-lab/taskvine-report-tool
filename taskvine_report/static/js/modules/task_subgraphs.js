@@ -5,9 +5,7 @@ export class TaskSubgraphsModule extends BaseModule {
         super(id, title, api_url);
         
         this.defineFetchDataParams({
-            subgraph_id: 0,
-            plot_failed_task: true,
-            plot_recovery_task: true
+            subgraph_id: 0
         });
     }
 

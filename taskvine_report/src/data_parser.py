@@ -983,67 +983,167 @@ class DataParser:
         # generate metadata
         self.generate_metadata()
 
-        # generate the subgraphs
-        self.generate_subgraphs()
+        # generate the subgraphs and graph metrics together
+        self.generate_subgraphs_and_graph_metrics()
 
         # checkpoint pkl files so that later analysis can be done without re-parsing the debug file
         if self.enablee_checkpoint_pkl_files:
             self.checkpoint_pkl_files()
 
-    def generate_subgraphs(self):
-        # exclude library tasks from subgraph generation to match RUNTIME_STATE filtering
-        tasks_keys = set(key for key, task in self.tasks.items() if not task.is_library_task)
-        parent = {key: key for key in tasks_keys}
-        rank = {key: 0 for key in tasks_keys}
+    def generate_subgraphs_and_graph_metrics(self):
+        # Step 1: Find unique tasks (exclude library and recovery tasks)
+        unique_tasks = {}
+        task_failure_counts = defaultdict(int)
+        
+        for (tid, try_id), task in self.tasks.items():
+            if getattr(task, 'is_library_task', False) or getattr(task, 'is_recovery_task', False):
+                continue
+            
+            if task.task_status is None:
+                raise ValueError(f"task {tid}:{try_id} has None task_status, this should not happen")
+            
+            if task.task_status != 0:
+                task_failure_counts[tid] += 1
 
-        def find(x):
-            # find the root of the tree
-            root = x
-            while parent[root] != root:
-                root = parent[root]
-            # path compression: let all nodes on the path point to the root
-            while x != root:
-                next_x = parent[x]
-                parent[x] = root
-                x = next_x
-            return root
-
-        def union(x, y):
-            root_x = find(x)
-            root_y = find(y)
-            if root_x == root_y:
-                return
-            # rank those with smaller rank
-            if rank[root_x] < rank[root_y]:
-                parent[root_x] = root_y
-            elif rank[root_x] > rank[root_y]:
-                parent[root_y] = root_x
+            if tid not in unique_tasks:
+                # first time seeing this task_id, add it
+                unique_tasks[tid] = task
             else:
-                parent[root_y] = root_x
-                rank[root_x] += 1
+                # already have this task_id, only replace if current is failed and new is successful
+                if unique_tasks[tid].task_status != 0 and task.task_status == 0:
+                    unique_tasks[tid] = task
+                # otherwise skip this task entry
 
+        if not unique_tasks:
+            return
+
+        # Step 2: Generate subgraphs using unique tasks
+        tasks_keys = set((task.task_id, task.task_try_id) for task in unique_tasks.values())
+        parent = {}
+
+        def _find(x):
+            parent.setdefault(x, x)
+            if parent[x] != x:
+                parent[x] = _find(parent[x])  # path compression
+            return parent[x]
+
+        def _union(x, y):
+            root_x = _find(x)
+            root_y = _find(y)
+            if root_x != root_y:
+                parent[root_x] = root_y
+
+        dependency_count = 0
+        files_with_dependencies = 0
+        
         for file in self.files.values():
             if not file.producers:
                 continue
-            # use set operations to quickly get the tasks involved
-            tasks_involved = (set(file.producers) | set(
-                file.consumers)) & tasks_keys
+            tasks_involved = (set(file.producers) | set(file.consumers)) & tasks_keys
             if len(tasks_involved) <= 1:
                 continue
+            
+            files_with_dependencies += 1
+            dependency_count += len(tasks_involved) - 1
+            
             tasks_involved = list(tasks_involved)
             first_task = tasks_involved[0]
             for other_task in tasks_involved[1:]:
-                union(first_task, other_task)
+                _union(first_task, other_task)
 
-        # group tasks by the root, forming subgraphs
         subgraphs = defaultdict(set)
-        for task_key in tasks_keys:  # only iterate over non-library tasks
-            root = find(task_key)
+        for task_key in tasks_keys:
+            root = _find(task_key)
             subgraphs[root].add(task_key)
 
         sorted_subgraphs = sorted(subgraphs.values(), key=len, reverse=True)
-        self.subgraphs = {i: subgraph for i,
-                          subgraph in enumerate(sorted_subgraphs, 1)}
+        self.subgraphs = {i: subgraph for i, subgraph in enumerate(sorted_subgraphs, 1)}
+        if len(self.subgraphs) == 0:
+            return
+
+        # Step 3: Generate CSV with task dependencies
+        task_to_subgraph = {}
+        for subgraph_id, task_entries in self.subgraphs.items():
+            for (tid, try_id) in task_entries:
+                if tid in unique_tasks:
+                    task_to_subgraph[tid] = subgraph_id
+
+        recovery_count_map = {}
+        for task in unique_tasks.values():
+            task_id = task.task_id
+            recovery_task_id_set = set()
+            for file_name in task.output_files:
+                file_obj = self.files[file_name]
+                for (producer_tid, producer_try_id) in file_obj.producers:
+                    producer_task = self.tasks[(producer_tid, producer_try_id)]
+                    if producer_task.is_recovery_task:
+                        recovery_task_id_set.add(producer_tid)
+            recovery_count_map[task_id] = len(recovery_task_id_set)
+
+        rows = []
+        for task in unique_tasks.values():
+            task_id = task.task_id
+            subgraph_id = task_to_subgraph.get(task_id, 0)
+            failure_count = task_failure_counts.get(task_id, 0)
+            recovery_count = recovery_count_map.get(task_id, 0)
+            
+            input_files_with_timing = []
+            for file_name in getattr(task, 'input_files', []):
+                # Only include files that have producers (are in dependency graph)
+                if file_name in self.files and self.files[file_name].producers:
+                    file_obj = self.files[file_name]
+                    if task.when_running and file_obj.created_time:
+                        waiting_time = max(0, task.when_running - file_obj.created_time)
+                        input_files_with_timing.append(f"{file_name}:{waiting_time:.2f}")
+                    else:
+                        input_files_with_timing.append(f"{file_name}:0.00")
+
+            output_files_with_timing = []
+            for file_name in getattr(task, 'output_files', []):
+                # Only include files that have producers (are in dependency graph)
+                if file_name in self.files and self.files[file_name].producers:
+                    file_obj = self.files[file_name]
+                    creation_time = 0.0
+                    
+                    if task.worker_entry and task.time_worker_start:
+                        for transfer in file_obj.transfers:
+                            if (transfer.destination == task.worker_entry and 
+                                transfer.time_stage_in and 
+                                transfer.time_stage_in >= task.time_worker_start):
+                                creation_time = max(0, transfer.time_stage_in - task.time_worker_start)
+                                break
+
+                        if creation_time == 0.0 and file_obj.created_time and task.time_worker_start:
+                            creation_time = max(0, file_obj.created_time - task.time_worker_start)
+                    
+                    output_files_with_timing.append(f"{file_name}:{creation_time:.2f}")
+            
+            input_files_str = '|'.join(input_files_with_timing) if input_files_with_timing else ''
+            output_files_str = '|'.join(output_files_with_timing) if output_files_with_timing else ''
+            
+            # Calculate task execution time
+            execution_time = np.nan
+            if task.task_status == 0 and task.time_worker_start and task.time_worker_end:
+                execution_time = max(0, task.time_worker_end - task.time_worker_start)
+            
+            rows.append([
+                subgraph_id,
+                task_id,
+                execution_time,
+                failure_count,
+                recovery_count,
+                input_files_str,
+                output_files_str
+            ])
+
+        if len(rows) == 0:
+            return
+
+        df = pd.DataFrame(rows, columns=[
+            'subgraph_id', 'task_id', 'task_execution_time', 'failure_count', 'recovery_count', 'input_files', 'output_files'
+        ])
+        df = df.sort_values(['subgraph_id', 'task_id'])
+        self.write_df_to_csv(df, self.csv_file_task_subgraphs, index=False)
 
     def checkpoint_pkl_files(self):
         with self._create_progress_bar() as progress:
@@ -1175,7 +1275,7 @@ class DataParser:
             return
 
         with self._create_progress_bar() as progress:
-            task_id = progress.add_task("[green]Generating plotting data", total=6)
+            task_id = progress.add_task("[green]Generating plotting data", total=5)
 
             self.generate_file_metrics()
             progress.advance(task_id)
@@ -1190,9 +1290,6 @@ class DataParser:
             progress.advance(task_id)
 
             self.generate_worker_metrics()
-            progress.advance(task_id)
-
-            self.generate_graph_metrics()
             progress.advance(task_id)
 
     def generate_worker_metrics(self):
@@ -1556,123 +1653,7 @@ class DataParser:
             df = downsample_df(df, y_col='Completion Time', target_count=self.target_count)
             self.write_df_to_csv(df, self.csv_file_task_completion_percentiles, index=False)
 
-    def generate_graph_metrics(self):
-        unique_tasks = {}
-        task_failure_counts = {}
-        
-        for (tid, try_id), task in self.tasks.items():
-            if getattr(task, 'is_library_task', False):
-                continue
-            
-            if tid not in task_failure_counts:
-                task_failure_counts[tid] = 0
-            
-            task_status = getattr(task, 'task_status', None)
-            if task_status is not None and task_status != 0:
-                task_failure_counts[tid] += 1
 
-            if tid not in unique_tasks:
-                unique_tasks[tid] = task
-            else:
-                current_task = unique_tasks[tid]
-                
-                current_output_count = len(getattr(current_task, 'output_files', []))
-                new_output_count = len(getattr(task, 'output_files', []))
-                
-                if new_output_count > 0 and current_output_count == 0:
-                    unique_tasks[tid] = task
-                elif new_output_count > current_output_count:
-                    unique_tasks[tid] = task
-                elif new_output_count == current_output_count:
-                    current_status = getattr(current_task, 'task_status', None)
-                    new_status = getattr(task, 'task_status', None)
-                    
-                    if (current_status != 0 and new_status == 0):
-                        unique_tasks[tid] = task
-                    elif (current_status == new_status and task.task_try_id > current_task.task_try_id):
-                        unique_tasks[tid] = task
-
-        if not unique_tasks:
-            return
-
-        # Step 2: Build set of files that have producer tasks
-        files_with_producers = set()
-        for task in unique_tasks.values():
-            for file_name in getattr(task, 'output_files', []):
-                files_with_producers.add(file_name)
-
-        # Step 3: Map tasks to subgraphs
-        task_to_subgraph = {}
-        if hasattr(self, 'subgraphs') and self.subgraphs:
-            for subgraph_id, task_entries in self.subgraphs.items():
-                for (tid, try_id) in task_entries:
-                    if tid in unique_tasks:  # Only include if we have this task in unique_tasks
-                        task_to_subgraph[tid] = subgraph_id
-
-        # Step 4: Generate the single CSV with filtered files and timing info
-        rows = []
-        for task in unique_tasks.values():
-            task_id = task.task_id
-            subgraph_id = task_to_subgraph.get(task_id, 0)  # Default to 0 if not in any subgraph
-            is_recovery_task = getattr(task, 'is_recovery_task', False)
-            
-            # Get failure count for this task_id
-            failure_count = task_failure_counts.get(task_id, 0)
-            
-            # Calculate input files with waiting times
-            input_files_with_timing = []
-            for file_name in getattr(task, 'input_files', []):
-                if file_name in files_with_producers and file_name in self.files:
-                    file_obj = self.files[file_name]
-                    # File waiting time: from file created to task when_running
-                    if task.when_running and file_obj.created_time:
-                        waiting_time = max(0, task.when_running - file_obj.created_time)
-                        input_files_with_timing.append(f"{file_name}:{waiting_time:.2f}")
-                    else:
-                        input_files_with_timing.append(f"{file_name}:0.00")
-            
-            # Calculate output files with creation times
-            output_files_with_timing = []
-            for file_name in getattr(task, 'output_files', []):
-                if file_name in files_with_producers and file_name in self.files:
-                    file_obj = self.files[file_name]
-                    creation_time = 0.0
-                    
-                    # Find the cache-update time for this specific task
-                    if task.worker_entry and task.time_worker_start:
-                        # Look for cache-update transfers from this specific worker at the right time
-                        for transfer in file_obj.transfers:
-                            if (transfer.destination == task.worker_entry and 
-                                transfer.time_stage_in and 
-                                transfer.time_stage_in >= task.time_worker_start):
-                                creation_time = max(0, transfer.time_stage_in - task.time_worker_start)
-                                break
-                        
-                        # If no specific transfer found, use general file created time
-                        if creation_time == 0.0 and file_obj.created_time and task.time_worker_start:
-                            creation_time = max(0, file_obj.created_time - task.time_worker_start)
-                    
-                    output_files_with_timing.append(f"{file_name}:{creation_time:.2f}")
-            
-            # Join files with | separator
-            input_files_str = '|'.join(input_files_with_timing) if input_files_with_timing else ''
-            output_files_str = '|'.join(output_files_with_timing) if output_files_with_timing else ''
-            
-            rows.append([
-                subgraph_id,
-                task_id,
-                is_recovery_task,
-                failure_count,
-                input_files_str,
-                output_files_str
-            ])
-
-        if rows:
-            import pandas as pd
-            df = pd.DataFrame(rows, columns=[
-                'subgraph_id', 'task_id', 'is_recovery_task', 'failure_count', 'input_files', 'output_files'
-            ])
-            self.write_df_to_csv(df, self.csv_file_task_subgraphs, index=False)
 
     def generate_file_metrics(self):
         base_time = self.MIN_TIME
