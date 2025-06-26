@@ -823,6 +823,15 @@ class DataParser:
         task = self.tasks[(task_id, task_try_id)]
         task.is_recovery_task = True
 
+        # format: Submitted recovery task xxx to re-create lost temporary file xxx.
+        file_name = parts[-1].rstrip(".")
+        # this filename must have been appeared before
+        if file_name not in self.files:
+            raise ValueError(f"file {file_name} not found in files")
+        file = self.files[file_name]
+        file.add_producer(task)
+        task.add_output_file(file_name)
+
     def _handle_debug_line_listening_on_port(self):
         self.manager.set_time_start(self.debug_current_timestamp)
 

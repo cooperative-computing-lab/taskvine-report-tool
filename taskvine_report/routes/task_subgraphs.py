@@ -130,6 +130,7 @@ def build_tasks_and_files(subgraph_tasks):
     for _, task_row in subgraph_tasks.iterrows():
         task_id = task_row['task_id']
         failure_count = int(task_row.get('failure_count', 0))
+        recovery_count = int(task_row.get('recovery_count', 0))
         
         # get task execution time
         task_execution_time = task_row.get('task_execution_time', None)
@@ -147,6 +148,7 @@ def build_tasks_and_files(subgraph_tasks):
         tasks_dict[task_id] = {
             'task_id': int(task_id),
             'failure_count': failure_count,
+            'recovery_count': recovery_count,
             'task_execution_time': task_execution_time,
             'input_files': input_files,
             'output_files': output_files
@@ -177,12 +179,21 @@ def plot_task_graph(dot, tasks_dict, files_dict, params_dict=None):
         params_dict = {}
 
     label_file_waiting_time = params_dict.get('label_file_waiting_time', False)
+    show_failed_count = params_dict.get('show_failed_count', False)
+    show_recovery_count = params_dict.get('show_recovery_count', False)
 
     # plot all task nodes
     for task_data in tasks_dict.values():
         task_id = str(task_data['task_id'])
-        dot.node(task_id, task_id, shape='ellipse', style='solid', 
-                color='#000000', fontcolor='#000000', fillcolor='#FFFFFF')
+        
+        # create node label
+        node_label = task_id
+        if show_failed_count:
+            failure_count = task_data.get('failure_count', 0)
+            if failure_count and failure_count > 0:
+                node_label = f"{task_id} (Failed: {failure_count})"
+        
+        dot.node(task_id, node_label, shape='ellipse', style='solid', color='#000000', fontcolor='#000000', fillcolor='#FFFFFF')
     
     # plot file nodes and edges
     plotted_files = set()
@@ -205,10 +216,17 @@ def plot_task_graph(dot, tasks_dict, files_dict, params_dict=None):
         for file_name, _ in task_data['output_files']:
             if file_name in files_dict and files_dict[file_name]['producers']:
                 if file_name not in plotted_files:
-                    dot.node(file_name, file_name, shape='box')
+                    # create file node label with recovery count if enabled
+                    file_label = file_name
+                    if show_recovery_count:
+                        recovery_count = task_data.get('recovery_count', 0)
+                        if recovery_count and recovery_count > 0:
+                            file_label = f"{file_name} (Recovered: {recovery_count})"
+                    
+                    dot.node(file_name, file_label, shape='box')
                     plotted_files.add(file_name)
                 
-                # use task execution time as label
+                # use task execution time as edge label
                 execution_time = task_data.get('task_execution_time')
                 if execution_time is not None:
                     label = f"{execution_time:.2f}s"
@@ -353,7 +371,7 @@ def validate_metadata_against_current_data(metadata, subgraph_tasks):
 def render_svg(subgraph_tasks, svg_file_path, params_dict=None):
     if params_dict is None:
         params_dict = {}
-    
+
     use_cached = params_dict.get('use_cached_svg', False)
     metadata_file_path = svg_file_path.replace('.svg', '.metadata.json')
     
@@ -380,9 +398,9 @@ def render_svg(subgraph_tasks, svg_file_path, params_dict=None):
     dot.format = 'svg'
     dot.engine = 'dot'
     dot.attr(rankdir='TB')
-    
+
     plot_task_graph(dot, tasks_dict, files_dict, params_dict)
-    
+
     svg_file_path_without_suffix = svg_file_path.rsplit('.', 1)[0]
     try:
         dot.render(svg_file_path_without_suffix, format='svg', view=False, cleanup=True)
@@ -399,7 +417,7 @@ def render_svg(subgraph_tasks, svg_file_path, params_dict=None):
         subgraph_id = subgraph_tasks.iloc[0]['subgraph_id'] if not subgraph_tasks.empty else 0
         metadata = generate_subgraph_metadata(subgraph_tasks, subgraph_id)
         write_metadata(metadata, metadata_file_path)
-        
+
         return content
             
     except Exception as e:
@@ -416,6 +434,8 @@ def get_task_subgraphs():
         subgraph_id = request.args.get('subgraph_id')
         filename = request.args.get('filename')
         task_id = request.args.get('task_id')
+        show_failed_count = request.args.get('show_failed_count', 'false').lower() == 'true'
+        show_recovery_count = request.args.get('show_recovery_count', 'false').lower() == 'true'
         
         if not subgraph_id:
             return create_response(error='Subgraph ID is required', status_code=400)
@@ -476,7 +496,8 @@ def get_task_subgraphs():
             return create_response(error='SVG directory not configured', status_code=500)
         os.makedirs(svg_dir, exist_ok=True)
         
-        base_filename = f'task-subgraph-{subgraph_id}'
+        # include both show_failed_count and show_recovery_count in filename to ensure different cache files for different states
+        base_filename = f'task-subgraph-{subgraph_id}-failed-{show_failed_count}-recovery-{show_recovery_count}'
         safe_filename = sanitize_filename(base_filename)
         svg_file_path = os.path.join(svg_dir, f'{safe_filename}.svg')
         metadata_file_path = os.path.join(svg_dir, f'{safe_filename}.metadata.json')
@@ -485,6 +506,8 @@ def get_task_subgraphs():
         plot_params = {
             'label_file_waiting_time': False,
             'use_cached_svg': True,
+            'show_failed_count': show_failed_count,
+            'show_recovery_count': show_recovery_count,
         }
         
         # render SVG (with cache check if enabled)

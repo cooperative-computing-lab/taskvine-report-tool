@@ -5,7 +5,9 @@ export class TaskSubgraphsModule extends BaseModule {
         super(id, title, api_url);
         
         this.defineFetchDataParams({
-            subgraph_id: 0
+            subgraph_id: 0,
+            show_failed_count: false,
+            show_recovery_count: false
         });
     }
 
@@ -17,7 +19,7 @@ export class TaskSubgraphsModule extends BaseModule {
                 this.findSubgraphByFilename(filename);
             },
             'text',
-            'Enter filename'
+            'Enter File Name'
         );
         
         const findByTaskIdItem = this.toolbox.createInputItem(
@@ -27,11 +29,29 @@ export class TaskSubgraphsModule extends BaseModule {
                 this.findSubgraphByTaskId(taskId);
             },
             'number',
-            'Enter task ID'
+            'Enter Task ID'
+        );
+        
+        const showFailedCountItem = this.toolbox.createButtonItem(
+            `${this.id}-show-failed-count`,
+            this.getShowFailedCountButtonText(),
+            (id) => {
+                this.toggleShowFailedCount();
+            }
+        );
+        
+        const showRecoveryCountItem = this.toolbox.createButtonItem(
+            `${this.id}-show-recovery-count`,
+            this.getShowRecoveryCountButtonText(),
+            (id) => {
+                this.toggleShowRecoveryCount();
+            }
         );
         
         this.addToolboxInputItem(findByFilenameItem);
         this.addToolboxInputItem(findByTaskIdItem);
+        this.addToolboxButtonItem(showFailedCountItem);
+        this.addToolboxButtonItem(showRecoveryCountItem);
     }
 
     async findSubgraphByFilename(filename) {
@@ -41,21 +61,13 @@ export class TaskSubgraphsModule extends BaseModule {
         }
 
         try {
-            // fetch data with filename parameter and subgraph_id=0
-            const params = new URLSearchParams({
-                folder: this._folder,
-                subgraph_id: 0,
-                filename: filename.trim()
-            });
-            
+            const params = this.buildSearchParams({ subgraph_id: 0, filename: filename.trim() });
             const response = await fetch(`${this.api_url}?${params.toString()}`);
             const data = await response.json();
             
             if (!response.ok) {
-                // Handle HTTP error responses
                 const errorMsg = data.error || `HTTP ${response.status}: ${response.statusText}`;
                 alert(`Error: ${errorMsg}`);
-                console.error('HTTP Error:', response.status, response.statusText, data);
                 return;
             }
 
@@ -65,17 +77,15 @@ export class TaskSubgraphsModule extends BaseModule {
             }
 
             if (data && data.subgraph_id && data.subgraph_id > 0) {
-                // found the subgraph, update the legend and display
                 this.data = data;
                 this.updateFetchDataParam('subgraph_id', data.subgraph_id);
-                this.initLegend(); // update legend first
+                this.initLegend();
                 this.selectLegendItem(data.subgraph_id.toString());
                 this.plot();
             } else {
                 alert(`File "${filename.trim()}" not found in any subgraph.`);
             }
         } catch (error) {
-            console.error('Error finding subgraph by filename:', error);
             alert(`Network or parsing error: ${error.message}`);
         }
     }
@@ -86,7 +96,6 @@ export class TaskSubgraphsModule extends BaseModule {
             return;
         }
 
-        // validate that taskId is a number
         const numericTaskId = parseInt(taskId);
         if (isNaN(numericTaskId)) {
             alert('Task ID must be a valid number.');
@@ -94,21 +103,13 @@ export class TaskSubgraphsModule extends BaseModule {
         }
 
         try {
-            // fetch data with task_id parameter and subgraph_id=0
-            const params = new URLSearchParams({
-                folder: this._folder,
-                subgraph_id: 0,
-                task_id: numericTaskId.toString()
-            });
-            
+            const params = this.buildSearchParams({ subgraph_id: 0, task_id: numericTaskId.toString() });
             const response = await fetch(`${this.api_url}?${params.toString()}`);
             const data = await response.json();
             
             if (!response.ok) {
-                // Handle HTTP error responses
                 const errorMsg = data.error || `HTTP ${response.status}: ${response.statusText}`;
                 alert(`Error: ${errorMsg}`);
-                console.error('HTTP Error:', response.status, response.statusText, data);
                 return;
             }
 
@@ -118,48 +119,92 @@ export class TaskSubgraphsModule extends BaseModule {
             }
 
             if (data && data.subgraph_id && data.subgraph_id > 0) {
-                // found the subgraph, update the legend and display
                 this.data = data;
                 this.updateFetchDataParam('subgraph_id', data.subgraph_id);
-                this.initLegend(); // update legend first
+                this.initLegend();
                 this.selectLegendItem(data.subgraph_id.toString());
                 this.plot();
             } else {
                 alert(`Task ID "${numericTaskId}" not found in any subgraph.`);
             }
         } catch (error) {
-            console.error('Error finding subgraph by task ID:', error);
             alert(`Network or parsing error: ${error.message}`);
         }
     }
 
     selectLegendItem(subgraphId) {
-        // uncheck all legend checkboxes first
         const checkboxes = this._queryAllLegendCheckboxes();
         checkboxes.each(function () {
             d3.select(this).property('checked', false);
         });
 
-        // check the target checkbox using attribute selector to avoid CSS selector issues with numeric IDs
         const targetCheckbox = this.legendContainer.select(`input[id="${subgraphId}"]`);
         if (!targetCheckbox.empty()) {
             targetCheckbox.property('checked', true);
-            // trigger the change event to update the plot
             targetCheckbox.node().dispatchEvent(new Event('change', { bubbles: true }));
         }
     }
 
+    toggleShowFailedCount() {
+        this.updateFetchDataParam('show_failed_count', !this._fetchDataParams.show_failed_count);
+        this.updateShowFailedCountButtonText();
+        
+        if (this._fetchDataParams.subgraph_id > 0) {
+            this.fetchDataAndPlot();
+        }
+    }
+    
+    getShowFailedCountButtonText() {
+        return this._fetchDataParams.show_failed_count ? 'Hide Failed Count' : 'Show Failed Count';
+    }
+    
+    updateShowFailedCountButtonText() {
+        const buttonElement = document.getElementById(`${this.id}-show-failed-count`);
+        if (buttonElement) {
+            buttonElement.textContent = this.getShowFailedCountButtonText();
+        }
+    }
+    
+    toggleShowRecoveryCount() {
+        this.updateFetchDataParam('show_recovery_count', !this._fetchDataParams.show_recovery_count);
+        this.updateShowRecoveryCountButtonText();
+        
+        if (this._fetchDataParams.subgraph_id > 0) {
+            this.fetchDataAndPlot();
+        }
+    }
+    
+    getShowRecoveryCountButtonText() {
+        return this._fetchDataParams.show_recovery_count ? 'Hide Recovery Count' : 'Show Recovery Count';
+    }
+    
+    updateShowRecoveryCountButtonText() {
+        const buttonElement = document.getElementById(`${this.id}-show-recovery-count`);
+        if (buttonElement) {
+            buttonElement.textContent = this.getShowRecoveryCountButtonText();
+        }
+    }
+    
+    buildSearchParams(extraParams = {}) {
+        const params = new URLSearchParams({
+            folder: this._folder,
+            show_failed_count: this._fetchDataParams.show_failed_count,
+            ...this._fetchDataParams,
+            ...extraParams
+        });
+        return params;
+    }
+
     resetPlot() {
         super.resetPlot();
-
         this.data = null;
         this.updateFetchDataParam('subgraph_id', 0);
+        this.updateFetchDataParam('show_failed_count', false);
+        this.updateFetchDataParam('show_recovery_count', false);
     }
 
     legendOnToggle(id, visible) {
         const checkboxes = this._queryAllLegendCheckboxes();
-        
-        /* if there are other checkboxes, uncheck them */
         checkboxes.each(function () {
             const checkbox = d3.select(this);
             if (checkbox.attr('id') !== id) {
@@ -171,7 +216,6 @@ export class TaskSubgraphsModule extends BaseModule {
             this.updateFetchDataParam('subgraph_id', id);
             this.fetchDataAndPlot();
         } else {
-            /* if the current checkbox is unchecked, clear the SVG */
             this.clearSVG();
         }
     }
