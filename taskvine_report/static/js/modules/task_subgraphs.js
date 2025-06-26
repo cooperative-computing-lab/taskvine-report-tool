@@ -196,11 +196,26 @@ export class TaskSubgraphsModule extends BaseModule {
     }
 
     resetPlot() {
-        super.resetPlot();
-        this.data = null;
-        this.updateFetchDataParam('subgraph_id', 0);
-        this.updateFetchDataParam('show_failed_count', false);
-        this.updateFetchDataParam('show_recovery_count', false);
+        // Save current important parameters to preserve state
+        const currentSubgraphId = this._fetchDataParams.subgraph_id;
+        const currentShowFailedCount = this._fetchDataParams.show_failed_count;
+        const currentShowRecoveryCount = this._fetchDataParams.show_recovery_count;
+        
+        // Clear SVG and custom params only, don't call super.resetPlot() to avoid checkbox reset
+        this.clearSVG();
+        this.clearCustomParams();
+        
+        // If we have a selected subgraph, re-fetch and plot with current parameters
+        if (currentSubgraphId > 0) {
+            this.fetchDataAndPlot();
+        } else {
+            // If no subgraph selected, just clear the plot
+            this.clearSVG();
+        }
+        
+        // Update button texts to reflect current state
+        this.updateShowFailedCountButtonText();
+        this.updateShowRecoveryCountButtonText();
     }
 
     legendOnToggle(id, visible) {
@@ -241,5 +256,9 @@ export class TaskSubgraphsModule extends BaseModule {
         this.svgNode = svgElement;
         this.svgElement = d3.select(this.svgNode);
         this.svgElement.attr('preserveAspectRatio', 'xMidYMid meet');
+    }
+
+    _setupZoomAndScroll() {
+        // do nothing, we don't support zoom and scroll for task subgraphs
     }
 } 
