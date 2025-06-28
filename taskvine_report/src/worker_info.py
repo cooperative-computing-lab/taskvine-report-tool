@@ -64,8 +64,7 @@ class WorkerInfo:
     def set_transfer_port(self, transfer_port):
         transfer_port = int(transfer_port)
         if self.transfer_port and transfer_port != self.transfer_port:
-            raise ValueError(
-                f"transfer port mismatch for worker {self.ip}:{self.port}")
+            raise ValueError(f"transfer port mismatch for worker {self.ip}:{self.port}")
         self.transfer_port = transfer_port
 
     def run_task(self, task):
@@ -78,9 +77,7 @@ class WorkerInfo:
                 cores_found += 1
                 if cores_found == task.cores_requested:
                     return i
-        print(f"Warning: not enough cores available for task {task.task_id}, {cores_found} != {task.cores_requested}")
-        # more detailed information about the coremap
-        print(self.coremap)
+        print(f"Warning: worker {self.ip}:{self.port} did not have enough cores available for task {task.task_id}")
         return -1
 
     def reap_task(self, task):

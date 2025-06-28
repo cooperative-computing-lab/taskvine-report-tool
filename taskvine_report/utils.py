@@ -141,7 +141,7 @@ def downsample_points(points, target_point_count=10000, y_index=1):
     start_x = points[0][x_index]
     start_candidates = [(i, p) for i, p in enumerate(points) if p[x_index] == start_x and p[y_index] is not None]
     start_idx = min(start_candidates, key=lambda x: x[1][y_index])[0] if start_candidates else 0
-    
+
     # Find best end point (minimum y value among points with same x as last point)
     end_x = points[-1][x_index]
     end_candidates = [(i, p) for i, p in enumerate(points) if p[x_index] == end_x and p[y_index] is not None]
