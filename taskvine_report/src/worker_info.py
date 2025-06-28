@@ -103,6 +103,10 @@ class WorkerInfo:
         else:
             pass
 
+    def reset_coremap(self):
+        self.coremap = bitarray(self.cores + 1)
+        self.coremap.setall(0)
+
     def set_gpus(self, gpus: int):
         if self.gpus and gpus != self.gpus:
             print(f"Warning: worker {self.ip}:{self.port}, reported different gpus than before {self.gpus} -> {gpus}")

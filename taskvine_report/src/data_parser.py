@@ -575,6 +575,12 @@ class DataParser:
             # update the coremap
             worker = self.workers[task.worker_entry]
             worker.reap_task(task)
+            # if the task is a library task, we need to reset the worker's coremap,
+            # because functions can be retrieved later, and before that, a new library can be dispatched,
+            # its functions can be dispatched to the same worker, so both new and old functions can
+            # sit on the same worker, so we need to reset the coremap
+            if task.is_library_task:
+                worker.reset_coremap()
         elif "WAITING_RETRIEVAL (3) to RETRIEVED (4)" in line:  # as expected
             task.set_when_retrieved(timestamp)
         elif "RETRIEVED (4) to DONE (5)" in line:               # as expected
