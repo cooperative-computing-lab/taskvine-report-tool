@@ -94,9 +94,9 @@ class FileInfo:
                 continue
             if transfer.time_start_stage_in > time_stage_out:
                 continue
+            # NOTE: we don't prune the source of the transfer because it might have succeeded remotely
+            # and we just haven't received the cache update yet
             if isinstance(transfer.destination, tuple) and transfer.destination == worker_entry:
-                transfer.stage_out(time_stage_out, "worker_removed")
-            if isinstance(transfer.source, tuple) and transfer.source == worker_entry:
                 transfer.stage_out(time_stage_out, "worker_removed")
 
     def add_consumer(self, consumer_task):
