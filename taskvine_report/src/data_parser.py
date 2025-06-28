@@ -585,14 +585,14 @@ class DataParser:
                 worker.tasks_completed.append(task)
         elif "WAITING_RETRIEVAL (3) to READY (1)" in line or \
                 "RUNNING (2) to READY (1)" in line:             # task failure
+            if task.worker_entry:
+                worker = self.workers[task.worker_entry]
+                worker.tasks_failed.append(task)
+                worker.reap_task(task)
             # we need to set the task status if it was not set yet
             if not task.task_status:
                 # if it was committed to a worker
                 if task.worker_entry:
-                    # update the worker's tasks_failed, if the task was successfully committed
-                    worker = self.workers[task.worker_entry]
-                    worker.tasks_failed.append(task)
-                    worker.reap_task(task)
                     # it could be that the worker disconnected
                     if len(worker.time_connected) == len(worker.time_disconnected):
                         task.set_task_status(worker.time_disconnected[-1], 15 << 3)
