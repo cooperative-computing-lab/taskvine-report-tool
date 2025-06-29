@@ -84,6 +84,17 @@ class WorkerInfo:
         assert self.coremap is not None
         for core_id in task.core_id:
             self.coremap[core_id] = 0
+        # if the task is a library task, we need to reset the worker's coremap,
+        # because functions can be retrieved later, and before that, a new library can be dispatched,
+        # its functions can be dispatched to the same worker, so both new and old functions can
+        # sit on the same worker, so we need to reset the coremap
+        if task.is_library_task:
+            self.reset_coremap()
+            print(f"library task {task.task_id} reset coremap, now the coremap is:")
+            # print as a 0-1 list
+            for i in range(len(self.coremap)):
+                print(f"{self.coremap[i]}", end="")
+            print()
 
     def get_worker_ip_port(self):
         return f"{self.ip}:{self.port}"

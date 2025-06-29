@@ -574,13 +574,6 @@ class DataParser:
             task.set_when_waiting_retrieval(timestamp)
             # update the coremap
             worker = self.workers[task.worker_entry]
-            worker.reap_task(task)
-            # if the task is a library task, we need to reset the worker's coremap,
-            # because functions can be retrieved later, and before that, a new library can be dispatched,
-            # its functions can be dispatched to the same worker, so both new and old functions can
-            # sit on the same worker, so we need to reset the coremap
-            if task.is_library_task:
-                worker.reset_coremap()
         elif "WAITING_RETRIEVAL (3) to RETRIEVED (4)" in line:  # as expected
             task.set_when_retrieved(timestamp)
         elif "RETRIEVED (4) to DONE (5)" in line:               # as expected
@@ -594,7 +587,6 @@ class DataParser:
             if task.worker_entry:
                 worker = self.workers[task.worker_entry]
                 worker.tasks_failed.append(task)
-                worker.reap_task(task)
             # we need to set the task status if it was not set yet
             if not task.task_status:
                 # if it was committed to a worker
@@ -668,6 +660,9 @@ class DataParser:
         task.set_time_worker_start(time_worker_start)
         task.set_time_worker_end(time_worker_end)
         task.set_sandbox_used(sandbox_used)
+
+        worker = self.workers[task.worker_entry]
+        worker.reap_task(task)
 
     def _handle_debug_line_cache_update(self):
         parts = self.debug_current_parts
