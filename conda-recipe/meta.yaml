@@ -18,7 +18,7 @@ build:
 
 requirements:
   host:
-    - python >=3.7,<3.12
+    - python >=3.7
     - pip
     - setuptools
     - python-graphviz
@@ -30,7 +30,7 @@ requirements:
     - flask
     - pytz
   run:
-    - python >=3.7,<3.12
+    - python >=3.7
     - flask
     - pandas
     - cloudpickle
