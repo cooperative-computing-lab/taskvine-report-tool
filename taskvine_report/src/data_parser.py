@@ -145,7 +145,7 @@ class DataParser:
         self.debug_handlers = [
 
             H("send_task",
-            lambda l, p, ctx: ("task" in p and p.index("task") == len(p) - 2) or ctx.sending_task,
+            lambda l, p, ctx: ("task" in p and self.count_elements_after_current_parts("task") == 1) or ctx.sending_task,
             lambda l, p, ctx: ctx._handle_debug_line_send_task_to_worker()),
 
             H("puturl",
@@ -236,6 +236,10 @@ class DataParser:
             lambda l, p, ctx: "Removing instances of worker" in l,
             lambda l, p, ctx: None),
 
+            H("kill_task",
+            lambda l, p, ctx: " kill " in l,
+            lambda l, p, ctx: ctx._handle_debug_line_kill_task()),
+
         ]
         self.debug_handler_profiling = defaultdict(lambda: {"hits": 0})
 
@@ -268,6 +272,9 @@ class DataParser:
 
     def worker_ip_port_to_hash(self, worker_ip: str, worker_port: int):
         return f"{worker_ip}:{worker_port}"
+    
+    def count_elements_after_current_parts(self, item):
+        return count_elements_after(item, self.debug_current_parts)
 
     def set_time_zone(self):
         mgr_start_datestring = None
@@ -456,6 +463,14 @@ class DataParser:
         dest_worker.add_active_file_or_transfer(file_name)
 
         transfer.start_stage_in(timestamp, "pending")
+
+    def _handle_debug_line_kill_task(self):
+        assert self.count_elements_after_current_parts("kill") == 1
+        task_id = int(self.debug_current_parts[self.debug_current_parts.index("kill") + 1])
+        task_entry = (task_id, self.current_try_id[task_id])
+        task = self.tasks[task_entry]
+        worker = self.workers[task.worker_entry]
+        worker.reap_task(task)
 
     def _handle_debug_line_worker_resources(self):
         parts = self.debug_current_parts
@@ -805,7 +820,7 @@ class DataParser:
 
     def _handle_debug_line_stdout(self):
         parts = self.debug_current_parts
-        if parts.index("stdout") + 3 != len(parts):
+        if self.count_elements_after_current_parts("stdout") != 2:
             # filter out lines like "Receiving stdout of task xxx"
             return
 
@@ -843,7 +858,7 @@ class DataParser:
 
         if not self.sending_task:
             task_idx = parts.index("task")
-            if task_idx + 2 != len(parts) or "tx to" not in line:
+            if self.count_elements_after_current_parts("task") != 1 or "tx to" not in line:
                 return
 
             task_id = int(parts[task_idx + 1])

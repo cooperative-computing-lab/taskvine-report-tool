@@ -634,3 +634,10 @@ def downsample_df(df, target_count=10000, y_col=None, y_index=None):
             pass  # Keep as-is if conversion fails
             
     return result
+
+def count_elements_after(item, lst):
+    try:
+        idx = lst.index(item)
+        return len(lst) - idx - 1
+    except ValueError:
+        return -1

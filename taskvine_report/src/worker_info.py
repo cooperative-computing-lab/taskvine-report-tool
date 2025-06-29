@@ -90,11 +90,6 @@ class WorkerInfo:
         # sit on the same worker, so we need to reset the coremap
         if task.is_library_task:
             self.reset_coremap()
-            print(f"library task {task.task_id} reset coremap, now the coremap is:")
-            # print as a 0-1 list
-            for i in range(len(self.coremap)):
-                print(f"{self.coremap[i]}", end="")
-            print()
 
     def get_worker_ip_port(self):
         return f"{self.ip}:{self.port}"
