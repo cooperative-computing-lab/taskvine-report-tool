@@ -469,8 +469,10 @@ class DataParser:
         task_id = int(self.debug_current_parts[self.debug_current_parts.index("kill") + 1])
         task_entry = (task_id, self.current_try_id[task_id])
         task = self.tasks[task_entry]
-        worker = self.workers[task.worker_entry]
-        worker.reap_task(task)
+        # note that the task may not be committed (Failed to send task is followed)
+        if task.worker_entry:
+            worker = self.workers[task.worker_entry]
+            worker.reap_task(task)
 
     def _handle_debug_line_worker_resources(self):
         parts = self.debug_current_parts
