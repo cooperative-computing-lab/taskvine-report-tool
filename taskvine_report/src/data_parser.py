@@ -105,7 +105,7 @@ class DataParser:
 
         # tasks
         self.tasks = {}        # key: (task_id, task_try_id), value: TaskInfo
-        self.current_try_id = {}   # key: task_id, value: task_try_id
+        self.current_try_id = defaultdict(int)   # key: task_id, value: task_try_id
 
         # workers
         self.workers = {}      # key: (ip, port, connect_id), value: WorkerInfo
@@ -951,8 +951,37 @@ class DataParser:
                     handler_fn(line, parts, self)
                     return
 
+    def _clean_debug_file(self):
+        result = subprocess.run(
+            ["grep", "-n", "tcp: listening on port 9124", self.debug],
+            capture_output=True,
+            text=True,
+            check=False
+        )
+        
+        if result.returncode != 0:
+            return
+            
+        lines = result.stdout.strip().split('\n')
+        if len(lines) <= 1:
+            return
+
+        last_match_line_num = int(lines[-1].split(':')[0])
+        print(f"Found {len(lines)} entries in the debug file, only keeping the last one")
+
+        with open(self.debug, 'r', encoding='utf-8', errors='ignore') as input_file:
+            lines_to_keep = []
+            for i, line in enumerate(input_file, 1):
+                if i >= last_match_line_num:
+                    lines_to_keep.append(line)
+        
+        with open(self.debug, 'w', encoding='utf-8') as output_file:
+            output_file.writelines(lines_to_keep)
+
     def parse_debug(self):
-        self.current_try_id = defaultdict(int)
+        self._clean_debug_file()
+        self.set_time_zone()
+        
         total_lines = count_lines(self.debug)
         debug_file_size_mb = floor_decimal(os.path.getsize(self.debug) / 1024 / 1024, 2)
         unit, scale = get_size_unit_and_scale(debug_file_size_mb)
@@ -1000,8 +1029,6 @@ class DataParser:
                 print(f"{name:<20} {hits:>10}")
 
     def parse_logs(self):
-        self.set_time_zone()
-
         # parse the debug file
         self.parse_debug()
         
