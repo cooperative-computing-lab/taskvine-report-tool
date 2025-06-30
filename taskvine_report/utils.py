@@ -641,3 +641,6 @@ def count_elements_after(item, lst):
         return len(lst) - idx - 1
     except ValueError:
         return -1
+
+def string_contains_any(text, substrings):
+    return any(s in text for s in substrings)
