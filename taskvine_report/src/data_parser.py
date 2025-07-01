@@ -280,12 +280,15 @@ class DataParser:
     def count_elements_after_current_parts(self, item):
         return count_elements_after(item, self.debug_current_parts)
 
-    def set_time_zone(self):
+    def set_time_zone(self, debug_file_path=None):
+        if debug_file_path is None:
+            debug_file_path = self.debug
+            
         mgr_start_datestring = None
         mgr_start_timestamp = None
 
         # read the first line containing "listening on port" in debug file
-        with open(self.debug, 'r') as file:
+        with open(debug_file_path, 'r') as file:
             for line in file:
                 if "listening on port" in line:
                     parts = line.strip().split()
@@ -976,24 +979,34 @@ class DataParser:
         last_match_line_num = int(lines[-1].split(':')[0])
         print(f"Found {len(lines)} entries in the debug file, only keeping the last one")
 
+        debug_cleaned = os.path.join(self.vine_logs_dir, 'debug.cleaned')
+        
         with open(self.debug, 'r', encoding='utf-8', errors='ignore') as input_file:
             lines_to_keep = []
             for i, line in enumerate(input_file, 1):
                 if i >= last_match_line_num:
                     lines_to_keep.append(line)
         
-        with open(self.debug, 'w', encoding='utf-8') as output_file:
+        with open(debug_cleaned, 'w', encoding='utf-8') as output_file:
             output_file.writelines(lines_to_keep)
 
     def parse_debug(self):
+        # Remove existing debug.cleaned file if exists
+        debug_cleaned = os.path.join(self.vine_logs_dir, 'debug.cleaned')
+        if os.path.exists(debug_cleaned):
+            os.remove(debug_cleaned)
+        
         try:
             self.set_time_zone()
         except Exception as e:
             self._clean_debug_file()
-            self.set_time_zone()
+            self.set_time_zone(debug_cleaned)
         
-        total_lines = count_lines(self.debug)
-        debug_file_size_mb = floor_decimal(os.path.getsize(self.debug) / 1024 / 1024, 2)
+        # Use cleaned file if exists, otherwise use original
+        debug_file_to_use = debug_cleaned if os.path.exists(debug_cleaned) else self.debug
+        
+        total_lines = count_lines(debug_file_to_use)
+        debug_file_size_mb = floor_decimal(os.path.getsize(debug_file_to_use) / 1024 / 1024, 2)
         unit, scale = get_size_unit_and_scale(debug_file_size_mb)
         debug_file_size_str = f"{floor_decimal(debug_file_size_mb * scale, 2)} {unit}"
 
@@ -1001,7 +1014,7 @@ class DataParser:
             task_id = progress.add_task(f"[green]Parsing debug ({debug_file_size_str})", total=total_lines)
             pbar_update_interval = 100
             resort_debug_handlers_interval = 10000
-            with open(self.debug, 'rb') as file:
+            with open(debug_file_to_use, 'rb') as file:
                 for i, raw_line in enumerate(file):
                     if i % pbar_update_interval == 0:   # minimize the progress bar update frequency
                         progress.update(task_id, advance=pbar_update_interval)
