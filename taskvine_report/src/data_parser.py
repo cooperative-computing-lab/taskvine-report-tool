@@ -90,6 +90,9 @@ class DataParser:
         self.transactions = os.path.join(self.vine_logs_dir, 'transactions')
         self.taskgraph = os.path.join(self.vine_logs_dir, 'taskgraph')
         self.daskvine_log = os.path.join(self.vine_logs_dir, 'daskvine.log')
+        for file_path in [self.debug, self.transactions, self.daskvine_log, self.taskgraph]:
+            if not os.path.exists(file_path):
+                raise ValueError(f"file {file_path} does not exist")
 
         # these are the main files for data analysis
         self.pkl_file_names = ['workers.pkl', 'files.pkl', 'tasks.pkl', 'manager.pkl', 'subgraphs.pkl']
