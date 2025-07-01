@@ -176,9 +176,9 @@ class DataParser:
             lambda l, p, ctx: "received" in p,
             lambda l, p, ctx: ctx._handle_debug_line_worker_received()),
 
-            H("receive_info",
-            lambda l, p, ctx: "info" in p,
-            lambda l, p, ctx: ctx._handle_debug_line_receive_worker_info(ctx.debug_current_timestamp, p)),
+            H("receive_worker_info",
+            lambda l, p, ctx: " info " in l,
+            lambda l, p, ctx: ctx._handle_debug_line_receive_worker_info()),
 
             H("cache_invalid",
             lambda l, p, ctx: "cache-invalid" in p,
@@ -239,6 +239,10 @@ class DataParser:
             H("kill_task",
             lambda l, p, ctx: " kill " in l,
             lambda l, p, ctx: ctx._handle_debug_line_kill_task()),
+
+            H("added_dependency",
+            lambda l, p, ctx: "added dependency" in l,
+            lambda l, p, ctx: None),
 
         ]
         self.debug_handler_profiling = defaultdict(lambda: {"hits": 0})
@@ -497,13 +501,16 @@ class DataParser:
             else:
                 pass
 
-    def _handle_debug_line_receive_worker_info(self, timestamp, parts):
+    def _handle_debug_line_receive_worker_info(self):
+        parts = self.debug_current_parts
         info_idx = parts.index("info")
         ip, port = WorkerInfo.extract_ip_port_from_string(parts[info_idx - 1])
         worker = self.get_current_worker_by_ip_port(ip, port)
         if "worker-id" in parts:
             worker.set_hash(parts[info_idx + 2])
             worker.set_machine_name(parts[info_idx - 2])
+        elif "tasks_running" in parts:
+            pass
         elif "worker-end-time" in parts:
             pass
         elif "from-factory" in parts:
@@ -572,7 +579,10 @@ class DataParser:
                 worker = self.workers[task.worker_entry]
                 task.committed_worker_hash = worker.hash
                 task.worker_id = worker.id
-                worker.run_task(task)
+                core_id = worker.run_task(task)
+                if core_id == -1:
+                    print(f"Warning: worker {task.worker_entry} has no enough cores to run task {task_id}")
+                    print(f"current running tasks: {worker.tasks_running}")
                 # check if this is the first try
                 if task_id not in self.current_try_id:
                     self.current_try_id[task_id] = 1
@@ -677,9 +687,6 @@ class DataParser:
         task.set_time_worker_start(time_worker_start)
         task.set_time_worker_end(time_worker_end)
         task.set_sandbox_used(sandbox_used)
-
-        worker = self.workers[task.worker_entry]
-        worker.reap_task(task)
 
     def _handle_debug_line_cache_update(self):
         parts = self.debug_current_parts
@@ -979,8 +986,11 @@ class DataParser:
             output_file.writelines(lines_to_keep)
 
     def parse_debug(self):
-        self._clean_debug_file()
-        self.set_time_zone()
+        try:
+            self.set_time_zone()
+        except Exception as e:
+            self._clean_debug_file()
+            self.set_time_zone()
         
         total_lines = count_lines(self.debug)
         debug_file_size_mb = floor_decimal(os.path.getsize(self.debug) / 1024 / 1024, 2)

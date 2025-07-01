@@ -26,6 +26,7 @@ class WorkerInfo:
         # task info
         self.tasks_completed = []
         self.tasks_failed = []
+        self.tasks_running = set()
 
         # active files or transfers, set of filenames
         self.active_files_or_transfers = set()
@@ -76,12 +77,16 @@ class WorkerInfo:
                 task.core_id.append(i)
                 cores_found += 1
                 if cores_found == task.cores_requested:
+                    self.tasks_running.add(task.task_id)
                     return i
-        print(f"Warning: worker {self.ip}:{self.port} did not have enough cores available for task {task.task_id}")
         return -1
 
     def reap_task(self, task):
         assert self.coremap is not None
+        if task.task_id in self.tasks_running:
+            self.tasks_running.remove(task.task_id)
+        else:
+            return
         for core_id in task.core_id:
             self.coremap[core_id] = 0
         # if the task is a library task, we need to reset the worker's coremap,
@@ -93,7 +98,7 @@ class WorkerInfo:
 
     def get_worker_ip_port(self):
         return f"{self.ip}:{self.port}"
-    
+
     def get_worker_key(self):
         return f"{self.ip}:{self.port}:{self.connect_id}"
 
@@ -108,6 +113,9 @@ class WorkerInfo:
             self.coremap.setall(0)
         else:
             pass
+
+    def count_cores_used(self):
+        return self.coremap.count(1)
 
     def reset_coremap(self):
         self.coremap = bitarray(self.cores + 1)
