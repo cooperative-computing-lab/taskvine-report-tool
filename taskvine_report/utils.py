@@ -13,6 +13,41 @@ import pandas as pd
 import cloudpickle
 from flask import current_app
 import shutil
+import subprocess
+import sys
+
+def check_pip_updates():
+    try:
+        package_name = "taskvine-report-tool"
+        
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "list", "--outdated", "--format=json"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        
+        if result.returncode == 0:
+            outdated_packages = json.loads(result.stdout)
+            
+            for package in outdated_packages:
+                if package["name"].lower() == package_name.lower():
+                    current_version = package["version"]
+                    latest_version = package["latest_version"]
+                    print(f"🔄 A newer version of {package_name} is available!")
+                    print(f"   Current: {current_version}")
+                    print(f"   Latest:  {latest_version}")
+                    print(f"   Update with: pip install --upgrade {package_name}")
+                    print()
+                    return
+                    
+    except subprocess.TimeoutExpired:
+        pass
+    except (subprocess.CalledProcessError, json.JSONDecodeError, FileNotFoundError):
+        pass
+    except Exception:
+        pass
+
 
 def floor_decimal(x, decimal_places):
     factor = 10 ** decimal_places

@@ -1,23 +1,8 @@
-# Core web framework
 Flask
-
-# Data processing and analysis
 pandas
 rich
 cloudpickle
 tqdm
-
-# Efficient bit arrays
 bitarray
-
-# Time zone handling
 pytz
-
-# Graph visualization
 graphviz
-
-# Optional: Enhanced development experience
-# pytest>=6.0
-# pytest-cov>=2.0
-# black>=21.0
-# flake8>=3.8 
