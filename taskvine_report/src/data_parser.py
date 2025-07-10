@@ -418,8 +418,8 @@ class DataParser:
         dest_ip, dest_port = WorkerInfo.extract_ip_port_from_string(parts[parts.index("received") - 1])
         dest_worker_entry = self.get_current_worker_entry_by_ip_port(dest_ip, dest_port)
         # the worker must be in the putting_transfers
-        assert dest_worker_entry is not None and dest_worker_entry in self.putting_transfers
-        
+        assert dest_worker_entry is not None
+        assert dest_worker_entry in self.putting_transfers
         transfer = self.putting_transfers[dest_worker_entry]
         transfer.stage_in(timestamp, "worker_received")
         del self.putting_transfers[dest_worker_entry]
@@ -773,6 +773,7 @@ class DataParser:
     def _handle_debug_line_sending_back(self):
         # get an output file from a worker, one worker can only send one file back at a time
         parts = self.debug_current_parts
+        line = self.debug_current_line
         timestamp = self.debug_current_timestamp
 
         if not self.sending_back:
@@ -821,13 +822,29 @@ class DataParser:
                 send_idx = parts.index("sent")
                 source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[send_idx - 1])
                 source_worker_entry = self.get_current_worker_entry_by_ip_port(source_ip, source_port)
+                source_worker = self.workers[source_worker_entry]
                 assert source_worker_entry is not None
                 assert source_worker_entry in self.sending_back_transfers
 
                 transfer = self.sending_back_transfers[source_worker_entry]
                 transfer.stage_in(timestamp, "manager_received")
                 del self.sending_back_transfers[source_worker_entry]
+                source_worker.remove_active_file_or_transfer(transfer.filename)
                 self.sending_back = False
+            elif "): error" in line and count_elements_after("error", parts) == 2:
+                error_idx = parts.index("error")
+                source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[error_idx - 1])
+                source_worker_entry = self.get_current_worker_entry_by_ip_port(source_ip, source_port)
+                source_worker = self.workers[source_worker_entry]
+                assert source_worker_entry is not None
+                assert source_worker_entry in self.sending_back_transfers
+
+                transfer = self.sending_back_transfers[source_worker_entry]
+                transfer.stage_out(timestamp, "failed_to_send")
+                del self.sending_back_transfers[source_worker_entry]
+                source_worker.remove_active_file_or_transfer(transfer.filename)
+                self.sending_back = False
+
             else:
                 # "get xxx" "file xxx" "Receiving xxx" may exist in between
                 pass
