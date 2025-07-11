@@ -819,6 +819,8 @@ class DataParser:
                 # thus it might not be in self.files, so we do not check it here, and do nothing at the moment
             """
         else:
+            failed_to_send = False
+            source_ip, source_port = None, None
             if "sent" in parts:
                 send_idx = parts.index("sent")
                 source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[send_idx - 1])
@@ -835,6 +837,17 @@ class DataParser:
             elif "): error" in line and count_elements_after("error", parts) == 2:
                 error_idx = parts.index("error")
                 source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[error_idx - 1])
+            elif "Failed to receive output from worker" in line:
+                source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[-1])
+                failed_to_send = True
+            elif "failed to return output" in line:
+                failed_idx = parts.index("failed")
+                source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[failed_idx - 2])
+                failed_to_send = True
+            else:
+                # "get xxx" "file xxx" "Receiving xxx" may exist in between
+                pass
+            if failed_to_send:
                 source_worker_entry = self.get_current_worker_entry_by_ip_port(source_ip, source_port)
                 source_worker = self.workers[source_worker_entry]
                 assert source_worker_entry is not None
@@ -845,10 +858,6 @@ class DataParser:
                 del self.sending_back_transfers[source_worker_entry]
                 source_worker.remove_active_file_or_transfer(transfer.filename)
                 self.sending_back = False
-
-            else:
-                # "get xxx" "file xxx" "Receiving xxx" may exist in between
-                pass
 
     def _handle_debug_line_stdout(self):
         parts = self.debug_current_parts
