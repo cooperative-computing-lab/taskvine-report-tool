@@ -357,7 +357,8 @@ class DataParser:
         release_idx = self.debug_current_parts.index("removed")
         ip, port = WorkerInfo.extract_ip_port_from_string(self.debug_current_parts[release_idx - 1])
         worker = self.get_current_worker_by_ip_port(ip, port)
-        assert worker is not None
+        if worker is None:
+            raise ValueError(f"worker {ip}:{port} is not found")
 
         worker.add_disconnection(self.debug_current_timestamp)
         self.manager.update_when_last_worker_disconnect(self.debug_current_timestamp)
@@ -924,13 +925,19 @@ class DataParser:
         if self.debug_mode:
             for cond_fn, handler_fn in self.debug_handlers:
                 if cond_fn(line, parts, self):
-                    handler_fn(line, parts, self)
+                    try:
+                        handler_fn(line, parts, self)
+                    except Exception:
+                        raise ValueError(f"Failed in handler {handler_fn.__name__}")
                     self.debug_handler_profiling[handler_fn]["hits"] += 1
                     return
         else:
             for cond_fn, handler_fn in self.debug_handlers:
                 if cond_fn(line, parts, self):
-                    handler_fn(line, parts, self)
+                    try:
+                        handler_fn(line, parts, self)
+                    except Exception:
+                        raise ValueError(f"Failed in handler {handler_fn.__name__}")
                     return
 
     def parse_debug(self):
@@ -966,7 +973,7 @@ class DataParser:
                         self.parse_debug_line()
                     except Exception as e:
                         print(f"Error parsing line {i}: {self.debug_current_line}, error: {e}, traceback: {traceback.format_exc()}")
-                        continue
+                        exit(1)
             progress.update(task_id, advance=total_lines % pbar_update_interval)
 
         if self.debug_mode:
