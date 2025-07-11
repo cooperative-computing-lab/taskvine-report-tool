@@ -50,6 +50,7 @@ from taskvine_report.routes.task_dependencies import task_dependencies_bp
 from taskvine_report.routes.lock import lock_bp
 from taskvine_report.routes.task_subgraphs import task_subgraphs_bp
 from taskvine_report.routes.export_csv_files import register_csv_export_routes
+from taskvine_report.utils import check_pip_updates
 from taskvine_report import __version__
 
 
@@ -199,6 +200,8 @@ def main():
     )
 
     args = parser.parse_args()
+
+    check_pip_updates()
 
     logs_dir = os.path.abspath(args.logs_dir)
     print(f"🚀 Starting TaskVine Report server...")

@@ -13,6 +13,7 @@ import traceback as tb
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from taskvine_report.src.data_parser import DataParser
+from taskvine_report.utils import check_pip_updates
 from taskvine_report import __version__
 
 
@@ -110,8 +111,10 @@ def main():
         default=1,
         help='Enable downsampling (default: 1)'
     )
-    
+
     args = parser.parse_args()
+
+    check_pip_updates()
 
     root_dir = os.path.abspath(args.logs_dir)
 

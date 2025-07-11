@@ -89,7 +89,9 @@ class DataParser:
         self.debug = os.path.join(self.vine_logs_dir, 'debug')
         self.transactions = os.path.join(self.vine_logs_dir, 'transactions')
         self.taskgraph = os.path.join(self.vine_logs_dir, 'taskgraph')
-        self.daskvine_log = os.path.join(self.vine_logs_dir, 'daskvine.log')
+        for file_path in [self.debug, self.transactions, self.taskgraph]:
+            if not os.path.exists(file_path):
+                raise ValueError(f"file {file_path} does not exist")
 
         # these are the main files for data analysis
         self.pkl_file_names = ['workers.pkl', 'files.pkl', 'tasks.pkl', 'manager.pkl', 'subgraphs.pkl']
@@ -105,7 +107,7 @@ class DataParser:
 
         # tasks
         self.tasks = {}        # key: (task_id, task_try_id), value: TaskInfo
-        self.current_try_id = {}   # key: task_id, value: task_try_id
+        self.current_try_id = defaultdict(int)   # key: task_id, value: task_try_id
 
         # workers
         self.workers = {}      # key: (ip, port, connect_id), value: WorkerInfo
@@ -145,7 +147,7 @@ class DataParser:
         self.debug_handlers = [
 
             H("send_task",
-            lambda l, p, ctx: ("task" in p and p.index("task") == len(p) - 2) or ctx.sending_task,
+            lambda l, p, ctx: ("task" in p and self.count_elements_after_current_parts("task") == 1) or ctx.sending_task,
             lambda l, p, ctx: ctx._handle_debug_line_send_task_to_worker()),
 
             H("puturl",
@@ -176,9 +178,9 @@ class DataParser:
             lambda l, p, ctx: "received" in p,
             lambda l, p, ctx: ctx._handle_debug_line_worker_received()),
 
-            H("receive_info",
-            lambda l, p, ctx: "info" in p,
-            lambda l, p, ctx: ctx._handle_debug_line_receive_worker_info(ctx.debug_current_timestamp, p)),
+            H("receive_worker_info",
+            lambda l, p, ctx: " info " in l,
+            lambda l, p, ctx: ctx._handle_debug_line_receive_worker_info()),
 
             H("cache_invalid",
             lambda l, p, ctx: "cache-invalid" in p,
@@ -236,6 +238,14 @@ class DataParser:
             lambda l, p, ctx: "Removing instances of worker" in l,
             lambda l, p, ctx: None),
 
+            H("kill_task",
+            lambda l, p, ctx: " kill " in l,
+            lambda l, p, ctx: ctx._handle_debug_line_kill_task()),
+
+            H("added_dependency",
+            lambda l, p, ctx: "added dependency" in l,
+            lambda l, p, ctx: None),
+
         ]
         self.debug_handler_profiling = defaultdict(lambda: {"hits": 0})
 
@@ -268,13 +278,19 @@ class DataParser:
 
     def worker_ip_port_to_hash(self, worker_ip: str, worker_port: int):
         return f"{worker_ip}:{worker_port}"
+    
+    def count_elements_after_current_parts(self, item):
+        return count_elements_after(item, self.debug_current_parts)
 
-    def set_time_zone(self):
+    def set_time_zone(self, debug_file_path=None):
+        if debug_file_path is None:
+            debug_file_path = self.debug
+            
         mgr_start_datestring = None
         mgr_start_timestamp = None
 
         # read the first line containing "listening on port" in debug file
-        with open(self.debug, 'r') as file:
+        with open(debug_file_path, 'r') as file:
             for line in file:
                 if "listening on port" in line:
                     parts = line.strip().split()
@@ -403,8 +419,8 @@ class DataParser:
         dest_ip, dest_port = WorkerInfo.extract_ip_port_from_string(parts[parts.index("received") - 1])
         dest_worker_entry = self.get_current_worker_entry_by_ip_port(dest_ip, dest_port)
         # the worker must be in the putting_transfers
-        assert dest_worker_entry is not None and dest_worker_entry in self.putting_transfers
-        
+        assert dest_worker_entry is not None
+        assert dest_worker_entry in self.putting_transfers
         transfer = self.putting_transfers[dest_worker_entry]
         transfer.stage_in(timestamp, "worker_received")
         del self.putting_transfers[dest_worker_entry]
@@ -458,6 +474,16 @@ class DataParser:
 
         transfer.start_stage_in(timestamp, "pending")
 
+    def _handle_debug_line_kill_task(self):
+        assert self.count_elements_after_current_parts("kill") == 1
+        task_id = int(self.debug_current_parts[self.debug_current_parts.index("kill") + 1])
+        task_entry = (task_id, self.current_try_id[task_id])
+        task = self.tasks[task_entry]
+        # note that the task may not be committed (Failed to send task is followed)
+        if task.worker_entry:
+            worker = self.workers[task.worker_entry]
+            worker.reap_task(task)
+
     def _handle_debug_line_worker_resources(self):
         parts = self.debug_current_parts
 
@@ -481,13 +507,16 @@ class DataParser:
             else:
                 pass
 
-    def _handle_debug_line_receive_worker_info(self, timestamp, parts):
+    def _handle_debug_line_receive_worker_info(self):
+        parts = self.debug_current_parts
         info_idx = parts.index("info")
         ip, port = WorkerInfo.extract_ip_port_from_string(parts[info_idx - 1])
         worker = self.get_current_worker_by_ip_port(ip, port)
         if "worker-id" in parts:
             worker.set_hash(parts[info_idx + 2])
             worker.set_machine_name(parts[info_idx - 2])
+        elif "tasks_running" in parts:
+            pass
         elif "worker-end-time" in parts:
             pass
         elif "from-factory" in parts:
@@ -556,7 +585,10 @@ class DataParser:
                 worker = self.workers[task.worker_entry]
                 task.committed_worker_hash = worker.hash
                 task.worker_id = worker.id
-                worker.run_task(task)
+                core_id = worker.run_task(task)
+                if core_id == -1:
+                    print(f"Warning: worker {task.worker_entry} has no enough cores to run task {task_id}")
+                    print(f"current running tasks: {worker.tasks_running}")
                 # check if this is the first try
                 if task_id not in self.current_try_id:
                     self.current_try_id[task_id] = 1
@@ -575,7 +607,6 @@ class DataParser:
             task.set_when_waiting_retrieval(timestamp)
             # update the coremap
             worker = self.workers[task.worker_entry]
-            worker.reap_task(task)
         elif "WAITING_RETRIEVAL (3) to RETRIEVED (4)" in line:  # as expected
             task.set_when_retrieved(timestamp)
         elif "RETRIEVED (4) to DONE (5)" in line:               # as expected
@@ -586,14 +617,13 @@ class DataParser:
                 worker.tasks_completed.append(task)
         elif "WAITING_RETRIEVAL (3) to READY (1)" in line or \
                 "RUNNING (2) to READY (1)" in line:             # task failure
+            if task.worker_entry:
+                worker = self.workers[task.worker_entry]
+                worker.tasks_failed.append(task)
             # we need to set the task status if it was not set yet
             if not task.task_status:
                 # if it was committed to a worker
                 if task.worker_entry:
-                    # update the worker's tasks_failed, if the task was successfully committed
-                    worker = self.workers[task.worker_entry]
-                    worker.tasks_failed.append(task)
-                    worker.reap_task(task)
                     # it could be that the worker disconnected
                     if len(worker.time_connected) == len(worker.time_disconnected):
                         task.set_task_status(worker.time_disconnected[-1], 15 << 3)
@@ -744,6 +774,7 @@ class DataParser:
     def _handle_debug_line_sending_back(self):
         # get an output file from a worker, one worker can only send one file back at a time
         parts = self.debug_current_parts
+        line = self.debug_current_line
         timestamp = self.debug_current_timestamp
 
         if not self.sending_back:
@@ -792,20 +823,36 @@ class DataParser:
                 send_idx = parts.index("sent")
                 source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[send_idx - 1])
                 source_worker_entry = self.get_current_worker_entry_by_ip_port(source_ip, source_port)
+                source_worker = self.workers[source_worker_entry]
                 assert source_worker_entry is not None
                 assert source_worker_entry in self.sending_back_transfers
 
                 transfer = self.sending_back_transfers[source_worker_entry]
                 transfer.stage_in(timestamp, "manager_received")
                 del self.sending_back_transfers[source_worker_entry]
+                source_worker.remove_active_file_or_transfer(transfer.filename)
                 self.sending_back = False
+            elif "): error" in line and count_elements_after("error", parts) == 2:
+                error_idx = parts.index("error")
+                source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[error_idx - 1])
+                source_worker_entry = self.get_current_worker_entry_by_ip_port(source_ip, source_port)
+                source_worker = self.workers[source_worker_entry]
+                assert source_worker_entry is not None
+                assert source_worker_entry in self.sending_back_transfers
+
+                transfer = self.sending_back_transfers[source_worker_entry]
+                transfer.stage_out(timestamp, "failed_to_send")
+                del self.sending_back_transfers[source_worker_entry]
+                source_worker.remove_active_file_or_transfer(transfer.filename)
+                self.sending_back = False
+
             else:
                 # "get xxx" "file xxx" "Receiving xxx" may exist in between
                 pass
 
     def _handle_debug_line_stdout(self):
         parts = self.debug_current_parts
-        if parts.index("stdout") + 3 != len(parts):
+        if self.count_elements_after_current_parts("stdout") != 2:
             # filter out lines like "Receiving stdout of task xxx"
             return
 
@@ -843,7 +890,7 @@ class DataParser:
 
         if not self.sending_task:
             task_idx = parts.index("task")
-            if task_idx + 2 != len(parts) or "tx to" not in line:
+            if self.count_elements_after_current_parts("task") != 1 or "tx to" not in line:
                 return
 
             task_id = int(parts[task_idx + 1])
@@ -940,10 +987,52 @@ class DataParser:
                         raise ValueError(f"Failed in handler {handler_fn.__name__}")
                     return
 
+    def _clean_debug_file(self):
+        result = subprocess.run(
+            ["grep", "-n", "tcp: listening on port 9124", self.debug],
+            capture_output=True,
+            text=True,
+            check=False
+        )
+        
+        if result.returncode != 0:
+            return
+            
+        lines = result.stdout.strip().split('\n')
+        if len(lines) <= 1:
+            return
+
+        last_match_line_num = int(lines[-1].split(':')[0])
+        print(f"Found {len(lines)} entries in the debug file, only keeping the last one")
+
+        debug_cleaned = os.path.join(self.vine_logs_dir, 'debug.cleaned')
+        
+        with open(self.debug, 'r', encoding='utf-8', errors='ignore') as input_file:
+            lines_to_keep = []
+            for i, line in enumerate(input_file, 1):
+                if i >= last_match_line_num:
+                    lines_to_keep.append(line)
+        
+        with open(debug_cleaned, 'w', encoding='utf-8') as output_file:
+            output_file.writelines(lines_to_keep)
+
     def parse_debug(self):
-        self.current_try_id = defaultdict(int)
-        total_lines = count_lines(self.debug)
-        debug_file_size_mb = floor_decimal(os.path.getsize(self.debug) / 1024 / 1024, 2)
+        # Remove existing debug.cleaned file if exists
+        debug_cleaned = os.path.join(self.vine_logs_dir, 'debug.cleaned')
+        if os.path.exists(debug_cleaned):
+            os.remove(debug_cleaned)
+        
+        try:
+            self.set_time_zone()
+        except Exception as e:
+            self._clean_debug_file()
+            self.set_time_zone(debug_cleaned)
+        
+        # Use cleaned file if exists, otherwise use original
+        debug_file_to_use = debug_cleaned if os.path.exists(debug_cleaned) else self.debug
+        
+        total_lines = count_lines(debug_file_to_use)
+        debug_file_size_mb = floor_decimal(os.path.getsize(debug_file_to_use) / 1024 / 1024, 2)
         unit, scale = get_size_unit_and_scale(debug_file_size_mb)
         debug_file_size_str = f"{floor_decimal(debug_file_size_mb * scale, 2)} {unit}"
 
@@ -951,7 +1040,7 @@ class DataParser:
             task_id = progress.add_task(f"[green]Parsing debug ({debug_file_size_str})", total=total_lines)
             pbar_update_interval = 100
             resort_debug_handlers_interval = 10000
-            with open(self.debug, 'rb') as file:
+            with open(debug_file_to_use, 'rb') as file:
                 for i, raw_line in enumerate(file):
                     if i % pbar_update_interval == 0:   # minimize the progress bar update frequency
                         progress.update(task_id, advance=pbar_update_interval)
@@ -972,8 +1061,9 @@ class DataParser:
                     try:
                         self.parse_debug_line()
                     except Exception as e:
-                        print(f"Error parsing line {i}: {self.debug_current_line}, error: {e}, traceback: {traceback.format_exc()}")
-                        exit(1)
+                        print(f"Error parsing line {i}: {self.debug_current_line}")
+                        print(traceback.format_exc())
+                        continue
             progress.update(task_id, advance=total_lines % pbar_update_interval)
 
         if self.debug_mode:
@@ -988,8 +1078,6 @@ class DataParser:
                 print(f"{name:<20} {hits:>10}")
 
     def parse_logs(self):
-        self.set_time_zone()
-
         # parse the debug file
         self.parse_debug()
         

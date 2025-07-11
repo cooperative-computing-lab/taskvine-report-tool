@@ -26,6 +26,7 @@ class WorkerInfo:
         # task info
         self.tasks_completed = []
         self.tasks_failed = []
+        self.tasks_running = set()
 
         # active files or transfers, set of filenames
         self.active_files_or_transfers = set()
@@ -64,8 +65,7 @@ class WorkerInfo:
     def set_transfer_port(self, transfer_port):
         transfer_port = int(transfer_port)
         if self.transfer_port and transfer_port != self.transfer_port:
-            raise ValueError(
-                f"transfer port mismatch for worker {self.ip}:{self.port}")
+            raise ValueError(f"transfer port mismatch for worker {self.ip}:{self.port}")
         self.transfer_port = transfer_port
 
     def run_task(self, task):
@@ -77,20 +77,28 @@ class WorkerInfo:
                 task.core_id.append(i)
                 cores_found += 1
                 if cores_found == task.cores_requested:
+                    self.tasks_running.add(task.task_id)
                     return i
-        print(f"Warning: not enough cores available for task {task.task_id}, {cores_found} != {task.cores_requested}")
-        # more detailed information about the coremap
-        print(self.coremap)
         return -1
 
     def reap_task(self, task):
         assert self.coremap is not None
+        if task.task_id in self.tasks_running:
+            self.tasks_running.remove(task.task_id)
+        else:
+            return
         for core_id in task.core_id:
             self.coremap[core_id] = 0
+        # if the task is a library task, we need to reset the worker's coremap,
+        # because functions can be retrieved later, and before that, a new library can be dispatched,
+        # its functions can be dispatched to the same worker, so both new and old functions can
+        # sit on the same worker, so we need to reset the coremap
+        if task.is_library_task:
+            self.reset_coremap()
 
     def get_worker_ip_port(self):
         return f"{self.ip}:{self.port}"
-    
+
     def get_worker_key(self):
         return f"{self.ip}:{self.port}:{self.connect_id}"
 
@@ -105,6 +113,13 @@ class WorkerInfo:
             self.coremap.setall(0)
         else:
             pass
+
+    def count_cores_used(self):
+        return self.coremap.count(1)
+
+    def reset_coremap(self):
+        self.coremap = bitarray(self.cores + 1)
+        self.coremap.setall(0)
 
     def set_gpus(self, gpus: int):
         if self.gpus and gpus != self.gpus:

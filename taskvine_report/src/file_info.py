@@ -1,5 +1,7 @@
-class TransferEvent:
-    def __init__(self, source, destination, event, file_type, cache_level):
+class TransferEvent():
+    def __init__(self, filename, source, destination, event, file_type, cache_level):
+        self.filename = filename
+
         self.source = source
         self.destination = destination
 
@@ -75,7 +77,7 @@ class TransferEvent:
         print("\n")
 
 
-class FileInfo:
+class FileInfo():
     def __init__(self, filename, size_mb, timestamp):
         self.filename = filename
         self.size_mb = size_mb
@@ -94,9 +96,9 @@ class FileInfo:
                 continue
             if transfer.time_start_stage_in > time_stage_out:
                 continue
+            # NOTE: we don't prune the source of the transfer because it might have succeeded remotely
+            # and we just haven't received the cache update yet
             if isinstance(transfer.destination, tuple) and transfer.destination == worker_entry:
-                transfer.stage_out(time_stage_out, "worker_removed")
-            if isinstance(transfer.source, tuple) and transfer.source == worker_entry:
                 transfer.stage_out(time_stage_out, "worker_removed")
 
     def add_consumer(self, consumer_task):
@@ -112,7 +114,7 @@ class FileInfo:
         self.producers.add((producer_task.task_id, producer_task.task_try_id))
 
     def add_transfer(self, source, destination, event, file_type, cache_level):
-        transfer_event = TransferEvent(source, destination, event, file_type, cache_level)
+        transfer_event = TransferEvent(self.filename, source, destination, event, file_type, cache_level)
         self.transfers.append(transfer_event)
         return transfer_event
 
