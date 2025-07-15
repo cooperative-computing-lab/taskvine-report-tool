@@ -8,14 +8,14 @@ file_concurrent_replicas_bp = Blueprint('file_concurrent_replicas', __name__, ur
 def get_file_concurrent_replicas():
     try:
         df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_file_concurrent_replicas)
-        points = extract_points_from_df(df, 'File Index', 'Max Concurrent Replicas (count)')
-        
+        points = extract_points_from_df(df, 'file_idx', 'max_simul_replicas')
+
         x_domain = extract_x_range_from_points(points)
         y_domain = extract_y_range_from_points(points)
 
         return jsonify({
             'points': downsample_points(points),
-            'file_idx_to_names': dict(zip(df['File Index'], df['File Name'])),
+            'file_idx_to_names': dict(zip(df['file_idx'], df['file_name'])),
             'x_domain': x_domain,
             'y_domain': y_domain,
             'x_tick_values': compute_linear_tick_values(x_domain),

@@ -1,22 +1,17 @@
 from taskvine_report.utils import *
 from flask import Blueprint, jsonify, current_app, request
-import pandas as pd
 
 worker_storage_consumption_bp = Blueprint(
     'worker_storage_consumption', __name__, url_prefix='/api'
 )
 
 def aggregate_storage_data(df):
-    df_indexed = df.set_index('Time (s)')
-    
+    df_indexed = df.set_index('time')
     df_filled = df_indexed.fillna(method='ffill').fillna(0)
-    
     aggregated_series = df_filled.sum(axis=1)
-
     aggregated = aggregated_series.reset_index()
-    aggregated.columns = ['Time (s)', 'Total Storage']
-    
-    return extract_points_from_df(aggregated, 'Time (s)', 'Total Storage')
+    aggregated.columns = ['time', 'total_storage']
+    return extract_points_from_df(aggregated, 'time', 'total_storage')
 
 @worker_storage_consumption_bp.route('/worker-storage-consumption')
 @check_and_reload_data()
@@ -46,7 +41,7 @@ def get_worker_storage_consumption():
                 'y_tick_formatter': d3_size_formatter(unit),
             })
         else:
-            storage_data = extract_series_points_dict(df, 'Time (s)')
+            storage_data = extract_series_points_dict(df, 'time')
             storage_data, size_unit = scale_storage_series_points(storage_data)
             y_domain = extract_y_range_from_series_points(storage_data)
             

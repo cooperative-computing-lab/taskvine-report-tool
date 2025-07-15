@@ -8,9 +8,10 @@ file_sizes_bp = Blueprint('file_sizes', __name__, url_prefix='/api')
 def get_file_sizes():
     try:
         df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_sizes)
-        # find the size column by looking for a column that starts with 'Size ('
-        size_col = next(col for col in df.columns if col.startswith('Size ('))
-        points, unit = extract_size_points_from_df(df, 'File Index', size_col)
+        # find the size column by looking for a column that ends with unit suffix
+        size_col = next(col for col in df.columns if col.startswith('file_size_'))
+        unit = size_col.split('_')[-1].upper()  # Extract unit from column name (e.g., 'file_size_mb' -> 'MB')
+        points = extract_points_from_df(df, 'file_idx', size_col)
         x_domain = extract_x_range_from_points(points)
         y_domain = extract_y_range_from_points(points)
 
@@ -22,7 +23,7 @@ def get_file_sizes():
             'y_tick_values': compute_linear_tick_values(y_domain),
             'x_tick_formatter': d3_int_formatter(),
             'y_tick_formatter': d3_size_formatter(unit),
-            'file_idx_to_names': dict(zip(df['File Index'], df['File Name'])),
+            'file_idx_to_names': dict(zip(df['file_idx'], df['file_name'])),
         })
 
     except Exception as e:

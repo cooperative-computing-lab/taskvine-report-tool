@@ -82,6 +82,7 @@ class FileInfo():
         self.filename = filename
         self.size_mb = size_mb
         self.created_time = timestamp
+        self.file_idx = None
 
         self.transfers = []
 

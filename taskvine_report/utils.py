@@ -6,6 +6,8 @@ import hashlib
 import math
 import random
 import bisect
+from rich.progress import Progress, SpinnerColumn, TimeElapsedColumn, TimeRemainingColumn, MofNCompleteColumn, BarColumn
+import polars as pl
 import numpy as np
 import functools
 import json
@@ -151,12 +153,8 @@ def downsample_points(points, target_point_count=10000, y_index=1):
         return []
 
     tuple_len = len(points[0])
-    if tuple_len < 2:
-        raise ValueError("Each point must have at least 2 elements (x, y)")
-    if tuple_len > 2 and y_index is None:
-        raise ValueError("y_index must be specified when tuple length > 2")
-    if y_index >= tuple_len:
-        raise IndexError(f"y_index {y_index} is out of bounds for tuple of length {tuple_len}")
+    if y_index is None or y_index >= tuple_len:
+        raise ValueError("Invalid y_index")
 
     if len(points) <= target_point_count:
         return points
@@ -165,24 +163,20 @@ def downsample_points(points, target_point_count=10000, y_index=1):
     if len(points) > MIN_POINT_COUNT and target_point_count < MIN_POINT_COUNT:
         target_point_count = MIN_POINT_COUNT
 
-    valid_points = [(i, p) for i, p in enumerate(points) if p[y_index] is not None]
-    if not valid_points:
+    non_null_points = [(i, p) for i, p in enumerate(points) if p[y_index] is not None]
+    if not non_null_points:
         return points[:target_point_count]
 
-    # Find the best start and end points (minimum y value if multiple points at same x)
-    x_index = 0  # x is always at index 0
-    
-    # Find best start point (minimum y value among points with same x as first point)
+    x_index = 0
     start_x = points[0][x_index]
     start_candidates = [(i, p) for i, p in enumerate(points) if p[x_index] == start_x and p[y_index] is not None]
     start_idx = min(start_candidates, key=lambda x: x[1][y_index])[0] if start_candidates else 0
 
-    # Find best end point (minimum y value among points with same x as last point)
     end_x = points[-1][x_index]
     end_candidates = [(i, p) for i, p in enumerate(points) if p[x_index] == end_x and p[y_index] is not None]
     end_idx = min(end_candidates, key=lambda x: x[1][y_index])[0] if end_candidates else len(points) - 1
-    
-    y_max_idx = max(valid_points, key=lambda x: x[1][y_index])[0]
+
+    y_max_idx = max(non_null_points, key=lambda x: x[1][y_index])[0]
     keep_indices = {start_idx, end_idx, y_max_idx}
 
     remaining = target_point_count - len(keep_indices)
@@ -211,16 +205,34 @@ def downsample_points(points, target_point_count=10000, y_index=1):
                 sampled = [available[int(i * step)] for i in range(n)]
             keep_indices.update(sampled)
 
+    if len(keep_indices) < target_point_count:
+        needed = target_point_count - len(keep_indices)
+        available = [i for i in range(len(points)) if i not in keep_indices]
+        if needed <= len(available):
+            step = len(available) / needed
+            sampled = [available[int(i * step)] for i in range(needed)]
+        else:
+            sampled = available
+        keep_indices.update(sampled)
+
     result_points = [points[i] for i in sorted(keep_indices)]
     return _apply_start_point_zero_condition(result_points, y_index)
+
 
 def downsample_series_points(series_points_dict, y_index=1):
     # Quick check: if all series are already small, return as-is
     if all(len(points) <= 10000 for points in series_points_dict.values()):
         return series_points_dict
-    
+
     return {
-        series: downsample_points(points, y_index=y_index)
+        series: downsample_points(
+            [
+                tuple(p[i] if i != y_index else float(p[i]) if isinstance(p[i], str) else p[i]
+                      for i in range(len(p)))
+                for p in points
+            ],
+            y_index=y_index
+        )
         for series, points in series_points_dict.items()
     }
 
@@ -670,6 +682,31 @@ def downsample_df(df, target_count=10000, y_col=None, y_index=None):
             
     return result
 
+def downsample_df_polars(df: pl.DataFrame, target_count=10000, y_col=None, y_index=None) -> pl.DataFrame:
+    if not target_count or target_count <= 0:
+        return df
+    if df.height <= target_count:
+        return df
+
+    if y_col is not None:
+        y_index = df.columns.index(y_col)
+    elif y_index is None:
+        y_index = 1
+
+    arr = np.array([row for row in df.iter_rows()], dtype=object)
+
+    downsampled_arr = downsample_np_rows(arr, target_count=target_count, value_col=y_index)
+
+    new_cols = []
+    for i, name in enumerate(df.columns):
+        orig_dtype = df.schema[name]
+        try:
+            col = pl.Series(name, downsampled_arr[:, i]).cast(orig_dtype)
+        except:
+            col = pl.Series(name, downsampled_arr[:, i])
+        new_cols.append(col)
+    return pl.DataFrame(new_cols)
+
 def count_elements_after(item, lst):
     try:
         idx = lst.index(item)
@@ -679,3 +716,22 @@ def count_elements_after(item, lst):
 
 def string_contains_any(text, substrings):
     return any(s in text for s in substrings)
+
+def write_df_to_csv(df, csv_file_path, **kwargs):
+    if hasattr(df, "to_pandas"):
+        df = df.to_pandas()
+    if "index" not in kwargs:
+        kwargs["index"] = False
+    df.to_csv(csv_file_path, **kwargs)
+
+def create_progress_bar():
+    return Progress(
+        SpinnerColumn(),
+        "[progress.description]{task.description}",
+        BarColumn(),
+        MofNCompleteColumn(),
+        "[progress.percentage]{task.percentage:>3.0f}%",
+        TimeElapsedColumn(),
+        TimeRemainingColumn(),
+        refresh_per_second=10,
+    )

@@ -8,12 +8,11 @@ from .manager_info import ManagerInfo
 import os
 import math
 import pandas as pd
+import polars as pl
 import traceback
 from functools import lru_cache
 from datetime import datetime
 import numpy as np
-import time
-from rich.progress import Progress, SpinnerColumn, TimeElapsedColumn, TimeRemainingColumn, MofNCompleteColumn, BarColumn
 from collections import defaultdict
 import cloudpickle
 from datetime import timezone, timedelta
@@ -248,21 +247,6 @@ class DataParser:
 
         ]
         self.debug_handler_profiling = defaultdict(lambda: {"hits": 0})
-
-    def _create_progress_bar(self):
-        return Progress(
-            SpinnerColumn(),
-            "[progress.description]{task.description}",
-            BarColumn(),
-            MofNCompleteColumn(),
-            "[progress.percentage]{task.percentage:>3.0f}%",
-            TimeElapsedColumn(),
-            TimeRemainingColumn(),
-            refresh_per_second=10,
-        )
-
-    def write_df_to_csv(self, df, csv_file_path, **kwargs):
-        df.to_csv(csv_file_path, **kwargs)
 
     def get_current_worker_by_ip_port(self, worker_ip: str, worker_port: int):
         connect_id = self.current_worker_connect_id[(worker_ip, worker_port)]
@@ -1045,7 +1029,7 @@ class DataParser:
         unit, scale = get_size_unit_and_scale(debug_file_size_mb)
         debug_file_size_str = f"{floor_decimal(debug_file_size_mb * scale, 2)} {unit}"
 
-        with self._create_progress_bar() as progress:
+        with create_progress_bar() as progress:
             task_id = progress.add_task(f"[green]Parsing debug ({debug_file_size_str})", total=total_lines)
             pbar_update_interval = 100
             resort_debug_handlers_interval = 10000
@@ -1256,10 +1240,10 @@ class DataParser:
             'subgraph_id', 'task_id', 'task_execution_time', 'failure_count', 'recovery_count', 'input_files', 'output_files'
         ])
         df = df.sort_values(['subgraph_id', 'task_id'])
-        self.write_df_to_csv(df, self.csv_file_task_subgraphs, index=False)
+        write_df_to_csv(df, self.csv_file_task_subgraphs, index=False)
 
     def checkpoint_pkl_files(self):
-        with self._create_progress_bar() as progress:
+        with create_progress_bar() as progress:
             pbar = progress.add_task(f"[green]Checkpointing pkl files", total=5)
 
             progress.update(pbar, description=f"[green]Checkpointing workers.pkl")
@@ -1331,8 +1315,13 @@ class DataParser:
                         print(f"Warning: worker {worker.ip} has a disconnected time that is smaller than the connected time")
                     else:
                         worker.time_disconnected[i] = time_connected
+
         # post-processing for files
-        for file in self.files.values():
+        # filter files with no producers
+        self.files = {k: v for k, v in self.files.items() if len(v.producers) > 0}
+        # append file_idx
+        for idx, file in enumerate(self.files.values(), start=1):
+            file.file_idx = idx
             for transfer in file.transfers:
                 if transfer.time_stage_in is None:
                     pass
@@ -1348,11 +1337,11 @@ class DataParser:
                 'MIN_TIME': [self.MIN_TIME],
                 'MAX_TIME': [self.MAX_TIME]
             })
-            self.write_df_to_csv(df, self.time_domain_file, index=False)
+            write_df_to_csv(df, self.time_domain_file, index=False)
 
     def load_pkl_files(self):
         # manually load every thing like checkpoint_pkl_files, rathan than using self.pkl_files in a loop
-        with self._create_progress_bar() as progress:
+        with create_progress_bar() as progress:
             pbar = progress.add_task(f"[green]Loading pkl files", total=5)
 
             progress.update(pbar, description=f"[green]Loading workers.pkl")
@@ -1387,7 +1376,7 @@ class DataParser:
         if not self.MIN_TIME:
             return
 
-        with self._create_progress_bar() as progress:
+        with create_progress_bar() as progress:
             task_id = progress.add_task("[green]Generating plotting data", total=5)
 
             self.generate_file_metrics()
@@ -1503,7 +1492,7 @@ class DataParser:
                     row[c] = column_data[c].get(t, float('nan'))
                 rows.append(row)
 
-            self.write_df_to_csv(pd.DataFrame(rows), csv_file, index=False)
+            write_df_to_csv(pl.DataFrame(rows), csv_file, index=False)
 
         # Write CSV files
         
@@ -1511,7 +1500,7 @@ class DataParser:
         if worker_lifetime_entries:
             worker_lifetime_entries.sort(key=lambda x: x[0])
             rows = [(worker_id, worker_ip_port, duration) for _, duration, worker_id, worker_ip_port in worker_lifetime_entries]
-            self.write_df_to_csv(pd.DataFrame(rows, columns=['ID', 'Worker IP Port', 'LifeTime (s)']), self.csv_file_worker_lifetime, index=False)
+            write_df_to_csv(pl.DataFrame(rows, schema=['ID', 'Worker IP Port', 'LifeTime (s)'], orient="row"), self.csv_file_worker_lifetime, index=False)
         
         # 2. Worker Concurrency
         initial_active = sum(1 for t in connect_events if t <= 0)
@@ -1534,10 +1523,10 @@ class DataParser:
                 last_active = df.iloc[-1]["active"]
                 new_row = pd.DataFrame({"time": [max_time], "delta": [0], "active": [last_active]})
                 df = pd.concat([df, new_row], ignore_index=True)
-            
+
             export_df = df[['time', 'active']].rename(columns={'time': 'Time (s)', 'active': 'Active Workers (count)'})
             export_df = downsample_df(export_df, y_col='Active Workers (count)', target_count=self.target_count)
-            self.write_df_to_csv(export_df, self.csv_file_worker_concurrency, index=False)
+            write_df_to_csv(export_df, self.csv_file_worker_concurrency, index=False)
         
         # 3. Worker Executing Tasks
         generate_worker_time_series_csv(executing_task_events, self.csv_file_worker_executing_tasks)
@@ -1613,8 +1602,8 @@ class DataParser:
         time_df.fillna(0, inplace=True)
         if len(time_df) > 0:
             time_df = downsample_df(time_df, y_index=1, target_count=self.target_count)  # Use second column as y-value
-        self.write_df_to_csv(time_df, self.csv_file_task_concurrency, index=False)
-
+        write_df_to_csv(time_df, self.csv_file_task_concurrency, index=False)
+    
         recovery_phases = defaultdict(list)
         for task in sorted_tasks:
             if not task.is_recovery_task:
@@ -1670,7 +1659,7 @@ class DataParser:
         time_df.fillna(0, inplace=True)
         if len(time_df) > 0:
             time_df = downsample_df(time_df, y_index=1, target_count=self.target_count)  # Use second column as y-value
-        self.write_df_to_csv(time_df, self.csv_file_task_concurrency_recovery_only, index=False)
+        write_df_to_csv(time_df, self.csv_file_task_concurrency_recovery_only, index=False)
 
     def generate_task_metrics(self):
         filtered_tasks = [task for task in self.tasks.values() if not task.is_library_task]
@@ -1748,9 +1737,9 @@ class DataParser:
 
         def write_csv(data, cols, path):
             if data:
-                df = pd.DataFrame(data, columns=cols)
-                df = downsample_df(df, y_index=1, target_count=self.target_count)
-                self.write_df_to_csv(df, path, index=False)
+                df = pl.DataFrame(data, schema=cols, orient="row")
+                df = downsample_df_polars(df, y_index=1, target_count=self.target_count)
+                write_df_to_csv(df, path, index=False)
 
         write_csv(execution_time_rows, ['Global Index', 'Execution Time', 'Task ID', 'Task Try ID', 'Ran to Completion'], self.csv_file_task_execution_time)
         write_csv(response_time_rows, ['Global Index', 'Response Time', 'Task ID', 'Task Try ID', 'Was Dispatched'], self.csv_file_task_response_time)
@@ -1762,24 +1751,20 @@ class DataParser:
             finish_times.sort()
             n = len(finish_times)
             percentiles = [(p, floor_decimal(finish_times[min(n - 1, max(0, math.ceil(p / 100 * n) - 1))], 2)) for p in range(1, 101)]
-            df = pd.DataFrame(percentiles, columns=['Percentile', 'Completion Time'])
-            df = downsample_df(df, y_col='Completion Time', target_count=self.target_count)
-            self.write_df_to_csv(df, self.csv_file_task_completion_percentiles, index=False)
-
-
+            write_csv(percentiles, ['Percentile', 'Completion Time'], self.csv_file_task_completion_percentiles)
 
     def generate_file_metrics(self):
         base_time = self.MIN_TIME
 
-        rows_concurrent = []
-        events_created = []
-        events_transferred = []
-        rows_retention = []
+        rows_file_concurrent_replicas = []
+        rows_file_created_size = []
+        rows_file_transferred_size = []
+        rows_file_retention_time = []
         rows_sizes = []
         max_size = 0
 
         all_worker_storage = defaultdict(list)
-        worker_transfer_events = {
+        rows_worker_transfer_events = {
             'incoming': defaultdict(list),
             'outgoing': defaultdict(list)
         }
@@ -1794,20 +1779,20 @@ class DataParser:
                 if t.time_stage_in and t.time_stage_out
             ]
             max_simul = max_interval_overlap(intervals)
-            rows_concurrent.append((file.filename, max_simul, file.created_time))
+            rows_file_concurrent_replicas.append((file.file_idx, file.filename, max_simul, file.created_time))
 
             stage_times = np.array([t.time_stage_in for t in file.transfers if t.time_stage_in is not None])
             if stage_times.size > 0:
                 t = np.floor((stage_times.min() - base_time) * 100) / 100
-                events_created.append((t, file.size_mb))
+                rows_file_created_size.append((t, file.size_mb))
 
             for transfer in file.transfers:
                 if transfer.time_stage_in:
                     t = floor_decimal(float(transfer.time_stage_in - base_time), 2)
-                    events_transferred.append((t, file.size_mb))
+                    rows_file_transferred_size.append((t, file.size_mb))
                 elif transfer.time_stage_out:
                     t = floor_decimal(float(transfer.time_stage_out - base_time), 2)
-                    events_transferred.append((t, file.size_mb))
+                    rows_file_transferred_size.append((t, file.size_mb))
 
                 dest = transfer.destination
                 if isinstance(dest, tuple) and transfer.time_stage_in:
@@ -1827,111 +1812,141 @@ class DataParser:
                     elif transfer.time_stage_out:
                         t1 = floor_decimal(transfer.time_stage_out - base_time, 2)
                     if t1 is not None:
-                        worker_transfer_events[role][wid].extend([(t0, 1), (t1, -1)])
+                        rows_worker_transfer_events[role][wid].extend([(t0, 1), (t1, -1)])
 
             times = np.array([t.time_start_stage_in for t in file.transfers if t.time_start_stage_in is not None])
             first_stage_in = times.min() if times.size > 0 else float('inf')
             last_stage_out = max((t.time_stage_out for t in file.transfers if t.time_stage_out), default=float('-inf'))
             if first_stage_in != float('inf') and last_stage_out != float('-inf'):
                 retention_time = floor_decimal(last_stage_out - first_stage_in, 2)
-                rows_retention.append((file.filename, retention_time, file.created_time))
+                rows_file_retention_time.append((file.file_idx, file.filename, retention_time, file.created_time))
 
             fname = file.filename
             size = file.size_mb
             if size is not None:
                 created_time = min((t.time_start_stage_in for t in file.transfers if t.time_start_stage_in), default=float('inf'))
                 if created_time != float('inf'):
-                    rows_sizes.append((fname, size, created_time))
+                    rows_sizes.append((file.file_idx, fname, size, created_time))
                     max_size = max(max_size, size)
 
-        # --- output ---
+        def _process_rows_file_concurrent_replicas(rows_file_concurrent_replicas, target_count):
+            if not rows_file_concurrent_replicas:
+                return None
+            df = pl.DataFrame(rows_file_concurrent_replicas, schema=['file_idx', 'file_name', 'max_simul_replicas', 'created_time'], orient="row")
+            downsampled_df = downsample_df_polars(
+                df.select(['file_idx', 'max_simul_replicas']),
+                y_col='max_simul_replicas',
+                target_count=target_count
+            )
+            df = downsampled_df.join(
+                df.select(['file_idx', 'file_name']),
+                on='file_idx',
+                how='left'
+            )
+            return df.select(['file_idx', 'file_name', 'max_simul_replicas'])
+        write_df_to_csv(_process_rows_file_concurrent_replicas(rows_file_concurrent_replicas, self.target_count), self.csv_file_file_concurrent_replicas)
 
-        def write_df(df, columns, file):
-            df.columns = columns
-            self.write_df_to_csv(df, file, index=False)
+        def _process_rows_file_created_size(rows_file_created_size, target_count):
+            if not rows_file_created_size:
+                return None
+            df = pl.DataFrame(rows_file_created_size, schema=['time', 'delta_size_mb'], orient="row")
+            df = df.with_columns(pl.col('time').round(2))
+            df = df.group_by('time').agg(pl.col('delta_size_mb').sum()).sort('time')
+            df = df.with_columns(pl.col('delta_size_mb').cum_sum().clip(0).alias('cumulative_size_mb'))
+            downsampled_df = downsample_df_polars(
+                df.select(['time', 'cumulative_size_mb']),
+                y_col='cumulative_size_mb',
+                target_count=target_count
+            )
+            return downsampled_df.select(['time', 'cumulative_size_mb'])
+        write_df_to_csv(_process_rows_file_created_size(rows_file_created_size, self.target_count), self.csv_file_file_created_size)
 
-        if rows_concurrent:
-            df = pd.DataFrame(rows_concurrent, columns=['file_name', 'max_simul_replicas', 'created_time'])
-            df = df.sort_values(by='created_time')
-            df.insert(0, 'file_idx', range(1, len(df) + 1))
-            downsampled_df = downsample_df(df[['file_idx', 'max_simul_replicas']], y_col='max_simul_replicas', target_count=self.target_count).copy()
-            downsampled_df['file_idx'] = downsampled_df['file_idx'].astype(int)
-            idx_to_name = dict(zip(df['file_idx'], df['file_name']))
-            downsampled_df['file_name'] = downsampled_df['file_idx'].map(idx_to_name).fillna('')
-            df = downsampled_df[['file_idx', 'file_name', 'max_simul_replicas']]
-            write_df(df, ['File Index', 'File Name', 'Max Concurrent Replicas (count)'], self.csv_file_file_concurrent_replicas)
+        def _process_rows_file_transferred_size(rows_file_transferred_size, target_count):
+            if not rows_file_transferred_size:
+                return None
+            df = pl.DataFrame(rows_file_transferred_size, schema=['time', 'delta_size_mb'], orient="row")
+            df = df.with_columns(pl.col('time').round(2))
+            df = df.group_by('time').agg(pl.col('delta_size_mb').sum()).sort('time')
+            df = df.with_columns(pl.col('delta_size_mb').cum_sum().clip(0).alias('cumulative_size_mb'))
+            downsampled_df = downsample_df_polars(
+                df.select(['time', 'cumulative_size_mb']),
+                y_col='cumulative_size_mb',
+                target_count=target_count
+            )
+            return downsampled_df.select(['time', 'cumulative_size_mb'])
+        write_df_to_csv(_process_rows_file_transferred_size(rows_file_transferred_size, self.target_count), self.csv_file_file_transferred_size)
 
-        if events_created:
-            df = pd.DataFrame(events_created, columns=['time', 'delta'])
-            df['time'] = df['time'].apply(lambda x: floor_decimal(x, 2))
-            df = df.groupby('time', as_index=False)['delta'].sum()
-            df['cumulative'] = df['delta'].cumsum().clip(lower=0)
-            df = downsample_df(df[['time', 'cumulative']], y_col='cumulative', target_count=self.target_count)
-            df.insert(0, 'file_idx', range(1, len(df) + 1))
-            df = df[['file_idx', 'time', 'cumulative']]
-            write_df(df, ['File Index', 'Time (s)', 'Cumulative Size (MB)'], self.csv_file_file_created_size)
-
-        if events_transferred:
-            arr = np.array(events_transferred)
-            arr[:, 0] = np.floor(arr[:, 0] * 100) / 100
-            times, idx = np.unique(arr[:, 0], return_inverse=True)
-            delta_sum = np.zeros_like(times)
-            np.add.at(delta_sum, idx, arr[:, 1])
-            cumulative = np.clip(np.cumsum(delta_sum), 0, None)
-            result = pd.DataFrame({'Time (s)': times, 'Cumulative Size (MB)': cumulative})
-            result = downsample_df(result, y_col='Cumulative Size (MB)', target_count=self.target_count)
-            self.write_df_to_csv(result, self.csv_file_file_transferred_size, index=False)
-
-        if rows_retention:
-            df = pd.DataFrame(rows_retention, columns=['file_name', 'retention_time', 'created_time'])
-            df = df.sort_values(by='created_time')
-            df.insert(0, 'file_idx', range(1, len(df) + 1))
-            downsampled_df = downsample_df(df[['file_idx', 'retention_time']], y_col='retention_time', target_count=self.target_count).copy()
-            downsampled_df['file_idx'] = downsampled_df['file_idx'].astype(int)
-            idx_to_name = dict(zip(df['file_idx'], df['file_name']))
-            downsampled_df['file_name'] = downsampled_df['file_idx'].map(idx_to_name).fillna('')
-            df = downsampled_df[['file_idx', 'file_name', 'retention_time']]
-            write_df(df, ['File Index', 'File Name', 'Retention Time (s)'], self.csv_file_retention_time)
-
-        if rows_sizes:
-            df = pd.DataFrame(rows_sizes, columns=['file_name', 'file_size', 'created_time'])
-            df = df.sort_values(by='created_time')
-            df.insert(0, 'file_idx', range(1, len(df) + 1))
+        def _process_rows_file_retention_time(rows_file_retention_time, target_count):
+            if not rows_file_retention_time:
+                return None
+            df = pl.DataFrame(rows_file_retention_time, schema=['file_idx', 'file_name', 'retention_time', 'created_time'], orient="row")
+            downsampled_df = downsample_df_polars(
+                df.select(['file_idx', 'retention_time']),
+                y_col='retention_time',
+                target_count=target_count
+            )
+            df = downsampled_df.join(
+                df.select(['file_idx', 'file_name']),
+                on='file_idx',
+                how='left'
+            )
+            return df.select(['file_idx', 'file_name', 'retention_time'])
+        write_df_to_csv(_process_rows_file_retention_time(rows_file_retention_time, self.target_count), self.csv_file_retention_time)
+        
+        def _process_rows_file_sizes(rows_sizes, target_count):
+            if not rows_sizes:
+                return None
+            df = pl.DataFrame(rows_sizes, schema=['file_idx', 'file_name', 'file_size', 'created_time'], orient="row")
+            downsampled_df = downsample_df_polars(
+                df.select(['file_idx', 'file_size']),
+                y_col='file_size',
+                target_count=target_count
+            )
+            df = downsampled_df.join(
+                df.select(['file_idx', 'file_name']),
+                on='file_idx',
+                how='left'
+            )
+            max_size = df['file_size'].max()
             unit, scale = get_size_unit_and_scale(max_size)
-            df['file_size_scaled'] = df['file_size'] * scale
-            downsampled_df = downsample_df(df[['file_idx', 'file_size_scaled']], y_col='file_size_scaled', target_count=self.target_count).copy()
-            downsampled_df['file_idx'] = downsampled_df['file_idx'].astype(int)
-            idx_to_name = dict(zip(df['file_idx'], df['file_name']))
-            downsampled_df['file_name'] = downsampled_df['file_idx'].map(idx_to_name).fillna('')
-            df = downsampled_df[['file_idx', 'file_name', 'file_size_scaled']]
-            write_df(df, ['File Index', 'File Name', f'Size ({unit})'], self.csv_file_sizes)
+            df = df.with_columns((pl.col('file_size') * scale).alias(f'file_size_{unit.lower()}'))
+            return df.select(['file_idx', 'file_name', f'file_size_{unit.lower()}'])
+        write_df_to_csv(_process_rows_file_sizes(rows_sizes, self.target_count), self.csv_file_sizes)
 
-        def write_worker_transfers_to_csv(events_dict, target_file):
+        def _process_rows_worker_transfers(rows_worker_transfer_events, target_count):
+            if not rows_worker_transfer_events:
+                return None
             col_data = {}
-            for wid, events in events_dict.items():
+            all_times = set()
+            for wid, events in rows_worker_transfer_events.items():
                 if not events:
                     continue
-                arr = np.array(events)
-                arr = arr[np.argsort(arr[:, 0])]
+                arr = np.asarray(events, dtype=np.float64)
+                arr = arr[arr[:, 0].argsort()]
                 times, idx = np.unique(arr[:, 0], return_inverse=True)
-                delta_sum = np.zeros_like(times)
-                np.add.at(delta_sum, idx, arr[:, 1])
-                cumulative = np.clip(np.cumsum(delta_sum), 0, None)
-                temp_df = pd.DataFrame({'time': times, 'cumulative': cumulative})
-                downsampled_df = downsample_df(temp_df, y_col='cumulative', target_count=self.target_count)
+                delta = np.bincount(idx, weights=arr[:, 1], minlength=len(times))
+                cumulative = np.clip(np.cumsum(delta), 0, None)
+                df = pl.DataFrame({'time': times, 'cumulative': cumulative})
+                if df.height > target_count:
+                    df = downsample_df_polars(df, y_col='cumulative', target_count=target_count)
                 key = f"{wid[0]}:{wid[1]}:{wid[2]}"
-                col_data[key] = {t: v for t, v in downsampled_df.values}
+                col_data[key] = {float(row[0]): float(row[1]) for row in df.iter_rows()}
+                all_times.update(col_data[key].keys())
             if not col_data:
-                return
-            df = pd.DataFrame.from_dict(col_data, orient='columns')
-            df = df.sort_index().reset_index()
-            df.rename(columns={'index': 'Time (s)'}, inplace=True)
-            self.write_df_to_csv(df, target_file, index=False)
+                return None
+            sorted_times = sorted(all_times)
+            out_df = pl.DataFrame({'time': sorted_times})
+            for key in sorted(col_data):
+                values = [col_data[key].get(t, None) for t in sorted_times]
+                out_df = out_df.with_columns(pl.Series(name=key, values=values))
+            return out_df
+        write_df_to_csv(_process_rows_worker_transfers(rows_worker_transfer_events['incoming'], self.target_count), self.csv_file_worker_incoming_transfers)
+        write_df_to_csv(_process_rows_worker_transfers(rows_worker_transfer_events['outgoing'], self.target_count), self.csv_file_worker_outgoing_transfers)
 
-        def write_worker_storage_consumption_to_csv(storage_dict, target_file, percentage=False):
-            all_times = set()
+        def _process_rows_worker_storage_consumption(rows_worker_storage_consumption, target_count, workers=None, percentage=False):
             col_data = {}
-            for wid, events in storage_dict.items():
+            all_times = set()
+            for wid, events in rows_worker_storage_consumption.items():
                 arr = np.asarray(events, dtype=np.float64)
                 if arr.shape[0] == 0:
                     continue
@@ -1939,29 +1954,27 @@ class DataParser:
                 times, idx = np.unique(arr[:, 0], return_inverse=True)
                 delta = np.bincount(idx, weights=arr[:, 1], minlength=len(times))
                 cumulative = np.clip(np.cumsum(delta), 0, None)
-                if percentage:
-                    worker = self.workers.get(wid)
+                if percentage and workers is not None:
+                    worker = workers.get(wid)
                     if not worker or worker.disk_mb <= 0:
                         continue
                     cumulative = cumulative / worker.disk_mb * 100
-                temp_df = pd.DataFrame({'time': times, 'cumulative': cumulative})
-                downsampled_df = downsample_df(temp_df, y_col='cumulative', target_count=self.target_count)
+                df = pl.DataFrame({'time': times, 'cumulative': cumulative})
+                if df.height > target_count:
+                    df = downsample_df_polars(df, y_col='cumulative', target_count=target_count)
                 key = f"{wid[0]}:{wid[1]}:{wid[2]}"
-                col_data[key] = {t: v for t, v in downsampled_df.values}
+                col_data[key] = {float(row[0]): float(row[1]) for row in df.iter_rows()}
                 all_times.update(col_data[key].keys())
             if not col_data:
-                return
-            sorted_times = np.array(sorted(all_times), dtype=np.float64)
-            result = {'Time (s)': sorted_times}
-            for key, time_val_map in col_data.items():
-                result[key] = np.array([time_val_map.get(t, np.nan) for t in sorted_times])
-            df = pd.DataFrame(result)
-            self.write_df_to_csv(df, target_file, index=False)
-
-        write_worker_transfers_to_csv(worker_transfer_events['incoming'], self.csv_file_worker_incoming_transfers)
-        write_worker_transfers_to_csv(worker_transfer_events['outgoing'], self.csv_file_worker_outgoing_transfers)
-        write_worker_storage_consumption_to_csv(all_worker_storage, self.csv_file_worker_storage_consumption)
-        write_worker_storage_consumption_to_csv(all_worker_storage, self.csv_file_worker_storage_consumption_percentage, percentage=True)
+                return None
+            sorted_times = sorted(all_times)
+            out_df = pl.DataFrame({'time': sorted_times})
+            for key in sorted(col_data):
+                values = [col_data[key].get(t, None) for t in sorted_times]
+                out_df = out_df.with_columns(pl.Series(name=key, values=values))
+            return out_df
+        write_df_to_csv(_process_rows_worker_storage_consumption(all_worker_storage, self.target_count), self.csv_file_worker_storage_consumption)
+        write_df_to_csv(_process_rows_worker_storage_consumption(all_worker_storage, self.target_count, workers=self.workers, percentage=True), self.csv_file_worker_storage_consumption_percentage)
 
     def generate_task_execution_details_metrics(self):
         base_time = self.MIN_TIME
@@ -2110,7 +2123,7 @@ class DataParser:
                     df[col] = None
             df = df[columns]
             
-            self.write_df_to_csv(df, self.csv_file_task_execution_details, index=False)
+            write_df_to_csv(df, self.csv_file_task_execution_details, index=False)
 
     def generate_metadata(self):
         metadata = {}
