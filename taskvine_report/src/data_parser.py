@@ -1031,12 +1031,10 @@ class DataParser:
 
         with create_progress_bar() as progress:
             task_id = progress.add_task(f"[green]Parsing debug ({debug_file_size_str})", total=total_lines)
-            pbar_update_interval = 100
             resort_debug_handlers_interval = 10000
             with open(debug_file_to_use, 'rb') as file:
                 for i, raw_line in enumerate(file):
-                    if i % pbar_update_interval == 0:   # minimize the progress bar update frequency
-                        progress.update(task_id, advance=pbar_update_interval)
+                    progress.update(task_id, advance=1)
                     if i % resort_debug_handlers_interval == 0:
                         self._resort_debug_handlers()
                     try:
@@ -1057,7 +1055,6 @@ class DataParser:
                         print(f"Error parsing line {i}: {self.debug_current_line}")
                         print(traceback.format_exc())
                         continue
-            progress.update(task_id, advance=total_lines % pbar_update_interval)
 
         if self.debug_mode:
             print("\n=== Handler Profiling Summary ===")

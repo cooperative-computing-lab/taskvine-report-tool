@@ -733,5 +733,5 @@ def create_progress_bar():
         "[progress.percentage]{task.percentage:>3.0f}%",
         TimeElapsedColumn(),
         TimeRemainingColumn(),
-        refresh_per_second=10,
+        refresh_per_second=2,
     )
