@@ -65,6 +65,9 @@ setup(
         "pytz",
         "graphviz",
         "rich",
+        "polars",
+        "numpy",
+        "pyarrow",
     ],
     extras_require={
         "dev": [
