@@ -1041,7 +1041,7 @@ class DataParser:
                         self.debug_current_line = raw_line.decode('utf-8').strip()
                         self.debug_current_parts = self.debug_current_line.strip().split(" ")
                     except UnicodeDecodeError:
-                        print(f"Error decoding line to utf-8: {raw_line}")
+                        # this sometimes happens, especially when the manager handles a null pointer
                         continue
                     try:
                         datestring = self.debug_current_parts[0] + " " + self.debug_current_parts[1]
