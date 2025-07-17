@@ -633,30 +633,30 @@ def max_interval_overlap(intervals: list[tuple[float, float]]) -> int:
     sort_idx = np.argsort(arr[:, 0], kind='stable')
     return int(np.cumsum(arr[sort_idx, 1]).max())
 
-def downsample_np_rows(arr, target_count=10000, value_col=1):
-    if len(arr) <= target_count:
+def downsample_np_rows(arr, downsample_points=10000, value_col=1):
+    if len(arr) <= downsample_points:
         return arr
     
     points = arr.tolist()
-    downsampled = downsample_points(points, target_point_count=target_count, y_index=value_col)
+    downsampled = downsample_points(points, target_point_count=downsample_points, y_index=value_col)
     return np.array(downsampled)
 
-def downsample_df(df, target_count=10000, y_col=None, y_index=None):
+def downsample_df(df, downsample_points=10000, y_col=None, y_index=None):
     """
     Downsample a DataFrame using the same logic as downsample_np_rows.
     
     Args:
         df: pandas DataFrame to downsample
-        target_count: target number of rows after downsampling
+        downsample_points: target number of rows after downsampling
         y_col: column name for y values (for preserving extremes)
         y_index: column index for y values (alternative to y_col)
         
     Returns:
         pandas DataFrame with downsampled data
     """
-    if not target_count or target_count <= 0:
+    if not downsample_points or downsample_points <= 0:
         return df
-    if len(df) <= target_count:
+    if len(df) <= downsample_points:
         return df
     
     # Determine y_index if y_col is provided
@@ -667,7 +667,7 @@ def downsample_df(df, target_count=10000, y_col=None, y_index=None):
     
     # Convert to numpy array, downsample, then back to DataFrame
     arr = df.values
-    downsampled_arr = downsample_np_rows(arr, target_count=target_count, value_col=y_index)
+    downsampled_arr = downsample_np_rows(arr, downsample_points=downsample_points, value_col=y_index)
     
     # Create new DataFrame with same columns and preserve dtypes
     result = pd.DataFrame(downsampled_arr, columns=df.columns)
@@ -682,10 +682,10 @@ def downsample_df(df, target_count=10000, y_col=None, y_index=None):
             
     return result
 
-def downsample_df_polars(df: pl.DataFrame, target_count=10000, y_col=None, y_index=None) -> pl.DataFrame:
-    if not target_count or target_count <= 0:
+def downsample_df_polars(df: pl.DataFrame, downsample_points=10000, y_col=None, y_index=None) -> pl.DataFrame:
+    if not downsample_points or downsample_points <= 0:
         return df
-    if df.height <= target_count:
+    if df.height <= downsample_points:
         return df
 
     if y_col is not None:
@@ -695,7 +695,7 @@ def downsample_df_polars(df: pl.DataFrame, target_count=10000, y_col=None, y_ind
 
     arr = np.array([row for row in df.iter_rows()], dtype=object)
 
-    downsampled_arr = downsample_np_rows(arr, target_count=target_count, value_col=y_index)
+    downsampled_arr = downsample_np_rows(arr, downsample_points=downsample_points, value_col=y_index)
 
     new_cols = []
     for i, name in enumerate(df.columns):

@@ -112,6 +112,20 @@ def main():
         help='Enable downsampling (default: 1)'
     )
 
+    parser.add_argument(
+        '--downsample-tasks',
+        type=int,
+        default=100000,
+        help='Downsample tasks (default: 100000)'
+    )
+
+    parser.add_argument(
+        '--downsample-points',
+        type=int,
+        default=10000,
+        help='Downsample points (default: 10000)'
+    )
+
     args = parser.parse_args()
 
     check_pip_updates()
@@ -141,7 +155,7 @@ def main():
         for m in missing:
             print(f"  - {m}")
         sys.exit(1)
-    
+
     if no_vine_logs:
         print("⚠️  The following directories do not contain 'vine-logs' subdirectory:")
         for m in no_vine_logs:
@@ -166,7 +180,9 @@ def main():
         try:
             data_parser = DataParser(template, debug_mode=args.debug, 
                                      enablee_checkpoint_pkl_files=args.checkpoint_pkl_files, 
-                                     downsampling=args.downsampling > 0
+                                     downsampling=args.downsampling > 0,
+                                     downsample_tasks=args.downsample_tasks,
+                                     downsample_points=args.downsample_points
                                     )
             if args.load_pkl_files:
                 data_parser.load_pkl_files()
