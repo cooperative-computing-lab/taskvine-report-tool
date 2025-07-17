@@ -1739,7 +1739,9 @@ class DataParser:
             if data:
                 df = pl.DataFrame(data, schema=cols, orient="row")
                 df = downsample_df_polars(df, y_index=1, target_count=self.target_count)
-                write_df_to_csv(df, path, index=False)
+            else:
+                df = pl.DataFrame({col: [] for col in cols})
+            write_df_to_csv(df, path, index=False)
 
         write_csv(execution_time_rows, ['Global Index', 'Execution Time', 'Task ID', 'Task Try ID', 'Ran to Completion'], self.csv_file_task_execution_time)
         write_csv(response_time_rows, ['Global Index', 'Response Time', 'Task ID', 'Task Try ID', 'Was Dispatched'], self.csv_file_task_response_time)
@@ -1831,7 +1833,11 @@ class DataParser:
 
         def _process_rows_file_concurrent_replicas(rows_file_concurrent_replicas, target_count):
             if not rows_file_concurrent_replicas:
-                return None
+                return pl.DataFrame({
+                    'file_idx': [],
+                    'file_name': [],
+                    'max_simul_replicas': [],
+                })
             df = pl.DataFrame(rows_file_concurrent_replicas, schema=['file_idx', 'file_name', 'max_simul_replicas', 'created_time'], orient="row")
             downsampled_df = downsample_df_polars(
                 df.select(['file_idx', 'max_simul_replicas']),
@@ -1848,7 +1854,10 @@ class DataParser:
 
         def _process_rows_file_created_size(rows_file_created_size, target_count):
             if not rows_file_created_size:
-                return None
+                return pl.DataFrame({
+                    'time': [],
+                    'delta_size_mb': [],
+                })
             df = pl.DataFrame(rows_file_created_size, schema=['time', 'delta_size_mb'], orient="row")
             df = df.with_columns(pl.col('time').round(2))
             df = df.group_by('time').agg(pl.col('delta_size_mb').sum()).sort('time')
@@ -1863,7 +1872,10 @@ class DataParser:
 
         def _process_rows_file_transferred_size(rows_file_transferred_size, target_count):
             if not rows_file_transferred_size:
-                return None
+                return pl.DataFrame({
+                    'time': [],
+                    'delta_size_mb': [],
+                })
             df = pl.DataFrame(rows_file_transferred_size, schema=['time', 'delta_size_mb'], orient="row")
             df = df.with_columns(pl.col('time').round(2))
             df = df.group_by('time').agg(pl.col('delta_size_mb').sum()).sort('time')
@@ -1878,7 +1890,11 @@ class DataParser:
 
         def _process_rows_file_retention_time(rows_file_retention_time, target_count):
             if not rows_file_retention_time:
-                return None
+                return pl.DataFrame({
+                    'file_idx': [],
+                    'file_name': [],
+                    'retention_time': [],
+                })
             df = pl.DataFrame(rows_file_retention_time, schema=['file_idx', 'file_name', 'retention_time', 'created_time'], orient="row")
             downsampled_df = downsample_df_polars(
                 df.select(['file_idx', 'retention_time']),
@@ -1895,7 +1911,11 @@ class DataParser:
         
         def _process_rows_file_sizes(rows_sizes, target_count):
             if not rows_sizes:
-                return None
+                return pl.DataFrame({
+                    'file_idx': [],
+                    'file_name': [],
+                    'file_size': [],
+                })
             df = pl.DataFrame(rows_sizes, schema=['file_idx', 'file_name', 'file_size', 'created_time'], orient="row")
             downsampled_df = downsample_df_polars(
                 df.select(['file_idx', 'file_size']),
@@ -1915,7 +1935,10 @@ class DataParser:
 
         def _process_rows_worker_transfers(rows_worker_transfer_events, target_count):
             if not rows_worker_transfer_events:
-                return None
+                return pl.DataFrame({
+                    'time': [],
+                    'cumulative': [],
+                })
             col_data = {}
             all_times = set()
             for wid, events in rows_worker_transfer_events.items():
@@ -1933,7 +1956,10 @@ class DataParser:
                 col_data[key] = {float(row[0]): float(row[1]) for row in df.iter_rows()}
                 all_times.update(col_data[key].keys())
             if not col_data:
-                return None
+                return pl.DataFrame({
+                    'time': [],
+                    'cumulative': [],
+                })
             sorted_times = sorted(all_times)
             out_df = pl.DataFrame({'time': sorted_times})
             for key in sorted(col_data):
@@ -1966,7 +1992,10 @@ class DataParser:
                 col_data[key] = {float(row[0]): float(row[1]) for row in df.iter_rows()}
                 all_times.update(col_data[key].keys())
             if not col_data:
-                return None
+                return pl.DataFrame({
+                    'time': [],
+                    'cumulative': [],
+                })
             sorted_times = sorted(all_times)
             out_df = pl.DataFrame({'time': sorted_times})
             for key in sorted(col_data):
