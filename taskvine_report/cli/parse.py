@@ -113,17 +113,17 @@ def main():
     )
 
     parser.add_argument(
-        '--downsample-tasks',
+        '--downsample-task-count',
         type=int,
         default=100000,
         help='Downsample tasks (default: 100000)'
     )
 
     parser.add_argument(
-        '--downsample-points',
+        '--downsample-point-count',
         type=int,
         default=10000,
-        help='Downsample points (default: 10000)'
+        help='Downsample point count (default: 10000)'
     )
 
     args = parser.parse_args()
@@ -181,8 +181,8 @@ def main():
             data_parser = DataParser(template, debug_mode=args.debug, 
                                      enablee_checkpoint_pkl_files=args.checkpoint_pkl_files, 
                                      downsampling=args.downsampling > 0,
-                                     downsample_tasks=args.downsample_tasks,
-                                     downsample_points=args.downsample_points
+                                     downsample_task_count=args.downsample_task_count,
+                                     downsample_point_count=args.downsample_point_count
                                     )
             if args.load_pkl_files:
                 data_parser.load_pkl_files()

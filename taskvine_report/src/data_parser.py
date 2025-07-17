@@ -38,18 +38,18 @@ class DataParser:
                  enablee_checkpoint_pkl_files=False, 
                  debug_mode=False, 
                  downsampling=True, 
-                 downsample_tasks=100000, 
-                 downsample_points=10000):
+                 downsample_task_count=100000, 
+                 downsample_point_count=10000):
         self.runtime_template = runtime_template
         self.enablee_checkpoint_pkl_files = enablee_checkpoint_pkl_files
         
         self.downsampling = downsampling
-        self.downsample_tasks = downsample_tasks
-        self.downsample_points = downsample_points
+        self.downsample_task_count = downsample_task_count
+        self.downsample_point_count = downsample_point_count
 
         if not self.downsampling:
-            self.downsample_tasks = sys.maxsize
-            self.downsample_points = sys.maxsize
+            self.downsample_task_count = sys.maxsize
+            self.downsample_point_count = sys.maxsize
 
         self.ip = None
         self.port = None
@@ -1479,7 +1479,7 @@ class DataParser:
                 if df['cumulative'].isna().all():
                     continue
 
-                downsampled_df = downsample_df(df[['time', 'cumulative']], y_col='cumulative', downsample_points=self.downsample_points)
+                downsampled_df = downsample_df(df[['time', 'cumulative']], y_col='cumulative', downsample_point_count=self.downsample_point_count)
                 timeline = downsampled_df.values
 
                 wid = f"{worker_entry[0]}:{worker_entry[1]}:{worker_entry[2]}"
@@ -1531,7 +1531,7 @@ class DataParser:
                 df = pd.concat([df, new_row], ignore_index=True)
 
             export_df = df[['time', 'active']].rename(columns={'time': 'Time (s)', 'active': 'Active Workers (count)'})
-            export_df = downsample_df(export_df, y_col='Active Workers (count)', downsample_points=self.downsample_points)
+            export_df = downsample_df(export_df, y_col='Active Workers (count)', downsample_point_count=self.downsample_point_count)
             write_df_to_csv(export_df, self.csv_file_worker_concurrency, index=False)
         
         # 3. Worker Executing Tasks
@@ -1607,7 +1607,7 @@ class DataParser:
 
         time_df.fillna(0, inplace=True)
         if len(time_df) > 0:
-            time_df = downsample_df(time_df, y_index=1, downsample_points=self.downsample_points)  # Use second column as y-value
+            time_df = downsample_df(time_df, y_index=1, downsample_point_count=self.downsample_point_count)  # Use second column as y-value
         write_df_to_csv(time_df, self.csv_file_task_concurrency, index=False)
     
         recovery_phases = defaultdict(list)
@@ -1664,7 +1664,7 @@ class DataParser:
 
         time_df.fillna(0, inplace=True)
         if len(time_df) > 0:
-            time_df = downsample_df(time_df, y_index=1, downsample_points=self.downsample_points)  # Use second column as y-value
+            time_df = downsample_df(time_df, y_index=1, downsample_point_count=self.downsample_point_count)  # Use second column as y-value
         write_df_to_csv(time_df, self.csv_file_task_concurrency_recovery_only, index=False)
 
     def generate_task_metrics(self):
@@ -1744,7 +1744,7 @@ class DataParser:
         def write_csv(data, cols, path):
             if data:
                 df = pl.DataFrame(data, schema=cols, orient="row")
-                df = downsample_df_polars(df, y_index=1, downsample_points=self.downsample_points)
+                df = downsample_df_polars(df, y_index=1, downsample_point_count=self.downsample_point_count)
             else:
                 df = pl.DataFrame({col: [] for col in cols})
             write_df_to_csv(df, path, index=False)
@@ -1848,7 +1848,7 @@ class DataParser:
             downsampled_df = downsample_df_polars(
                 df.select(['file_idx', 'max_simul_replicas']),
                 y_col='max_simul_replicas',
-                downsample_points=self.downsample_points
+                downsample_point_count=self.downsample_point_count
             )
             df = downsampled_df.join(
                 df.select(['file_idx', 'file_name']),
@@ -1871,7 +1871,7 @@ class DataParser:
             downsampled_df = downsample_df_polars(
                 df.select(['time', 'cumulative_size_mb']),
                 y_col='cumulative_size_mb',
-                downsample_points=self.downsample_points
+                downsample_point_count=self.downsample_point_count
             )
             return downsampled_df.select(['time', 'cumulative_size_mb'])
         write_df_to_csv(_process_rows_file_created_size(rows_file_created_size), self.csv_file_file_created_size)
@@ -1889,7 +1889,7 @@ class DataParser:
             downsampled_df = downsample_df_polars(
                 df.select(['time', 'cumulative_size_mb']),
                 y_col='cumulative_size_mb',
-                downsample_points=self.downsample_points
+                downsample_point_count=self.downsample_point_count
             )
             return downsampled_df.select(['time', 'cumulative_size_mb'])
         write_df_to_csv(_process_rows_file_transferred_size(rows_file_transferred_size), self.csv_file_file_transferred_size)
@@ -1905,7 +1905,7 @@ class DataParser:
             downsampled_df = downsample_df_polars(
                 df.select(['file_idx', 'retention_time']),
                 y_col='retention_time',
-                downsample_points=self.downsample_points
+                downsample_point_count=self.downsample_point_count
             )
             df = downsampled_df.join(
                 df.select(['file_idx', 'file_name']),
@@ -1926,7 +1926,7 @@ class DataParser:
             downsampled_df = downsample_df_polars(
                 df.select(['file_idx', 'file_size']),
                 y_col='file_size',
-                downsample_points=self.downsample_points
+                downsample_point_count=self.downsample_point_count
             )
             df = downsampled_df.join(
                 df.select(['file_idx', 'file_name']),
@@ -1956,8 +1956,8 @@ class DataParser:
                 delta = np.bincount(idx, weights=arr[:, 1], minlength=len(times))
                 cumulative = np.clip(np.cumsum(delta), 0, None)
                 df = pl.DataFrame({'time': times, 'cumulative': cumulative})
-                if df.height > self.downsample_points:
-                    df = downsample_df_polars(df, y_col='cumulative', downsample_points=self.downsample_points)
+                if df.height > self.downsample_point_count:
+                    df = downsample_df_polars(df, y_col='cumulative', downsample_point_count=self.downsample_point_count)
                 key = f"{wid[0]}:{wid[1]}:{wid[2]}"
                 col_data[key] = {float(row[0]): float(row[1]) for row in df.iter_rows()}
                 all_times.update(col_data[key].keys())
@@ -1992,8 +1992,8 @@ class DataParser:
                         continue
                     cumulative = cumulative / worker.disk_mb * 100
                 df = pl.DataFrame({'time': times, 'cumulative': cumulative})
-                if df.height > self.downsample_points:
-                    df = downsample_df_polars(df, y_col='cumulative', downsample_points=self.downsample_points)
+                if df.height > self.downsample_point_count:
+                    df = downsample_df_polars(df, y_col='cumulative', downsample_point_count=self.downsample_point_count)
                 key = f"{wid[0]}:{wid[1]}:{wid[2]}"
                 col_data[key] = {float(row[0]): float(row[1]) for row in df.iter_rows()}
                 all_times.update(col_data[key].keys())
@@ -2075,7 +2075,7 @@ class DataParser:
             rows.append(task_data)
 
         # Downsample task data with same logic as routes (separate successful and unsuccessful)
-        def downsample_task_rows(task_rows, max_tasks=self.downsample_tasks):
+        def downsample_task_rows(task_rows, max_tasks=self.downsample_task_count):
             if len(task_rows) <= max_tasks:
                 return task_rows
             task_rows_sorted = sorted(task_rows, key=lambda x: x.get('execution_time', 0) or 0, reverse=True)
@@ -2087,8 +2087,8 @@ class DataParser:
 
         # Downsample each type separately (same as routes)
         if self.downsampling:
-            successful_task_rows = downsample_task_rows(successful_task_rows, max_tasks=self.downsample_tasks)
-            unsuccessful_task_rows = downsample_task_rows(unsuccessful_task_rows, max_tasks=self.downsample_tasks)
+            successful_task_rows = downsample_task_rows(successful_task_rows, max_tasks=self.downsample_task_count)
+            unsuccessful_task_rows = downsample_task_rows(unsuccessful_task_rows, max_tasks=self.downsample_task_count)
 
         # Combine all rows back
         rows = other_rows + successful_task_rows + unsuccessful_task_rows
