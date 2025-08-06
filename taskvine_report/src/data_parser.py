@@ -21,6 +21,10 @@ import platform
 from taskvine_report.utils import *
 
 
+# check VINE_PROTOCOL_VERSION in taskvine codebase to see if it matches this version
+# if taskvine protocol version is changed, this file needs to be updated accordingly
+VALID_VINE_PROTOCOL_VERSION = 14
+
 def count_lines(file_name):
     if platform.system() in ["Linux", "Darwin"]:  # Linux or macOS
         try:
