@@ -25,7 +25,7 @@ class TransferEvent():
         } vine_file_type_t;
         """
         file_type = int(file_type)
-        assert file_type in [1, 2, 3, 4, 5]
+        assert file_type in [1, 2, 3, 4, 5], f"invalid file_type {file_type}"
         self.file_type = file_type
 
         """
@@ -44,8 +44,8 @@ class TransferEvent():
         self.penalty = None
 
     def set_eventual_state(self, eventual_state):
-        assert eventual_state in ["pending", "cache_invalid", "cache_update", "worker_received",
-                                  "manager_received", "worker_removed", "manager_removed", "unlink", "failed_to_return", "failed_to_send"]
+        assert eventual_state in ["pending", "cache_invalid", "cache_update", "manager_received", 
+                                  "worker_removed", "manager_removed", "unlink", "failed_to_return", "failed_to_send"]
         self.eventual_state = eventual_state
 
     def start_stage_in(self, time_start_stage_in, eventual_state):

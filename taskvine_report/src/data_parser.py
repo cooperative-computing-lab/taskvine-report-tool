@@ -126,7 +126,6 @@ class DataParser:
         self.files = {}      # key: file_name, value: FileInfo
         # key: (source_ip, source_port), value: TransferInfo
         self.sending_back_transfers = {}  # key: (dest_ip, dest_port), value: TransferInfo
-        self.putting_transfers = {}  # key: (worker_ip, worker_port), value: TransferInfo
 
         # subgraphs
         self.subgraphs = {}   # key: subgraph_id, value: set()
@@ -399,24 +398,13 @@ class DataParser:
         file = self.ensure_file_info_entry(file_name, file_size_mb, timestamp)
         transfer = file.add_transfer('manager', worker_entry, 'manager_put', file_type, file_cache_level)
         transfer.start_stage_in(timestamp, "pending")
-        assert worker_entry not in self.putting_transfers
         worker = self.workers[worker_entry]
         worker.add_active_file_or_transfer(file_name)
 
-        self.putting_transfers[worker_entry] = transfer
-
     def _handle_debug_line_worker_received(self):
-        parts = self.debug_current_parts
-        timestamp = self.debug_current_timestamp
-
-        dest_ip, dest_port = WorkerInfo.extract_ip_port_from_string(parts[parts.index("received") - 1])
-        dest_worker_entry = self.get_current_worker_entry_by_ip_port(dest_ip, dest_port)
-        # the worker must be in the putting_transfers
-        assert dest_worker_entry is not None
-        assert dest_worker_entry in self.putting_transfers
-        transfer = self.putting_transfers[dest_worker_entry]
-        transfer.stage_in(timestamp, "worker_received")
-        del self.putting_transfers[dest_worker_entry]
+        # do not take the synchronous worker received message as if the file has been staged in,
+        # a cache-update will follow later if the file is indeed staged in
+        return
 
     def _handle_debug_line_failed_to_send_task(self):
         task_id = int(self.debug_current_parts[self.debug_current_parts.index("task") + 1])
@@ -1063,7 +1051,7 @@ class DataParser:
                     except Exception as e:
                         print(f"Error parsing line {i}: {self.debug_current_line}")
                         print(traceback.format_exc())
-                        continue
+                        exit(1)
 
         if self.debug_mode:
             print("\n=== Handler Profiling Summary ===")
