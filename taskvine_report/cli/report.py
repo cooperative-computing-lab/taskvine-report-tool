@@ -187,12 +187,14 @@ def main():
     parser.add_argument(
         "--downsample-task-bars",
         default=100000,
+        type=int,
         help="",
     )
 
     parser.add_argument(
         "--downsample-points",
         default=10000,
+        type=int,
         help="",
     )
 
