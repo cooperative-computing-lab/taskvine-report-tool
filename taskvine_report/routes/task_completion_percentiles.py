@@ -13,7 +13,7 @@ def get_task_completion_percentiles():
         y_domain = extract_y_range_from_points(points)
 
         return jsonify({
-            'points': downsample_points(points),
+            'points': downsample_points(points, target_point_count=current_app.config["DOWNSAMPLE_POINTS"]),
             'x_domain': x_domain,
             'y_domain': y_domain,
             'x_tick_values': compute_discrete_tick_values(x_domain),

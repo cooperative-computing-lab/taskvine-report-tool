@@ -13,7 +13,7 @@ def get_worker_lifetime():
         y_domain = [0, max((p[1] for p in points), default=1)]
 
         return jsonify({
-            'points': downsample_points(points),
+            'points': downsample_points(points, target_point_count=current_app.config["DOWNSAMPLE_POINTS"]),
             'x_domain': x_domain,
             'y_domain': y_domain,
             'x_tick_values': compute_discrete_tick_values(x_domain),

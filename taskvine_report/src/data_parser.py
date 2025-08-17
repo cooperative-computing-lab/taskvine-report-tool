@@ -2,7 +2,7 @@ import platform
 import subprocess
 from .worker_info import WorkerInfo
 from .task_info import TaskInfo
-from .file_info import FileInfo
+from .file_info import FileInfo, IndexedTransferEvent, UnindexedTransferEvent
 from .manager_info import ManagerInfo
 
 import os
@@ -42,8 +42,8 @@ class DataParser:
                  enablee_checkpoint_pkl_files=False, 
                  debug_mode=False, 
                  downsampling=True, 
-                 downsample_task_count=100000, 
-                 downsample_point_count=10000):
+                 downsample_task_count=10000,
+                 downsample_point_count=1000):
         self.runtime_template = runtime_template
         self.enablee_checkpoint_pkl_files = enablee_checkpoint_pkl_files
         
@@ -128,8 +128,6 @@ class DataParser:
 
         # files
         self.files = {}      # key: file_name, value: FileInfo
-        # key: (source_ip, source_port), value: TransferInfo
-        self.sending_back_transfers = {}  # key: (dest_ip, dest_port), value: TransferInfo
 
         # subgraphs
         self.subgraphs = {}   # key: subgraph_id, value: set()
@@ -139,7 +137,6 @@ class DataParser:
         self.receiving_resources_from_worker = None
         self.sending_task = None
         self.mini_task_transferring = None
-        self.sending_back = None
         self.debug_current_line = None
         self.debug_current_parts = None
         self.debug_current_timestamp = None
@@ -209,10 +206,6 @@ class DataParser:
             lambda l, p, ctx: "Submitted recovery task" in l,
             lambda l, p, ctx: ctx._handle_debug_line_submitted_recovery_task()),
 
-            H("sending_back",
-            lambda l, p, ctx: "sending back" in l or ctx.sending_back,
-            lambda l, p, ctx: ctx._handle_debug_line_sending_back()),
-
             H("put_file",
             lambda l, p, ctx: "put" in p,
             lambda l, p, ctx: ctx._handle_debug_line_put_file()),
@@ -224,10 +217,6 @@ class DataParser:
             H("transfer_port",
             lambda l, p, ctx: "transfer-port" in p,
             lambda l, p, ctx: ctx._handle_debug_line_get_worker_transfer_port()),
-
-            H("mini_task",
-            lambda l, p, ctx: "mini_task" in p,
-            lambda l, p, ctx: ctx._handle_debug_line_mini_task()),
 
             H("exhausted_resources",
             lambda l, p, ctx: "exhausted" in p and "resources" in p,
@@ -274,7 +263,7 @@ class DataParser:
 
     def worker_ip_port_to_hash(self, worker_ip: str, worker_port: int):
         return f"{worker_ip}:{worker_port}"
-    
+
     def count_elements_after_current_parts(self, item):
         return count_elements_after(item, self.debug_current_parts)
 
@@ -366,43 +355,30 @@ class DataParser:
         self.manager.set_when_first_worker_connect(self.debug_current_timestamp)
 
     def _handle_debug_line_worker_removed(self):
-        release_idx = self.debug_current_parts.index("removed")
-        ip, port = WorkerInfo.extract_ip_port_from_string(self.debug_current_parts[release_idx - 1])
+        removed_idx = self.debug_current_parts.index("removed")
+        ip, port = WorkerInfo.extract_ip_port_from_string(self.debug_current_parts[removed_idx - 1])
         worker = self.get_current_worker_by_ip_port(ip, port)
         if worker is None:
             raise ValueError(f"worker {ip}:{port} is not found")
 
         worker.add_disconnection(self.debug_current_timestamp)
         self.manager.update_when_last_worker_disconnect(self.debug_current_timestamp)
-        
-        worker_entry = (worker.ip, worker.port, worker.connect_id)
-        # files on the worker are removed
-        for filename in worker.active_files_or_transfers:
-            self.files[filename].prune_file_on_worker_entry(worker_entry, self.debug_current_timestamp)
 
     def _handle_debug_line_put_file(self):
         timestamp = self.debug_current_timestamp
         parts = self.debug_current_parts
 
         put_idx = parts.index("put")
-        ip, port = WorkerInfo.extract_ip_port_from_string(parts[put_idx - 1])
-        worker_entry = self.get_current_worker_entry_by_ip_port(ip, port)
         file_name = parts[put_idx + 1]
-
-        file_cache_level = parts[put_idx + 2]
         file_size_mb = int(parts[put_idx + 3]) / 2**20
-
-        if file_name.startswith('buffer'):
-            file_type = 4
-        elif file_name.startswith('file'):
-            file_type = 1
-        else:
-            raise ValueError(f"pending file type: {file_name}")
+        ip, port = WorkerInfo.extract_ip_port_from_string(parts[put_idx - 1])
+        dest_worker_entry = self.get_current_worker_entry_by_ip_port(ip, port)
+        worker = self.workers[dest_worker_entry]
 
         file = self.ensure_file_info_entry(file_name, file_size_mb, timestamp)
-        transfer = file.add_transfer('manager', worker_entry, 'manager_put', file_type, file_cache_level)
-        transfer.start_stage_in(timestamp, "pending")
-        worker = self.workers[worker_entry]
+        new_transfer = UnindexedTransferEvent(file_name, dest_worker_entry, timestamp)
+        file.unindexed_transfers[dest_worker_entry].append(new_transfer)
+
         worker.add_active_file_or_transfer(file_name)
 
     def _handle_debug_line_worker_received(self):
@@ -420,15 +396,13 @@ class DataParser:
         parts = self.debug_current_parts
         timestamp = self.debug_current_timestamp
 
-        if "puturl" in parts:
-            transfer_event = 'puturl'
-        else:
-            transfer_event = 'puturl_now'
+        if "Already at worker" in self.debug_current_line:
+            return
 
         puturl_id = parts.index("puturl") if "puturl" in parts else parts.index("puturl_now")
         file_name = parts[puturl_id + 2]
-        file_cache_level = int(parts[puturl_id + 3])
         size_in_mb = int(parts[puturl_id + 4]) / 2**20
+        transfer_id = parts[puturl_id + 7]
 
         # the file name is the name on the worker's side
         file = self.ensure_file_info_entry(file_name, size_in_mb, timestamp)
@@ -441,23 +415,18 @@ class DataParser:
         dest_worker_entry = (dest_worker.ip, dest_worker.port, dest_worker.connect_id)
         # the source can be a url or an ip:port
         source = parts[puturl_id + 1]
-        if source.startswith('https://'):
-            transfer = file.add_transfer(source, dest_worker_entry, transfer_event, 2, file_cache_level)
+        if source.startswith('https://') or source.startswith('file://'):
+            file.indexed_transfers[transfer_id] = IndexedTransferEvent(file_name, dest_worker_entry, timestamp, transfer_id, source)
         elif source.startswith('workerip://'):
             source_ip, source_transfer_port = WorkerInfo.extract_ip_port_from_string(source)
             source_worker_port = self.map_ip_and_transfer_port_to_worker_port[(source_ip, source_transfer_port)]
             source_worker_entry = self.get_current_worker_entry_by_ip_port(source_ip, source_worker_port)
             assert source_worker_entry is not None
-
-            transfer = file.add_transfer(source_worker_entry, dest_worker_entry, transfer_event, 2, file_cache_level)
-        elif source.startswith('file://'):
-            transfer = file.add_transfer(source, dest_worker_entry, transfer_event, 2, file_cache_level)
+            file.indexed_transfers[transfer_id] = IndexedTransferEvent(file_name, dest_worker_entry, timestamp, transfer_id, source_worker_entry)
         else:
             raise ValueError(f"unrecognized source: {source}, line: {self.debug_current_line}")
         
         dest_worker.add_active_file_or_transfer(file_name)
-
-        transfer.start_stage_in(timestamp, "pending")
 
     def _handle_debug_line_kill_task(self):
         assert self.count_elements_after_current_parts("kill") == 1
@@ -508,26 +477,6 @@ class DataParser:
             pass
         else:
             pass
-
-    def _handle_debug_line_mini_task(self):
-        parts = self.debug_current_parts
-        timestamp = self.debug_current_timestamp
-
-        mini_task_idx = parts.index("mini_task")
-        source = parts[mini_task_idx + 1]
-        file_name = parts[mini_task_idx + 2]
-        cache_level = int(parts[mini_task_idx + 3])
-        file_size = int(parts[mini_task_idx + 4]) / 2**20
-        dest_worker_ip, dest_worker_port = WorkerInfo.extract_ip_port_from_string(parts[mini_task_idx - 1])
-        
-        dest_worker_entry = self.get_current_worker_entry_by_ip_port(dest_worker_ip, dest_worker_port)
-        assert dest_worker_entry is not None
-        
-        file = self.ensure_file_info_entry(file_name, file_size, timestamp)
-        transfer = file.add_transfer(source, dest_worker_entry, 'mini_task', 2, cache_level)
-        transfer.start_stage_in(timestamp, "pending")
-        dest_worker = self.workers[dest_worker_entry]
-        dest_worker.add_active_file_or_transfer(file_name)
 
     def _handle_debug_line_task_state_change(self):
         parts = self.debug_current_parts
@@ -606,9 +555,10 @@ class DataParser:
                 worker = self.workers[task.worker_entry]
                 worker.tasks_failed.append(task)
             # we need to set the task status if it was not set yet
-            if not task.task_status:
+            if task.task_status is None:
                 # if it was committed to a worker
                 if task.worker_entry:
+                    worker = self.workers[task.worker_entry]
                     # it could be that the worker disconnected
                     if len(worker.time_connected) == len(worker.time_disconnected):
                         task.set_task_status(worker.time_disconnected[-1], 15 << 3)
@@ -616,15 +566,9 @@ class DataParser:
                     elif task.input_files:
                         all_inputs_ready = True
                         for input_file in task.input_files:
-                            this_input_ready = False
-                            for transfer in self.files[input_file].transfers:
-                                if transfer.destination == task.worker_entry and transfer.stage_in is not None:
-                                    this_input_ready = True
-                                    break
-                            if not this_input_ready:
+                            if input_file not in worker.current_replicas:
                                 all_inputs_ready = False
-                                break
-                        if all_inputs_ready:
+                        if not all_inputs_ready:
                             task.set_task_status(timestamp, 1)
                     # otherwise, we donot know the reason
                     else:
@@ -684,43 +628,45 @@ class DataParser:
         timestamp = self.debug_current_timestamp
 
         # cache-update cachename, &type, &cache_level, &size, &mtime, &transfer_time, &start_time, id
-        cache_update_id = parts.index("cache-update")
-        file_name = parts[cache_update_id + 1]
-        file_type = parts[cache_update_id + 2]
-        file_cache_level = parts[cache_update_id + 3]
-        size_in_mb = int(parts[cache_update_id + 4]) / 2**20
-        # start_sending_time = int(parts[cache_update_id + 7]) / 1e6
+        cache_update_idx = parts.index("cache-update")
+        file_name = parts[cache_update_idx + 1]
+        size_in_mb = int(parts[cache_update_idx + 4]) / 2**20
+        transfer_id = parts[cache_update_idx + 8]   # 'X' or a real id
 
         # if this is a task-generated file, it is the first time the file is cached on this worker, otherwise we only update the stage in time
         file = self.ensure_file_info_entry(file_name, size_in_mb, timestamp)
 
-        ip, port = WorkerInfo.extract_ip_port_from_string(parts[cache_update_id - 1])
+        ip, port = WorkerInfo.extract_ip_port_from_string(parts[cache_update_idx - 1])
         worker_entry = self.get_current_worker_entry_by_ip_port(ip, port)
-
         # TODO: better handle a special case where the file is created by a previous manager
         if worker_entry is None:
             del self.files[file_name]
             return
-        
         worker = self.workers[worker_entry]
-        worker.add_active_file_or_transfer(file_name)
-
-        # let the file handle the cache update
-        file.cache_update(worker_entry, timestamp, file_type, file_cache_level)
+        
+        file.cache_update(worker, timestamp, transfer_id)
 
     def _handle_debug_line_cache_invalid(self):
         parts = self.debug_current_parts
         timestamp = self.debug_current_timestamp
 
-        cache_invalid_id = parts.index("cache-invalid")
-        file_name = parts[cache_invalid_id + 1]
+        cache_invalid_idx = parts.index("cache-invalid")
+        file_name = parts[cache_invalid_idx + 1]
         if file_name not in self.files:
             # special case: this file was created by a previous manager
             return
-        ip, port = WorkerInfo.extract_ip_port_from_string(parts[cache_invalid_id - 1])
+        
+        if count_elements_after("cache-invalid", parts) == 3:
+            transfer_id = parts[cache_invalid_idx + 3]
+        else:
+            transfer_id = None
+
+        ip, port = WorkerInfo.extract_ip_port_from_string(parts[cache_invalid_idx - 1])
         worker_entry = (ip, port, self.current_worker_connect_id[(ip, port)])
+        worker = self.workers[worker_entry]
+
         file = self.files[file_name]
-        file.cache_invalid(worker_entry, timestamp)
+        file.cache_invalid(worker, timestamp, transfer_id)
 
     def _handle_debug_line_unlink(self):
         parts = self.debug_current_parts
@@ -730,12 +676,11 @@ class DataParser:
         file_name = parts[unlink_id + 1]
         ip, port = WorkerInfo.extract_ip_port_from_string(parts[unlink_id - 1])
         worker_entry = self.get_current_worker_entry_by_ip_port(ip, port)
+        worker = self.workers[worker_entry]
         assert worker_entry is not None
 
         file = self.files[file_name]
-        file.unlink(worker_entry, timestamp)
-        worker = self.workers[worker_entry]
-        worker.remove_active_file_or_transfer(file_name)
+        file.unlink(worker, timestamp)
 
     def _handle_debug_line_exhausted_resources_on_worker(self):
         parts = self.debug_current_parts
@@ -755,94 +700,6 @@ class DataParser:
         worker = self.get_current_worker_by_ip_port(ip, port)
         worker.set_transfer_port(transfer_port)
         self.map_ip_and_transfer_port_to_worker_port[(ip, transfer_port)] = port
-
-    def _handle_debug_line_sending_back(self):
-        # get an output file from a worker, one worker can only send one file back at a time
-        parts = self.debug_current_parts
-        line = self.debug_current_line
-        timestamp = self.debug_current_timestamp
-
-        if not self.sending_back:
-            self.sending_back = True
-            back_idx = parts.index("back")
-            file_name = parts[back_idx + 1]
-            source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[back_idx - 2])
-            source_worker_entry = self.get_current_worker_entry_by_ip_port(source_ip, source_port)
-            assert source_worker_entry is not None
-            assert source_worker_entry not in self.sending_back_transfers
-
-            # note that the file might be a dir which has multiple files in it, we only receive a cache-update for the 
-            # dir itself, but we do not know the files in the dir yet, subfiles will be received recursively
-            file = self.files[file_name]
-            transfer = file.add_transfer(source_worker_entry, 'manager', 'manager_get', 1, 1)
-            transfer.start_stage_in(timestamp, "pending")
-            self.sending_back_transfers[source_worker_entry] = transfer
-            source_worker = self.workers[source_worker_entry]
-            source_worker.add_active_file_or_transfer(file_name)
-
-            """
-            if self.sending_back and "rx from" in line:
-                if "file" in parts:
-                    file_idx = parts.index("file")
-                    file_name = parts[file_idx + 1]
-                    file_size = int(parts[file_idx + 2])
-                    source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[file_idx - 1])
-                    assert source_ip is not None and source_port is not None
-                elif "symlink" in parts:
-                    # we do not support symlinks for now
-                    print(f"Warning: symlinks are not supported yet, line: {line}")
-                    return
-                elif "dir" in parts:
-                    # if this is a dir, we will call vine_manager_get_dir_contents recursively to get all files in the dir
-                    # therefore, we return here and process the subsequent lines to get files
-                    return 
-                elif "error" in parts:
-                    print(f"Warning: error in sending back, line: {line}")
-                    self.sending_back = False
-                    return
-                # the file might be an output file of a command-line task, which does not return a cache-update message
-                # thus it might not be in self.files, so we do not check it here, and do nothing at the moment
-            """
-        else:
-            failed_to_send = False
-            source_ip, source_port = None, None
-            if "sent" in parts:
-                send_idx = parts.index("sent")
-                source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[send_idx - 1])
-                source_worker_entry = self.get_current_worker_entry_by_ip_port(source_ip, source_port)
-                source_worker = self.workers[source_worker_entry]
-                assert source_worker_entry is not None
-                assert source_worker_entry in self.sending_back_transfers
-
-                transfer = self.sending_back_transfers[source_worker_entry]
-                transfer.stage_in(timestamp, "manager_received")
-                del self.sending_back_transfers[source_worker_entry]
-                source_worker.remove_active_file_or_transfer(transfer.filename)
-                self.sending_back = False
-            elif "): error" in line and count_elements_after("error", parts) == 2:
-                error_idx = parts.index("error")
-                source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[error_idx - 1])
-            elif "Failed to receive output from worker" in line:
-                source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[-1])
-                failed_to_send = True
-            elif "failed to return output" in line:
-                failed_idx = parts.index("failed")
-                source_ip, source_port = WorkerInfo.extract_ip_port_from_string(parts[failed_idx - 2])
-                failed_to_send = True
-            else:
-                # "get xxx" "file xxx" "Receiving xxx" may exist in between
-                pass
-            if failed_to_send:
-                source_worker_entry = self.get_current_worker_entry_by_ip_port(source_ip, source_port)
-                source_worker = self.workers[source_worker_entry]
-                assert source_worker_entry is not None
-                assert source_worker_entry in self.sending_back_transfers
-
-                transfer = self.sending_back_transfers[source_worker_entry]
-                transfer.stage_out(timestamp, "failed_to_send")
-                del self.sending_back_transfers[source_worker_entry]
-                source_worker.remove_active_file_or_transfer(transfer.filename)
-                self.sending_back = False
 
     def _handle_debug_line_stdout(self):
         parts = self.debug_current_parts
@@ -1195,23 +1052,32 @@ class DataParser:
 
             output_files_with_timing = []
             for file_name in getattr(task, 'output_files', []):
-                # Only include files that have producers (are in dependency graph)
-                if file_name in self.files and self.files[file_name].producers:
-                    file_obj = self.files[file_name]
-                    creation_time = 0.0
-                    
-                    if task.worker_entry and task.time_worker_start:
-                        for transfer in file_obj.transfers:
-                            if (transfer.destination == task.worker_entry and 
-                                transfer.time_stage_in and 
-                                transfer.time_stage_in >= task.time_worker_start):
-                                creation_time = max(0, transfer.time_stage_in - task.time_worker_start)
-                                break
+                file = self.files[file_name]
+                # skip files without any producer tasks
+                if len(file.producers) == 0:
+                    continue
+                creation_time = 0.0
+                
+                # skip tasks that were not committed to a worker
+                if not task.worker_entry:
+                    continue
+                if not task.time_worker_start:
+                    continue
 
-                        if creation_time == 0.0 and file_obj.created_time and task.time_worker_start:
-                            creation_time = max(0, file_obj.created_time - task.time_worker_start)
-                    
-                    output_files_with_timing.append(f"{file_name}:{creation_time:.2f}")
+                for transfer in file.get_flattened_transfers():
+                    if transfer.dest_worker_entry != task.worker_entry:
+                        continue
+                    if not transfer.time_stage_in:
+                        continue
+                    if transfer.time_stage_in < task.time_worker_start:
+                        continue
+                    creation_time = max(0, transfer.time_stage_in - task.time_worker_start)
+                    break
+
+                if creation_time == 0.0 and file.created_time and task.time_worker_start:
+                    creation_time = max(0, file.created_time - task.time_worker_start)
+                
+                output_files_with_timing.append(f"{file_name}:{creation_time:.2f}")
             
             input_files_str = '|'.join(input_files_with_timing) if input_files_with_timing else ''
             output_files_str = '|'.join(output_files_with_timing) if output_files_with_timing else ''
@@ -1320,12 +1186,7 @@ class DataParser:
         # append file_idx
         for idx, file in enumerate(self.files.values(), start=1):
             file.file_idx = idx
-            for transfer in file.transfers:
-                if transfer.time_stage_in is None:
-                    pass
-                if transfer.time_stage_out is None:
-                    # set the time_stage_out as the manager's time_end
-                    transfer.time_stage_out = self.manager.time_end
+            file.unlink_all(self.manager.time_end)
 
         # set the min and max time
         self.MIN_TIME, self.MAX_TIME = self.manager.get_min_max_time()
@@ -1770,23 +1631,12 @@ class DataParser:
         }
 
         for file in self.files.values():
-            if not file.transfers or not file.producers:
+            flattened_transfers = file.get_flattened_transfers()
+            if not flattened_transfers:
                 continue
 
-            intervals = [
-                (t.time_stage_in, t.time_stage_out)
-                for t in file.transfers
-                if t.time_stage_in and t.time_stage_out
-            ]
-            max_simul = max_interval_overlap(intervals)
-            rows_file_concurrent_replicas.append((file.file_idx, file.filename, max_simul, file.created_time))
-
-            stage_times = np.array([t.time_stage_in for t in file.transfers if t.time_stage_in is not None])
-            if stage_times.size > 0:
-                t = np.floor((stage_times.min() - base_time) * 100) / 100
-                rows_file_created_size.append((t, file.size_mb))
-
-            for transfer in file.transfers:
+            for transfer in flattened_transfers:
+                # file transferred size
                 if transfer.time_stage_in:
                     t = floor_decimal(float(transfer.time_stage_in - base_time), 2)
                     rows_file_transferred_size.append((t, file.size_mb))
@@ -1794,29 +1644,51 @@ class DataParser:
                     t = floor_decimal(float(transfer.time_stage_out - base_time), 2)
                     rows_file_transferred_size.append((t, file.size_mb))
 
-                dest = transfer.destination
-                if isinstance(dest, tuple) and transfer.time_stage_in:
-                    time_in = floor_decimal(transfer.time_start_stage_in - base_time, 2)
+                # worker storage consumption
+                if transfer.time_stage_in:
+                    time_in = floor_decimal(transfer.time_stage_in - base_time, 2)
                     time_out = floor_decimal(transfer.time_stage_out - base_time, 2)
                     size = max(0, file.size_mb)
-                    all_worker_storage[dest].extend([(time_in, size), (time_out, -size)])
+                    all_worker_storage[transfer.dest_worker_entry].extend([(time_in, size), (time_out, -size)])
 
+                # worker incoming / outgoing transfers
                 for role in ['incoming', 'outgoing']:
-                    wid = getattr(transfer, 'destination' if role == 'incoming' else 'source', None)
-                    if not isinstance(wid, tuple):
+                    if role == "incoming":
+                        wid = transfer.dest_worker_entry
+                    else:
+                        wid = getattr(transfer, 'source', None)
+                        if not isinstance(wid, tuple):
+                            wid = None
+                    if wid is None:
                         continue
+
                     t0 = floor_decimal(transfer.time_start_stage_in - base_time, 2)
                     t1 = None
-                    if transfer.time_stage_in:
+                    if transfer.time_stage_in is not None:
                         t1 = floor_decimal(transfer.time_stage_in - base_time, 2)
-                    elif transfer.time_stage_out:
+                    elif transfer.time_stage_out is not None:
                         t1 = floor_decimal(transfer.time_stage_out - base_time, 2)
-                    if t1 is not None:
+                    if t1 is not None and t1 >= t0:
                         rows_worker_transfer_events[role][wid].extend([(t0, 1), (t1, -1)])
 
-            times = np.array([t.time_start_stage_in for t in file.transfers if t.time_start_stage_in is not None])
+            if not file.producers:
+                continue
+            intervals = [
+                (t.time_stage_in, t.time_stage_out)
+                for t in flattened_transfers
+                if t.time_stage_in and t.time_stage_out
+            ]
+            max_simul = max_interval_overlap(intervals)
+            rows_file_concurrent_replicas.append((file.file_idx, file.filename, max_simul, file.created_time))
+
+            stage_times = np.array([t.time_stage_in for t in flattened_transfers if t.time_stage_in is not None])
+            if stage_times.size > 0:
+                t = np.floor((stage_times.min() - base_time) * 100) / 100
+                rows_file_created_size.append((t, file.size_mb))
+
+            times = np.array([t.time_start_stage_in for t in flattened_transfers if t.time_start_stage_in is not None])
             first_stage_in = times.min() if times.size > 0 else float('inf')
-            last_stage_out = max((t.time_stage_out for t in file.transfers if t.time_stage_out), default=float('-inf'))
+            last_stage_out = max((t.time_stage_out for t in flattened_transfers if t.time_stage_out), default=float('-inf'))
             if first_stage_in != float('inf') and last_stage_out != float('-inf'):
                 retention_time = floor_decimal(last_stage_out - first_stage_in, 2)
                 rows_file_retention_time.append((file.file_idx, file.filename, retention_time, file.created_time))
@@ -1824,7 +1696,7 @@ class DataParser:
             fname = file.filename
             size = file.size_mb
             if size is not None:
-                created_time = min((t.time_start_stage_in for t in file.transfers if t.time_start_stage_in), default=float('inf'))
+                created_time = min((t.time_start_stage_in for t in flattened_transfers if t.time_start_stage_in), default=float('inf'))
                 if created_time != float('inf'):
                     rows_sizes.append((file.file_idx, fname, size, created_time))
                     max_size = max(max_size, size)
@@ -1932,16 +1804,19 @@ class DataParser:
         write_df_to_csv(_process_rows_file_sizes(rows_sizes), self.csv_file_sizes)
 
         def _process_rows_worker_transfers(rows_worker_transfer_events):
+
             if not rows_worker_transfer_events:
                 return pl.DataFrame({
                     'time': [],
                     'cumulative': [],
                 })
+            
             col_data = {}
             all_times = set()
             for wid, events in rows_worker_transfer_events.items():
                 if not events:
                     continue
+
                 arr = np.asarray(events, dtype=np.float64)
                 arr = arr[arr[:, 0].argsort()]
                 times, idx = np.unique(arr[:, 0], return_inverse=True)
@@ -1989,6 +1864,22 @@ class DataParser:
                 key = f"{wid[0]}:{wid[1]}:{wid[2]}"
                 col_data[key] = {float(row[0]): float(row[1]) for row in df.iter_rows()}
                 all_times.update(col_data[key].keys())
+
+            # Ensure zero storage at connection boundary times per worker: time_connected[0] and time_disconnected[0], applied last
+            if workers is not None:
+                for w_key, w in workers.items():
+                    key = f"{w_key[0]}:{w_key[1]}:{w_key[2]}"
+                    if key not in col_data:
+                        col_data[key] = {}
+                    assert len(w.time_connected) == 1
+                    assert len(w.time_disconnected) == 1
+                    t0 = floor_decimal(float(w.time_connected[0] - base_time), 2)
+                    col_data[key][float(t0)] = 0.0
+                    all_times.add(float(t0))
+                    t1 = floor_decimal(float(w.time_disconnected[0] - base_time), 2)
+                    col_data[key][float(t1)] = 0.0
+                    all_times.add(float(t1))
+
             if not col_data:
                 return pl.DataFrame({
                     'time': [],
@@ -2000,7 +1891,7 @@ class DataParser:
                 values = [col_data[key].get(t, None) for t in sorted_times]
                 out_df = out_df.with_columns(pl.Series(name=key, values=values))
             return out_df
-        write_df_to_csv(_process_rows_worker_storage_consumption(all_worker_storage), self.csv_file_worker_storage_consumption)
+        write_df_to_csv(_process_rows_worker_storage_consumption(all_worker_storage, workers=self.workers, percentage=False), self.csv_file_worker_storage_consumption)
         write_df_to_csv(_process_rows_worker_storage_consumption(all_worker_storage, workers=self.workers, percentage=True), self.csv_file_worker_storage_consumption_percentage)
 
     def generate_task_execution_details_metrics(self):

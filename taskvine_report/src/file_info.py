@@ -1,80 +1,42 @@
+from collections import defaultdict
+
+
 class TransferEvent():
-    def __init__(self, filename, source, destination, event, file_type, cache_level):
-        self.filename = filename
+    def __init__(self, file_name, dest_worker_entry, time_start_stage_in):
+        self.file_name = file_name
+        self.dest_worker_entry = dest_worker_entry
 
-        self.source = source
-        self.destination = destination
-
-        # event describes how the transfer is created
-        assert event in ["manager_put", "manager_get",
-                         "task_created", "puturl", "puturl_now", "mini_task"]
-        self.event = event
-
-        self.time_start_stage_in = None
+        self.time_start_stage_in = time_start_stage_in
         self.time_stage_in = None
         self.time_stage_out = None
-        self.eventual_state = None
 
-        """
-        typedef enum {
-            VINE_FILE = 1,              /**< A file or directory present at the manager. **/
-            VINE_URL,                   /**< A file obtained by downloading from a URL. */
-            VINE_TEMP,                  /**< A temporary file created as an output of a task. */
-            VINE_BUFFER,                /**< A file obtained from data in the manager's memory space. */
-            VINE_MINI_TASK,             /**< A file obtained by executing a Unix command line. */
-        } vine_file_type_t;
-        """
-        file_type = int(file_type)
-        assert file_type in [1, 2, 3, 4, 5], f"invalid file_type {file_type}"
-        self.file_type = file_type
+    def cache_update(self, time_stage_in):
+        # note that the cache-update might be received after the unlink, in this case we simply skip it
+        if self.time_stage_out is not None:
+            return
+        self.time_stage_in = time_stage_in
 
-        """
-        typedef enum {
-            VINE_CACHE_LEVEL_TASK = 0,     /**< Do not cache file at worker. (default) */
-            VINE_CACHE_LEVEL_WORKFLOW = 1, /**< File remains in cache of worker until workflow ends. */
-            VINE_CACHE_LEVEL_WORKER = 2,   /**< File remains in cache of worker until worker terminates. */
-            VINE_CACHE_LEVEL_FOREVER = 3   /**< File remains at execution site when worker terminates. (use with caution) */
-        } vine_cache_level_t;
-        """
+    def cache_invalid(self, time_stage_out):
+        if self.time_stage_out is not None:
+            return
+        self.time_stage_out = time_stage_out
 
-        cache_level = int(cache_level)
-        assert cache_level in [0, 1, 2, 3]
-        self.cache_level = cache_level
+    def unlink(self, time_stage_out):
+        if self.time_stage_out is not None:
+            return
+        self.time_stage_out = time_stage_out
 
-        self.penalty = None
 
-    def set_eventual_state(self, eventual_state):
-        assert eventual_state in ["pending", "cache_invalid", "cache_update", "manager_received", 
-                                  "worker_removed", "manager_removed", "unlink", "failed_to_return", "failed_to_send"]
-        self.eventual_state = eventual_state
+class IndexedTransferEvent(TransferEvent):
+    def __init__(self, file_name, dest_worker_entry, time_start_stage_in, transfer_id, source):
+        super().__init__(file_name, dest_worker_entry, time_start_stage_in)
+        self.transfer_id = transfer_id
+        self.source = source   # the source can be a url or an ip:port format
 
-    def start_stage_in(self, time_start_stage_in, eventual_state):
-        assert self.time_start_stage_in is None and self.time_stage_in is None and self.time_stage_out is None
-        self.time_start_stage_in = float(time_start_stage_in)
-        self.set_eventual_state(eventual_state)
 
-    def stage_in(self, time_stage_in, eventual_state):
-        assert self.time_start_stage_in is not None and self.time_stage_in is None and self.time_stage_out is None
-        self.time_stage_in = float(time_stage_in)
-        self.set_eventual_state(eventual_state)
-
-    def stage_out(self, time_stage_out, eventual_state):
-        assert self.time_start_stage_in is not None
-        assert self.time_stage_out is None
-        self.time_stage_out = float(time_stage_out)
-        self.set_eventual_state(eventual_state)
-
-    def print_info(self):
-        print(f"source: {self.source}")
-        print(f"destination: {self.destination}")
-        print(f"time_start_stage_in: {self.time_start_stage_in}")
-        print(f"event: {self.event}")
-        print(f"file_type: {self.file_type}")
-        print(f"cache_level: {self.cache_level}")
-        print(f"time_stage_in: {self.time_stage_in}")
-        print(f"time_stage_out: {self.time_stage_out}")
-        print(f"eventual_state: {self.eventual_state}")
-        print("\n")
+class UnindexedTransferEvent(TransferEvent):
+    def __init__(self, file_name, dest_worker, time_start_stage_in):
+        super().__init__(file_name, dest_worker, time_start_stage_in)
 
 
 class FileInfo():
@@ -84,23 +46,30 @@ class FileInfo():
         self.created_time = timestamp
         self.file_idx = None
 
-        self.transfers = []
+        self.indexed_transfers = {}  # key: transfer_id, value: IndexedTransferEvent
+        self.unindexed_transfers = defaultdict(list)  # key: dest_worker_entry, value: list of UnindexedTransferEvent
 
         self.consumers = set()
         self.producers = set()
 
         self.worker_retentions = {}      # key: worker_entry, value: list of [time_retention_start, time_retention_end]
- 
-    def prune_file_on_worker_entry(self, worker_entry, time_stage_out):
-        for transfer in self.transfers:
-            if transfer.time_stage_out:
-                continue
-            if transfer.time_start_stage_in > time_stage_out:
-                continue
-            # NOTE: we don't prune the source of the transfer because it might have succeeded remotely
-            # and we just haven't received the cache update yet
-            if isinstance(transfer.destination, tuple) and transfer.destination == worker_entry:
-                transfer.stage_out(time_stage_out, "worker_removed")
+    
+    def get_flattened_transfers(self):
+        all_transfers = []
+        for transfer in self.indexed_transfers.values():
+            all_transfers.append(transfer)
+        for transfer_list in self.unindexed_transfers.values():
+            all_transfers.extend(transfer_list)
+        return all_transfers
+    
+    def unlink_all(self, timestamp):
+        for transfer in self.indexed_transfers.values():
+            transfer.unlink(timestamp)
+            assert transfer.time_stage_out is not None, f"Transfer {transfer.transfer_id} for file {self.filename} did not unlink properly"
+        for transfer_list in self.unindexed_transfers.values():
+            for transfer in transfer_list:
+                transfer.unlink(timestamp)
+                assert transfer.time_stage_out is not None, f"Transfer {transfer.transfer_id} for file {self.filename} did not unlink properly"
 
     def add_consumer(self, consumer_task):
         self.consumers.add((consumer_task.task_id, consumer_task.task_try_id))
@@ -114,92 +83,44 @@ class FileInfo():
     def add_producer(self, producer_task):
         self.producers.add((producer_task.task_id, producer_task.task_try_id))
 
-    def add_transfer(self, source, destination, event, file_type, cache_level):
-        transfer_event = TransferEvent(self.filename, source, destination, event, file_type, cache_level)
-        self.transfers.append(transfer_event)
-        return transfer_event
-
-    def get_transfers_on_source(self, source, eventual_state=None):
-        if eventual_state:
-            return [transfer for transfer in self.transfers if transfer.source == source and transfer.eventual_state == eventual_state]
+    def cache_update(self, worker, time_stage_in, transfer_id):
+        worker_entry = worker.worker_entry
+        if transfer_id == 'X':
+            if len(self.producers) > 0:
+                new_transfer = UnindexedTransferEvent(self.filename, worker_entry, time_stage_in)
+                new_transfer.cache_update(time_stage_in)
+                self.unindexed_transfers[worker_entry].append(new_transfer)
+            else:
+                for transfer in self.unindexed_transfers[worker_entry]:
+                    transfer.cache_update(time_stage_in)
         else:
-            return [transfer for transfer in self.transfers if transfer.source == source]
+            transfer = self.indexed_transfers[transfer_id]
+            transfer.cache_update(time_stage_in)
 
-    def get_emitted_transfers(self):
-        return len(self.transfers)
+        worker.add_active_file_or_transfer(self.filename)
 
-    def get_succeeded_transfers(self):
-        return len([transfer for transfer in self.transfers if transfer.time_stage_in])
+    def cache_invalid(self, worker, time_stage_out, transfer_id):
+        worker_entry = worker.worker_entry
 
-    def get_failed_transfers(self):
-        return len([transfer for transfer in self.transfers if transfer.time_stage_in is None])
+        if transfer_id is None:
+            for transfer in self.unindexed_transfers[worker_entry]:
+                transfer.cache_invalid(time_stage_out)
+        else:
+            transfer = self.indexed_transfers[transfer_id]
+            transfer.cache_invalid(time_stage_out)
 
-    def get_distinct_sources(self):
-        sources = set()
-        for transfer in self.transfers:
-            sources.add(transfer.source)
-        return list(sources)
+        worker.remove_active_file_or_transfer(self.filename)
 
-    def get_distinct_destinations(self):
-        destinations = set()
-        for transfer in self.transfers:
-            destinations.add(transfer.destination)
-        return list(destinations)
+    def unlink(self, worker, time_stage_out):
+        worker_entry = worker.worker_entry
 
-    def cache_update(self, worker_entry, time_stage_in, file_type, file_cache_level):
-        # check if the file was started staging in before the cache update
-        has_started_staging_in = False
-        time_stage_in = float(time_stage_in)
+        for transfer in self.unindexed_transfers[worker_entry]:
+            transfer.unlink(time_stage_out)
+        for transfer in self.indexed_transfers.values():
+            if transfer.dest_worker_entry == worker_entry:
+                transfer.unlink(time_stage_out)
 
-        for transfer in self.transfers:
-            if transfer.destination != worker_entry:
-                continue
-            if transfer.time_stage_in:
-                continue
-            if transfer.time_stage_out:
-                continue
-            if transfer.time_start_stage_in > time_stage_in:
-                continue
-            transfer.stage_in(time_stage_in, "cache_update")
-            has_started_staging_in = True
-
-        # this means a task-created file
-        if not has_started_staging_in:
-            try:
-                producer_task_name = f"{list(self.producers)[-1]}"
-                transfer = self.add_transfer(producer_task_name, worker_entry, "task_created", file_type, file_cache_level)
-                transfer.start_stage_in(time_stage_in, "pending")
-                transfer.stage_in(time_stage_in, "cache_update")
-            except Exception as e:
-                print(f"error adding transfer for file {self.filename} on worker {worker_entry} at time {time_stage_in}")
-                print(f"all transfers for this file on this worker")
-                for transfer in self.transfers:
-                    if transfer.destination != worker_entry:
-                        continue
-                    print(f"transfer: {transfer.source} -> {transfer.destination} {transfer.eventual_state}")
-                raise e
-
-    def unlink(self, worker_entry, time_stage_out):
-        # this affects the incoming transfers on the destination worker
-        for transfer in self.transfers:
-            if transfer.destination != worker_entry:
-                continue
-            if transfer.time_stage_out:
-                continue
-            if transfer.time_start_stage_in > time_stage_out:
-                continue
-            transfer.stage_out(time_stage_out, "unlink")
-
-    def cache_invalid(self, worker, time_stage_out):
-        # this affects the incoming transfers on the destination worker
-        for transfer in self.transfers:
-            if transfer.destination != worker:
-                continue
-            if transfer.time_stage_out:
-                continue
-            if transfer.time_start_stage_in > time_stage_out:
-                continue
-            transfer.stage_out(time_stage_out, "cache_invalid")
+        worker.remove_active_file_or_transfer(self.filename)
 
     def set_size_mb(self, size_mb):
         size_mb = float(size_mb)
@@ -218,14 +139,4 @@ class FileInfo():
         print(f"consumers: {self.consumers}")
         print(f"producers: {self.producers}")
         print(f"penalty: {self.penalty}")
-        print(f"transfers: {len(self.transfers)}")
-        len_start_stage_in = len(
-            [transfer for transfer in self.transfers if transfer.time_start_stage_in])
-        len_stage_in = len(
-            [transfer for transfer in self.transfers if transfer.time_stage_in])
-        len_stage_out = len(
-            [transfer for transfer in self.transfers if transfer.time_stage_out])
-        print(f" len_start_stage_in: {len_start_stage_in}")
-        print(f" len_stage_in: {len_stage_in}")
-        print(f" len_stage_out: {len_stage_out}")
         print("\n")

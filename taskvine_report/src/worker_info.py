@@ -10,6 +10,8 @@ class WorkerInfo:
         self.port = port
         self.connect_id = connect_id
 
+        self.worker_entry = (self.ip, self.port, self.connect_id)
+
         self.id = None
         self.hash = None
         self.machine_name = None
@@ -29,15 +31,15 @@ class WorkerInfo:
         self.tasks_running = set()
 
         # active files or transfers, set of filenames
-        self.active_files_or_transfers = set()
+        self.current_replicas = set()
 
     def add_active_file_or_transfer(self, filename: str):
         # allow double adding the same filename because we add upon "puturl" and then the subsequent "cache-update"
-        self.active_files_or_transfers.add(filename)
+        self.current_replicas.add(filename)
 
     def remove_active_file_or_transfer(self, filename: str):
         # allow double removing the same filename (is this correct?)
-        self.active_files_or_transfers.discard(filename)
+        self.current_replicas.discard(filename)
 
     def set_checkpoint_worker(self):
         self.is_checkpoint_worker = True
@@ -143,7 +145,6 @@ class WorkerInfo:
             "connect_id": self.connect_id,
             "id": self.id,
             "hash": self.hash,
-            "worker_entry": self.get_worker_key(),
             "machine_name": self.machine_name,
             "transfer_port": self.transfer_port,
             "cores": self.cores,

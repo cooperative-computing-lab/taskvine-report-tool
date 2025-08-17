@@ -54,7 +54,7 @@ from taskvine_report.utils import check_pip_updates
 from taskvine_report import __version__
 
 
-def create_app(logs_dir):
+def create_app(logs_dir, downsample_task_bars=100000, downsample_points=10000):
     package_dir = os.path.dirname(os.path.dirname(__file__))
     template_dir = os.path.join(package_dir, "templates")
     static_dir = os.path.join(package_dir, "static")
@@ -121,8 +121,8 @@ def create_app(logs_dir):
     app.register_blueprint(lock_bp)
 
     # Set sampling parameters
-    app.config["SAMPLING_POINTS"] = 100000
-    app.config["SAMPLING_TASK_BARS"] = 100000
+    app.config["DOWNSAMPLE_TASK_BARS"] = downsample_task_bars
+    app.config["DOWNSAMPLE_POINTS"] = downsample_points
 
     # Set logger and logs directory
     app.config["RUNTIME_STATE"] = RuntimeState()
@@ -185,6 +185,18 @@ def main():
     )
 
     parser.add_argument(
+        "--downsample-task-bars",
+        default=100000,
+        help="",
+    )
+
+    parser.add_argument(
+        "--downsample-points",
+        default=10000,
+        help="",
+    )
+
+    parser.add_argument(
         "--port",
         type=int,
         default=9122,
@@ -208,7 +220,7 @@ def main():
     print(f"   📁 Logs directory: {logs_dir}")
     print(f"   🌐 Server accessible at:")
 
-    app = create_app(logs_dir)
+    app = create_app(logs_dir, downsample_task_bars=args.downsample_task_bars, downsample_points=args.downsample_points)
 
     if args.host == "0.0.0.0":
         ip_addresses = get_local_ip_addresses()

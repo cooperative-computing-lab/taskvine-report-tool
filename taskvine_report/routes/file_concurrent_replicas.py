@@ -14,7 +14,7 @@ def get_file_concurrent_replicas():
         y_domain = extract_y_range_from_points(points)
 
         return jsonify({
-            'points': downsample_points(points),
+            'points': downsample_points(points, target_point_count=current_app.config["DOWNSAMPLE_POINTS"]),
             'file_idx_to_names': dict(zip(df['file_idx'], df['file_name'])),
             'x_domain': x_domain,
             'y_domain': y_domain,

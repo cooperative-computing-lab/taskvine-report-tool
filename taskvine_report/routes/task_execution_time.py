@@ -19,7 +19,7 @@ def get_task_execution_time():
         failed_count = metadata.get('unsuccessful_tasks', 0)
 
         return jsonify({
-            'points': downsample_points(points, y_index=1),
+            'points': downsample_points(points, y_index=1, target_point_count=current_app.config["DOWNSAMPLE_POINTS"]),
             'x_domain': x_domain,
             'y_domain': y_domain,
             'x_tick_values': compute_linear_tick_values(x_domain),

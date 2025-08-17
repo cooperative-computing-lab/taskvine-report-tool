@@ -32,7 +32,7 @@ def get_worker_storage_consumption():
             y_domain = extract_y_range_from_points(accumulated_points)
             
             return jsonify({
-                'accumulated_data': downsample_points(accumulated_points),
+                'accumulated_data': downsample_points(accumulated_points, target_point_count=current_app.config["DOWNSAMPLE_POINTS"]),
                 'x_domain': x_domain,
                 'y_domain': y_domain,
                 'x_tick_values': compute_linear_tick_values(x_domain),

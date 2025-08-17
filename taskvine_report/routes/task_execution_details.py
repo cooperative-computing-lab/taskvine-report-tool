@@ -116,7 +116,7 @@ def calculate_legend(successful_tasks, unsuccessful_tasks, workers):
 
 def downsample_tasks(tasks, key="execution_time", max_tasks=None):
     if not max_tasks:
-        max_tasks = current_app.config["SAMPLING_TASK_BARS"]
+        max_tasks = current_app.config["DOWNSAMPLE_TASK_BARS"]
 
     if len(tasks) <= max_tasks:
         return tasks
