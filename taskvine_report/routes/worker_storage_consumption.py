@@ -41,7 +41,7 @@ def get_worker_storage_consumption():
                 'y_tick_formatter': d3_size_formatter(unit),
             })
         else:
-            storage_data = extract_series_points_dict(df, 'time_percentage')
+            storage_data = extract_series_points_dict(df, 'time')
             storage_data, size_unit = scale_storage_series_points(storage_data)
             y_domain = extract_y_range_from_series_points(storage_data)
             
