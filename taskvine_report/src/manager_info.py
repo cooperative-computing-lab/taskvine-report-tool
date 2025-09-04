@@ -35,7 +35,7 @@ class ManagerInfo:
 
     def get_min_max_time(self):
         MIN_TIME = self.when_first_task_start_commit if self.when_first_task_start_commit is not None else self.time_start
-        MAX_TIME = self.time_end if self.time_end is not None else self.current_max_time
+        MAX_TIME = self.when_last_task_done if self.when_last_task_done is not None else self.current_max_time
         return MIN_TIME, MAX_TIME
 
     def set_current_max_time(self, time):

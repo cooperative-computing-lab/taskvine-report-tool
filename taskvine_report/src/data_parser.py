@@ -1891,6 +1891,12 @@ class DataParser:
                 })
             sorted_times = sorted(all_times)
             out_df = pl.DataFrame({'time': sorted_times})
+
+            # add time percentage column
+            t_min, t_max = sorted_times[0], sorted_times[-1]
+            percent_times = [(t - t_min) / (t_max - t_min) * 100 if t_max > t_min else 0.0 for t in sorted_times]
+            out_df = out_df.with_columns(pl.Series(name="time_percentage", values=percent_times))
+
             for key in sorted(col_data):
                 values = [col_data[key].get(t, None) for t in sorted_times]
                 out_df = out_df.with_columns(pl.Series(name=key, values=values))
@@ -1898,43 +1904,43 @@ class DataParser:
         write_df_to_csv(_process_rows_worker_storage_consumption(all_worker_storage, workers=self.workers, percentage=False), self.csv_file_worker_storage_consumption)
         write_df_to_csv(_process_rows_worker_storage_consumption(all_worker_storage, workers=self.workers, percentage=True), self.csv_file_worker_storage_consumption_percentage)
 
-        self.generate_file_replica_activation_intervals()
-
-    def generate_file_replica_activation_intervals(self):
-        base_time = self.MIN_TIME
-        rows = []
-        for file in self.files.values():
-            flattened_transfers = file.get_flattened_transfers()
-            if not flattened_transfers:
-                continue
-            for transfer in flattened_transfers:
-                if transfer.time_stage_in is None or transfer.time_stage_out is None:
+        def _generate_file_replica_activation_intervals():
+            base_time = self.MIN_TIME
+            rows = []
+            for file in self.files.values():
+                flattened_transfers = file.get_flattened_transfers()
+                if not flattened_transfers:
                     continue
-                dest = getattr(transfer, 'dest_worker_entry', None)
-                if dest is None:
-                    continue
-                worker_str = f"{dest[0]}:{dest[1]}:{dest[2]}"
-                t_in = floor_decimal(float(transfer.time_stage_in - base_time), 2)
-                t_out = floor_decimal(float(transfer.time_stage_out - base_time), 2)
-                activation = floor_decimal(float(transfer.time_stage_out - transfer.time_stage_in), 2)
-                rows.append((file.filename, worker_str, t_in, t_out, activation))
-        if not rows:
-            df = pd.DataFrame(columns=['filename', 'replica_idx', 'source_worker', 'time_stage_in', 'time_stage_out', 'time_activation'])
+                for transfer in flattened_transfers:
+                    if transfer.time_stage_in is None or transfer.time_stage_out is None:
+                        continue
+                    dest = getattr(transfer, 'dest_worker_entry', None)
+                    if dest is None:
+                        continue
+                    worker_str = f"{dest[0]}:{dest[1]}:{dest[2]}"
+                    t_in = floor_decimal(float(transfer.time_stage_in - base_time), 2)
+                    t_out = floor_decimal(float(transfer.time_stage_out - base_time), 2)
+                    activation = floor_decimal(float(transfer.time_stage_out - transfer.time_stage_in), 2)
+                    rows.append((file.filename, worker_str, t_in, t_out, activation))
+            if not rows:
+                df = pd.DataFrame(columns=['filename', 'replica_idx', 'source_worker', 'time_stage_in', 'time_stage_out', 'time_activation'])
+                write_df_to_csv(df, self.csv_file_file_replica_activation_intervals, index=False)
+                return
+            rows.sort(key=lambda r: (r[0], r[2]))
+            indexed_rows = []
+            for idx, (fname, worker_str, t_in, t_out, activation) in enumerate(rows, start=1):
+                indexed_rows.append({
+                    'filename': fname,
+                    'replica_idx': idx,
+                    'source_worker': worker_str,
+                    'time_stage_in': t_in,
+                    'time_stage_out': t_out,
+                    'time_activation': activation
+                })                          
+            df = pd.DataFrame(indexed_rows, columns=['filename', 'replica_idx', 'source_worker', 'time_stage_in', 'time_stage_out', 'time_activation'])
             write_df_to_csv(df, self.csv_file_file_replica_activation_intervals, index=False)
-            return
-        rows.sort(key=lambda r: (r[0], r[2]))
-        indexed_rows = []
-        for idx, (fname, worker_str, t_in, t_out, activation) in enumerate(rows, start=1):
-            indexed_rows.append({
-                'filename': fname,
-                'replica_idx': idx,
-                'source_worker': worker_str,
-                'time_stage_in': t_in,
-                'time_stage_out': t_out,
-                'time_activation': activation
-            })                          
-        df = pd.DataFrame(indexed_rows, columns=['filename', 'replica_idx', 'source_worker', 'time_stage_in', 'time_stage_out', 'time_activation'])
-        write_df_to_csv(df, self.csv_file_file_replica_activation_intervals, index=False)
+
+        _generate_file_replica_activation_intervals()
 
     def generate_task_execution_details_metrics(self):
         base_time = self.MIN_TIME
