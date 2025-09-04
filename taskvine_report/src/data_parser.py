@@ -97,6 +97,7 @@ class DataParser:
         self.csv_file_worker_storage_consumption_percentage = os.path.join(self.csv_files_dir, 'worker_storage_consumption_percentage.csv')
         self.csv_file_task_subgraphs = os.path.join(self.csv_files_dir, 'task_subgraphs.csv')
         self.csv_file_task_execution_details = os.path.join(self.csv_files_dir, 'task_execution_details.csv')
+        self.csv_file_file_replica_activation_intervals = os.path.join(self.csv_files_dir, 'file_replica_activation_intervals.csv')
 
         self.debug = os.path.join(self.vine_logs_dir, 'debug')
         self.transactions = os.path.join(self.vine_logs_dir, 'transactions')
@@ -669,6 +670,9 @@ class DataParser:
         file.cache_invalid(worker, timestamp, transfer_id)
 
     def _handle_debug_line_unlink(self):
+        if "total time spent on" in self.debug_current_line:
+            return
+        
         parts = self.debug_current_parts
         timestamp = self.debug_current_timestamp
 
@@ -676,8 +680,8 @@ class DataParser:
         file_name = parts[unlink_id + 1]
         ip, port = WorkerInfo.extract_ip_port_from_string(parts[unlink_id - 1])
         worker_entry = self.get_current_worker_entry_by_ip_port(ip, port)
-        worker = self.workers[worker_entry]
         assert worker_entry is not None
+        worker = self.workers[worker_entry]
 
         file = self.files[file_name]
         file.unlink(worker, timestamp)
@@ -1893,6 +1897,44 @@ class DataParser:
             return out_df
         write_df_to_csv(_process_rows_worker_storage_consumption(all_worker_storage, workers=self.workers, percentage=False), self.csv_file_worker_storage_consumption)
         write_df_to_csv(_process_rows_worker_storage_consumption(all_worker_storage, workers=self.workers, percentage=True), self.csv_file_worker_storage_consumption_percentage)
+
+        self.generate_file_replica_activation_intervals()
+
+    def generate_file_replica_activation_intervals(self):
+        base_time = self.MIN_TIME
+        rows = []
+        for file in self.files.values():
+            flattened_transfers = file.get_flattened_transfers()
+            if not flattened_transfers:
+                continue
+            for transfer in flattened_transfers:
+                if transfer.time_stage_in is None or transfer.time_stage_out is None:
+                    continue
+                dest = getattr(transfer, 'dest_worker_entry', None)
+                if dest is None:
+                    continue
+                worker_str = f"{dest[0]}:{dest[1]}:{dest[2]}"
+                t_in = floor_decimal(float(transfer.time_stage_in - base_time), 2)
+                t_out = floor_decimal(float(transfer.time_stage_out - base_time), 2)
+                activation = floor_decimal(float(transfer.time_stage_out - transfer.time_stage_in), 2)
+                rows.append((file.filename, worker_str, t_in, t_out, activation))
+        if not rows:
+            df = pd.DataFrame(columns=['filename', 'replica_idx', 'source_worker', 'time_stage_in', 'time_stage_out', 'time_activation'])
+            write_df_to_csv(df, self.csv_file_file_replica_activation_intervals, index=False)
+            return
+        rows.sort(key=lambda r: (r[0], r[2]))
+        indexed_rows = []
+        for idx, (fname, worker_str, t_in, t_out, activation) in enumerate(rows, start=1):
+            indexed_rows.append({
+                'filename': fname,
+                'replica_idx': idx,
+                'source_worker': worker_str,
+                'time_stage_in': t_in,
+                'time_stage_out': t_out,
+                'time_activation': activation
+            })                          
+        df = pd.DataFrame(indexed_rows, columns=['filename', 'replica_idx', 'source_worker', 'time_stage_in', 'time_stage_out', 'time_activation'])
+        write_df_to_csv(df, self.csv_file_file_replica_activation_intervals, index=False)
 
     def generate_task_execution_details_metrics(self):
         base_time = self.MIN_TIME
