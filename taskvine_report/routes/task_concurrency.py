@@ -19,7 +19,7 @@ def get_task_concurrency():
         df = read_csv_to_fd(csv_file)
         phase_data = {}
         for phase in ['Waiting', 'Committing', 'Executing', 'Retrieving', 'Done']:
-            phase_points = extract_points_from_df(df, 'Time (s)', phase)
+            phase_points = extract_points_from_df(df, 'time', phase)
             phase_data[f"tasks_{phase.lower()}"] = downsample_points(phase_points, target_point_count=current_app.config["DOWNSAMPLE_POINTS"])
 
         x_domain = get_current_time_domain()

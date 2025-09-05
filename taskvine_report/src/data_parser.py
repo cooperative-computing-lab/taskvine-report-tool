@@ -1350,7 +1350,7 @@ class DataParser:
             sorted_times = sorted(time_set)
             rows = []
             for t in sorted_times:
-                row = {'Time (s)': floor_decimal(t, 2)}
+                row = {'time': floor_decimal(t, 2)}
                 for c in sorted(column_data.keys()):
                     row[c] = column_data[c].get(t, float('nan'))
                 rows.append(row)
@@ -1387,7 +1387,7 @@ class DataParser:
                 new_row = pd.DataFrame({"time": [max_time], "delta": [0], "active": [last_active]})
                 df = pd.concat([df, new_row], ignore_index=True)
 
-            export_df = df[['time', 'active']].rename(columns={'time': 'Time (s)', 'active': 'Active Workers (count)'})
+            export_df = df[['time', 'active']].rename(columns={'time': 'time', 'active': 'Active Workers (count)'})
             export_df = downsample_df(export_df, y_col='Active Workers (count)', downsample_point_count=self.downsample_point_count)
             write_df_to_csv(export_df, self.csv_file_worker_concurrency, index=False)
         
@@ -1398,131 +1398,117 @@ class DataParser:
         generate_worker_time_series_csv(waiting_retrieval_events, self.csv_file_worker_waiting_retrieval_tasks)
 
     def generate_task_concurrency_data(self):
-        filtered_tasks = [task for task in self.tasks.values() if not task.is_library_task]
+        filtered_tasks = [t for t in self.tasks.values() if not t.is_library_task]
         if not filtered_tasks:
             return
 
         sorted_tasks = sorted(filtered_tasks, key=lambda t: (t.when_ready or float('inf')))
         base_time = self.MIN_TIME
 
-        task_phases = defaultdict(list)
         phase_titles = {
             'tasks_waiting': 'Waiting',
             'tasks_committing': 'Committing',
             'tasks_executing': 'Executing',
             'tasks_retrieving': 'Retrieving',
-            'tasks_done': 'Done'
+            'tasks_done': 'Done',
         }
 
-        for task in sorted_tasks:
-            ready = task.when_ready
-            running = task.when_running
-            start = task.time_worker_start
-            end = task.time_worker_end
-            fail = task.when_failure_happens
-            wait_retrieval = task.when_waiting_retrieval
-            done = task.when_done
+        def _collect_phases(tasks):
+            phases = defaultdict(list)
 
-            def fd(t): return floor_decimal(t - base_time, 2) if t else None
+            def fd(t):
+                return floor_decimal(t - base_time, 2) if t else None
 
             def add_phase(name, t0, t1=None):
                 if t0:
-                    task_phases[name].append((fd(t0), 1))
+                    phases[name].append((fd(t0), 1))
                 if t0 and t1:
-                    task_phases[name].append((fd(t1), -1))
+                    phases[name].append((fd(t1), -1))
 
-            add_phase('tasks_waiting', ready, running or fail)
-            add_phase('tasks_committing', running, start or fail or wait_retrieval)
-            add_phase('tasks_executing', start, end or fail or wait_retrieval)
-            add_phase('tasks_retrieving', end, wait_retrieval or fail)
-            if done:
-                task_phases['tasks_done'].append((fd(done), 1))
+            for task in tasks:
+                ready = task.when_ready
+                running = task.when_running
+                start = task.time_worker_start
+                end = task.time_worker_end
+                fail = task.when_failure_happens
+                wait_retrieval = task.when_waiting_retrieval
+                done = task.when_done
 
-        all_times = sorted({t for df in [pd.DataFrame(events, columns=['time', 'event']) for events in task_phases.values() if events] for t in df['time']})
-        if not all_times:
-            return
-            
-        time_df = pd.DataFrame({'Time (s)': all_times})
-        first_time = all_times[0]
+                add_phase('tasks_waiting',    ready,                running or fail)
+                add_phase('tasks_committing', running,              start or fail or wait_retrieval)
+                add_phase('tasks_executing',  start,                end   or fail or wait_retrieval)
+                add_phase('tasks_retrieving', end,                  wait_retrieval or fail)
+                if done:
+                    phases['tasks_done'].append((fd(done), 1))
 
-        for name, events in task_phases.items():
-            if not events:
-                time_df[phase_titles[name]] = 0
-                continue
-            df_phase = pd.DataFrame(events, columns=['time', 'event']).sort_values('time')
-            df_phase = df_phase.groupby('time', as_index=False)['event'].sum()
-            df_phase['cumulative'] = df_phase['event'].cumsum().clip(lower=0)
-            df_phase = df_phase[['time', 'cumulative']].rename(columns={'cumulative': phase_titles[name]})
-            time_df = pd.merge_asof(time_df, df_phase, left_on='Time (s)', right_on='time', direction='backward')
-            time_df.drop(columns=['time'], inplace=True)
+            return phases
 
-        # Ensure all phase columns exist and set first time point to 0
-        for title in phase_titles.values():
-            if title not in time_df.columns:
-                time_df[title] = 0
-            time_df.loc[time_df['Time (s)'] == first_time, title] = 0
+        def _build_concurrency_df(phases: dict[str, list[tuple[float, int]]]) -> pl.DataFrame | None:
+            all_times = sorted({t for evs in phases.values() for (t, _) in evs if t is not None})
+            if not all_times:
+                return None
 
-        time_df.fillna(0, inplace=True)
-        if len(time_df) > 0:
-            time_df = downsample_df(time_df, y_index=1, downsample_point_count=self.downsample_point_count)  # Use second column as y-value
-        write_df_to_csv(time_df, self.csv_file_task_concurrency, index=False)
-    
-        recovery_phases = defaultdict(list)
-        for task in sorted_tasks:
-            if not task.is_recovery_task:
-                continue
+            df = pl.DataFrame({'time': all_times})
+            first_time = all_times[0]
 
-            ready = task.when_ready
-            running = task.when_running
-            start = task.time_worker_start
-            end = task.time_worker_end
-            fail = task.when_failure_happens
-            wait_retrieval = task.when_waiting_retrieval
-            done = task.when_done
+            for name in phase_titles:
+                title = phase_titles[name]
+                events = phases.get(name, [])
 
-            def fd(t): return floor_decimal(t - base_time, 2) if t else None
+                if not events:
+                    df = df.with_columns(pl.lit(0).alias(title))
+                    continue
 
-            def add_phase(name, t0, t1=None):
-                if t0:
-                    recovery_phases[name].append((fd(t0), 1))
-                if t0 and t1:
-                    recovery_phases[name].append((fd(t1), -1))
+                df_phase = pl.DataFrame(
+                    data=events,
+                    schema={'time': pl.Float64, 'event': pl.Int32},
+                    orient='row'
+                ).drop_nulls('time').sort('time')
 
-            add_phase('tasks_waiting', ready, running or fail)
-            add_phase('tasks_committing', running, start or fail or wait_retrieval)
-            add_phase('tasks_executing', start, end or fail or wait_retrieval)
-            add_phase('tasks_retrieving', end, wait_retrieval or fail)
-            if done:
-                recovery_phases['tasks_done'].append((fd(done), 1))
+                df_phase = (
+                    df_phase
+                    .group_by('time')
+                    .agg(pl.col('event').sum().alias('event'))
+                    .with_columns(
+                        # nonnegative cumulative sum without using clip APIs
+                        pl.when(pl.col('event').cum_sum() < 0)
+                        .then(pl.lit(0))
+                        .otherwise(pl.col('event').cum_sum())
+                        .alias(title)
+                    )
+                    .select(['time', title])
+                )
 
-        all_times = sorted({t for df in [pd.DataFrame(events, columns=['time', 'event']) for events in recovery_phases.values() if events] for t in df['time']})
-        if not all_times:
-            return
-            
-        time_df = pd.DataFrame({'Time (s)': all_times})
-        first_time = all_times[0]
+                df = df.join(df_phase, on='time', how='left').sort('time')
+                # emulate merge_asof(direction='backward'): carry last known value forward
+                df = df.with_columns(pl.col(title).fill_null(strategy='forward'))
 
-        for name, events in recovery_phases.items():
-            if not events:
-                time_df[phase_titles[name]] = 0
-                continue
-            df_phase = pd.DataFrame(events, columns=['time', 'event']).sort_values('time')
-            df_phase = df_phase.groupby('time', as_index=False)['event'].sum()
-            df_phase['cumulative'] = df_phase['event'].cumsum().clip(lower=0)
-            df_phase = df_phase[['time', 'cumulative']].rename(columns={'cumulative': phase_titles[name]})
-            time_df = pd.merge_asof(time_df, df_phase, left_on='Time (s)', right_on='time', direction='backward')
-            time_df.drop(columns=['time'], inplace=True)
+            # ensure columns exist and force first time point to 0
+            df = df.with_columns([
+                (pl.when(pl.col('time') == first_time).then(0).otherwise(pl.col(phase_titles[k])).alias(phase_titles[k])
+                if phase_titles[k] in df.columns else pl.lit(0).alias(phase_titles[k]))
+                for k in phase_titles
+            ])
 
-        # Ensure all phase columns exist and set first time point to 0
-        for title in phase_titles.values():
-            if title not in time_df.columns:
-                time_df[title] = 0
-            time_df.loc[time_df['Time (s)'] == first_time, title] = 0
+            return df.fill_null(0)
 
-        time_df.fillna(0, inplace=True)
-        if len(time_df) > 0:
-            time_df = downsample_df(time_df, y_index=1, downsample_point_count=self.downsample_point_count)  # Use second column as y-value
-        write_df_to_csv(time_df, self.csv_file_task_concurrency_recovery_only, index=False)
+        # normal
+        task_phases = _collect_phases(sorted_tasks)
+        time_df = _build_concurrency_df(task_phases)
+        if time_df is not None and time_df.height > 0:
+            pdf = time_df.to_pandas()
+            pdf = downsample_df(pdf, y_index=1, downsample_point_count=self.downsample_point_count)
+            write_df_to_csv(pdf, self.csv_file_task_concurrency, index=False)
+
+        # recovery only
+        recovery_tasks = [t for t in sorted_tasks if t.is_recovery_task]
+        recovery_phases = _collect_phases(recovery_tasks)
+        time_df = _build_concurrency_df(recovery_phases)
+        if time_df is not None and time_df.height > 0:
+            pdf = time_df.to_pandas()
+            pdf = downsample_df(pdf, y_index=1, downsample_point_count=self.downsample_point_count)
+            write_df_to_csv(pdf, self.csv_file_task_concurrency_recovery_only, index=False)
+
 
     def generate_task_metrics(self):
         filtered_tasks = [task for task in self.tasks.values() if not task.is_library_task]
@@ -1617,7 +1603,25 @@ class DataParser:
             n = len(finish_times)
             percentiles = [(p, floor_decimal(finish_times[min(n - 1, max(0, math.ceil(p / 100 * n) - 1))], 2)) for p in range(1, 101)]
             write_csv(percentiles, ['Percentile', 'Completion Time'], self.csv_file_task_completion_percentiles)
-
+    
+    def add_workflow_completion_percentage(self, df):
+        def map_fn(t):
+            if t < 0:
+                return 0
+            denom = self.MAX_TIME - self.MIN_TIME
+            if denom <= 0:
+                return 0
+            return t / denom * 100
+        
+        assert "time" in df.columns, "time column is required"
+        df = df.with_columns(
+            pl.col("time").map_elements(map_fn, return_dtype=pl.Float64)
+            .alias("workflow_completion_percentage")
+        )
+        cols = df.columns
+        reordered = ["time", "workflow_completion_percentage"] + [c for c in cols if c not in ("time", "workflow_completion_percentage")]
+        return df.select(reordered)
+                     
     def generate_file_metrics(self):
         base_time = self.MIN_TIME
 
@@ -1884,23 +1888,21 @@ class DataParser:
                     col_data[key][float(t1)] = 0.0
                     all_times.add(float(t1))
 
-            if not col_data:
-                return pl.DataFrame({
-                    'time': [],
-                    'cumulative': [],
-                })
             sorted_times = sorted(all_times)
             out_df = pl.DataFrame({'time': sorted_times})
 
-            # add time percentage column
-            t_min, t_max = sorted_times[0], sorted_times[-1]
-            percent_times = [(t - t_min) / (t_max - t_min) * 100 if t_max > t_min else 0.0 for t in sorted_times]
-            out_df = out_df.with_columns(pl.Series(name="time_percentage", values=percent_times))
+            # filter out negative time
+            out_df = out_df.filter(pl.col("time") >= 0)
 
-            for key in sorted(col_data):
-                values = [col_data[key].get(t, None) for t in sorted_times]
-                out_df = out_df.with_columns(pl.Series(name=key, values=values))
-            return out_df
+            if col_data:
+                worker_data = {
+                    key: [col_data[key].get(t, None) for t in out_df['time']]
+                    for key in sorted(col_data)
+                }
+                out_df = out_df.hstack(pl.DataFrame(worker_data))
+
+            return self.add_workflow_completion_percentage(out_df)
+
         write_df_to_csv(_process_rows_worker_storage_consumption(all_worker_storage, workers=self.workers, percentage=False), self.csv_file_worker_storage_consumption)
         write_df_to_csv(_process_rows_worker_storage_consumption(all_worker_storage, workers=self.workers, percentage=True), self.csv_file_worker_storage_consumption_percentage)
 

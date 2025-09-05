@@ -8,7 +8,7 @@ worker_waiting_retrieval_tasks_bp = Blueprint('worker_waiting_retrieval_tasks', 
 def get_worker_waiting_retrieval_tasks():
     try:
         df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_worker_waiting_retrieval_tasks)
-        data = extract_series_points_dict(df, 'Time (s)')
+        data = extract_series_points_dict(df, 'time')
         x_domain = get_current_time_domain()
         y_domain = extract_y_range_from_series_points(data)
 

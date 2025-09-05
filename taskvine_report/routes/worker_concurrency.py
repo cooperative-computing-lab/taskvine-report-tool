@@ -8,7 +8,7 @@ worker_concurrency_bp = Blueprint('worker_concurrency', __name__, url_prefix='/a
 def get_worker_concurrency():
     try:
         df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_worker_concurrency)
-        points = extract_points_from_df(df, 'Time (s)', 'Active Workers (count)')
+        points = extract_points_from_df(df, 'time', 'Active Workers (count)')
         
         x_domain = get_current_time_domain()
         y_domain = extract_y_range_from_points(points)
