@@ -1,12 +1,11 @@
 from taskvine_report.utils import *
 import os
 from pathlib import Path
-from ..src.csv_generator import CSVManager
+from ..src.csv_manager import CSVManager
 from .logger import Logger
 import time
 import traceback
 import json
-import polars as pl
 import threading
 from flask import current_app
 
@@ -78,8 +77,6 @@ class RuntimeState(CSVManager):
         # for preventing multiple instances of the same runtime template
         self.template_lock = LeaseLock()
 
-        # for preventing multiple reloads of the data
-        self._metadata_fingerprint = None
         self.reload_lock = LeaseLock()
 
     def set_logger(self):
@@ -115,7 +112,7 @@ class RuntimeState(CSVManager):
 
     def reload_data_if_needed(self):
         with self.reload_lock:
-            if self._metadata_fingerprint == get_files_fingerprint([self.csv_file_metadata]):
+            if self.metadata == self.load_metadata_to_dict():
                 return False
 
             self.reload_template(self.runtime_template)
@@ -139,29 +136,9 @@ class RuntimeState(CSVManager):
         self.runtime_template = os.path.join(self.logs_dir, Path(runtime_template).name)
         super().__init__(self.runtime_template)
 
-        # exclude library tasks
-        # self.tasks = {tid: t for tid, t in self.tasks.items() if not t.is_library_task}
-
         # load metadata if available
-        self.metadata = {}
-        try:
-            if os.path.exists(self.csv_file_metadata):
-                df = pl.read_csv(self.csv_file_metadata, dtypes={"key": pl.Utf8, "value": pl.Utf8}, null_values=None)
-                keys = df["key"].to_list()
-                vals = df["value"].to_list()
-                for k, v in zip(keys, vals):
-                    self.metadata[k] = json.loads(v) if isinstance(v, str) else v
-            else:
-                self.log_warning("Metadata file not found, using empty metadata")
-        except Exception as e:
-            self.log_error(f"Failed to load metadata: {e}")
+        self.metadata = self.load_metadata_to_dict()
 
-        # init task stats
-        # self.get_task_stats()
-
-        # init metadata fingerprint
-        self._metadata_fingerprint = get_files_fingerprint([self.csv_file_metadata])
-        
         # log info
         self.log_info(f"Runtime template changed to: {runtime_template}")
 

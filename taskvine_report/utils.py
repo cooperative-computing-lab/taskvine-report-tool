@@ -42,7 +42,7 @@ def check_pip_updates():
                     print(f"   Update with: pip install --upgrade {package_name}")
                     print()
                     return
-                    
+
     except subprocess.TimeoutExpired:
         pass
     except (subprocess.CalledProcessError, json.JSONDecodeError, FileNotFoundError):

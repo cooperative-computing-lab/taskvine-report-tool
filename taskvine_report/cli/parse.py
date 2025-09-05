@@ -13,7 +13,7 @@ import traceback as tb
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from taskvine_report.src.data_parser import DataParser
-from taskvine_report.src.csv_generator import CSVManager
+from taskvine_report.src.csv_manager import CSVManager
 from taskvine_report.utils import check_pip_updates
 from taskvine_report import __version__
 
