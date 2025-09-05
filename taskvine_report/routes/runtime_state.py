@@ -79,7 +79,7 @@ class RuntimeState(CSVManager):
         self.template_lock = LeaseLock()
 
         # for preventing multiple reloads of the data
-        self._pkl_files_fingerprint = None
+        self._metadata_fingerprint = None
         self.reload_lock = LeaseLock()
 
     def set_logger(self):
@@ -114,22 +114,13 @@ class RuntimeState(CSVManager):
         self.logger.info(f"{self.log_prefix} {build_response_info_string(response, request, duration)}")
 
     def reload_data_if_needed(self):
-        if not self.pkl_files:
-            return False
-
         with self.reload_lock:
-            if self._pkl_files_fingerprint == self._get_current_pkl_files_fingerprint():
+            if self._metadata_fingerprint == get_files_fingerprint([self.csv_file_metadata]):
                 return False
 
             self.reload_template(self.runtime_template)
             return True
-    
-    def _get_current_pkl_files_fingerprint(self):
-        if not self.pkl_files:
-            return None
 
-        return get_files_fingerprint(self.pkl_files)
-    
     def ensure_runtime_template(self, runtime_template):
         if not runtime_template:
             return False
@@ -168,8 +159,8 @@ class RuntimeState(CSVManager):
         # init task stats
         # self.get_task_stats()
 
-        # init pkl files fingerprint
-        self._pkl_files_fingerprint = self._get_current_pkl_files_fingerprint()
+        # init metadata fingerprint
+        self._metadata_fingerprint = get_files_fingerprint([self.csv_file_metadata])
         
         # log info
         self.log_info(f"Runtime template changed to: {runtime_template}")
