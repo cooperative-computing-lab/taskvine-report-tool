@@ -326,11 +326,11 @@ def prefer_zero_else_max(series):
     return series.max()
 
 def get_current_time_domain():
-    time_domain_file = current_app.config["RUNTIME_STATE"].time_domain_file
-    if not os.path.exists(time_domain_file):
-        raise ValueError(f"Time domain file not found: {time_domain_file}")
+    csv_file_time_domain = current_app.config["RUNTIME_STATE"].csv_file_time_domain
+    if not os.path.exists(csv_file_time_domain):
+        raise ValueError(f"Time domain file not found: {csv_file_time_domain}")
     
-    df = pd.read_csv(time_domain_file)
+    df = pd.read_csv(csv_file_time_domain)
     min_time = df['MIN_TIME'].iloc[0]
     max_time = df['MAX_TIME'].iloc[0]
     return [0, max_time - min_time]
