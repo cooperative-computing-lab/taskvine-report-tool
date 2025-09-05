@@ -187,10 +187,11 @@ def main():
             else:
                 data_parser.parse_logs()
 
-            csv_manager = CSVManager(data_parser,
-                                         downsampling=args.downsampling > 0,
-                                         downsample_task_count=args.downsample_task_count,
-                                         downsample_point_count=args.downsample_point_count)
+            csv_manager = CSVManager(template,
+                                     data_parser=data_parser,
+                                     downsampling=args.downsampling > 0,
+                                     downsample_task_count=args.downsample_task_count,
+                                     downsample_point_count=args.downsample_point_count)
             csv_manager.generate_csv_files()
             success += 1
             print(f"✅ Successfully processed: {template}")

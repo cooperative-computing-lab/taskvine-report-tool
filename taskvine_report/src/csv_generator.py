@@ -4,12 +4,14 @@ from taskvine_report.utils import *
 
 
 class CSVManager:
-    def __init__(self, data_parser,
+    def __init__(self, runtime_template,
+                 data_parser=None,
                  downsampling=True,
                  downsample_task_count=10000,
                  downsample_point_count=1000):
-        self.dp = data_parser
-        self.runtime_template = self.dp.runtime_template
+        self.runtime_template = runtime_template
+        if not self.runtime_template:
+            return
 
         self.downsampling = downsampling
         self.downsample_task_count = downsample_task_count if self.downsampling else sys.maxsize
@@ -45,14 +47,17 @@ class CSVManager:
         self.csv_file_task_execution_details = os.path.join(self.csv_files_dir, 'task_execution_details.csv')
         self.csv_file_file_replica_activation_intervals = os.path.join(self.csv_files_dir, 'file_replica_activation_intervals.csv')
 
-        self.MIN_TIME, self.MAX_TIME = self.dp.manager.get_min_max_time()
-        if self.MAX_TIME and self.MIN_TIME:
-            self.time_domain = [0, self.MAX_TIME - self.MIN_TIME]
-            df = pd.DataFrame({
-                'MIN_TIME': [self.MIN_TIME],
-                'MAX_TIME': [self.MAX_TIME]
-            })
-            write_df_to_csv(df, self.csv_file_time_domain, index=False)
+        self.dp = data_parser
+        if self.dp:
+            assert self.runtime_template == self.dp.runtime_template
+            self.MIN_TIME, self.MAX_TIME = self.dp.manager.get_min_max_time()
+            if self.MAX_TIME and self.MIN_TIME:
+                self.time_domain = [0, self.MAX_TIME - self.MIN_TIME]
+                df = pd.DataFrame({
+                    'MIN_TIME': [self.MIN_TIME],
+                    'MAX_TIME': [self.MAX_TIME]
+                })
+                write_df_to_csv(df, self.csv_file_time_domain, index=False)
 
     def generate_csv_files(self):
         # return if no tasks were dispatched
