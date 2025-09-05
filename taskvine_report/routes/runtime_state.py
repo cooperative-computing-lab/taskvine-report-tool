@@ -1,10 +1,12 @@
 from taskvine_report.utils import *
 import os
 from pathlib import Path
-from ..src.data_parser import DataParser
+from ..src.csv_generator import CSVManager
 from .logger import Logger
 import time
 import traceback
+import json
+import polars as pl
 import threading
 from flask import current_app
 
@@ -63,7 +65,7 @@ class LeaseLock:
         self.release()
 
 
-class RuntimeState(DataParser):
+class RuntimeState(CSVManager):
     def __init__(self):
         # logs directory - will be set by app.py
         self.logs_dir = None
@@ -223,17 +225,17 @@ class RuntimeState(DataParser):
         self.tasks = {tid: t for tid, t in self.tasks.items() if not t.is_library_task}
 
         # load metadata if available
+        self.metadata = {}
         try:
-            import cloudpickle
-            if os.path.exists(self.pkl_file_metadata):
-                with open(self.pkl_file_metadata, 'rb') as f:
-                    self.metadata = cloudpickle.load(f)
-                self.log_info(f"Loaded metadata with {self.metadata.get('total_tasks', 0)} tasks")
+            if os.path.exists(self.csv_file_metadata):
+                df = pl.read_csv(self.csv_file_metadata, dtypes={"key": pl.Utf8, "value": pl.Utf8}, null_values=None)
+                keys = df["key"].to_list()
+                vals = df["value"].to_list()
+                for k, v in zip(keys, vals):
+                    self.metadata[k] = json.loads(v) if isinstance(v, str) else v
             else:
-                self.metadata = {}
                 self.log_warning("Metadata file not found, using empty metadata")
         except Exception as e:
-            self.metadata = {}
             self.log_error(f"Failed to load metadata: {e}")
 
         # init task stats

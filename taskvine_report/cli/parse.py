@@ -13,6 +13,7 @@ import traceback as tb
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from taskvine_report.src.data_parser import DataParser
+from taskvine_report.src.csv_generator import CSVManager
 from taskvine_report.utils import check_pip_updates
 from taskvine_report import __version__
 
@@ -180,15 +181,17 @@ def main():
         try:
             data_parser = DataParser(template, debug_mode=args.debug, 
                                      enablee_checkpoint_pkl_files=args.checkpoint_pkl_files, 
-                                     downsampling=args.downsampling > 0,
-                                     downsample_task_count=args.downsample_task_count,
-                                     downsample_point_count=args.downsample_point_count
                                     )
             if args.load_pkl_files:
                 data_parser.load_pkl_files()
             else:
                 data_parser.parse_logs()
-            data_parser.generate_csv_files()
+
+            csv_manager = CSVManager(data_parser,
+                                         downsampling=args.downsampling > 0,
+                                         downsample_task_count=args.downsample_task_count,
+                                         downsample_point_count=args.downsample_point_count)
+            csv_manager.generate_csv_files()
             success += 1
             print(f"✅ Successfully processed: {template}")
         except Exception as e:
