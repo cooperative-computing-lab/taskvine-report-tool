@@ -166,7 +166,7 @@ class RuntimeState(CSVManager):
             self.log_error(f"Failed to load metadata: {e}")
 
         # init task stats
-        self.get_task_stats()
+        # self.get_task_stats()
 
         # init pkl files fingerprint
         self._pkl_files_fingerprint = self._get_current_pkl_files_fingerprint()
