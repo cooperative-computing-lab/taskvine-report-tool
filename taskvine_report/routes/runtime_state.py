@@ -143,86 +143,13 @@ class RuntimeState(CSVManager):
         self.reload_template(runtime_template)
         return True
     
-    def get_task_stats(self):
-        # for calculating task dependents and dependencies
-        output_file_to_task = {}
-        for task in self.tasks.values():
-            for f in task.output_files:
-                output_file_to_task[f] = task.task_id
-        dependency_map = {task.task_id: set() for task in self.tasks.values()}
-        dependent_map = {task.task_id: set() for task in self.tasks.values()}
-
-        for task in self.tasks.values():
-            task_id = task.task_id
-            for f in task.input_files:
-                parent_id = output_file_to_task.get(f)
-                if parent_id and parent_id != task_id:
-                    dependency_map[task_id].add(parent_id)
-                    dependent_map[parent_id].add(task_id)
-
-        # sort all tasks by when_ready time
-        sorted_tasks = sorted(
-            self.tasks.values(),
-            key=lambda t: (t.when_ready if t.when_ready is not None else float('inf'))
-        )
-
-        # assign global_idx to each task
-        task_stats = []
-        for idx, task in enumerate(sorted_tasks, 1):
-            task_id = task.task_id
-            task_try_id = task.task_try_id
-
-            # calculate task response time
-            if task.when_running:
-                task_response_time = max(floor_decimal(task.when_running - task.when_ready, 2), 0.01)
-                was_dispatched = True
-            elif task.when_failure_happens:
-                task_response_time = max(floor_decimal(task.when_failure_happens - task.when_ready, 2), 0.01)
-                was_dispatched = False
-            else:
-                task_response_time = None
-                was_dispatched = False
-
-            # calculate task execution time
-            if task.task_status == 0:
-                task_execution_time = max(floor_decimal(task.time_worker_end - task.time_worker_start, 2), 0.01)
-                ran_to_completion = True
-            elif task.task_status != 0 and task.when_running and task.when_failure_happens:
-                task_execution_time = max(floor_decimal(task.when_failure_happens - task.when_running, 2), 0.01)
-                ran_to_completion = False
-            else:
-                task_execution_time = None
-                ran_to_completion = None
-
-            # calculate task waiting retrieval time
-            if task.when_retrieved and task.when_waiting_retrieval:
-                task_waiting_retrieval_time = max(floor_decimal(task.when_retrieved - task.when_waiting_retrieval, 2), 0.01)
-            else:
-                task_waiting_retrieval_time = None
-
-            row = {
-                'task_id': task_id,
-                'task_try_id': task_try_id,
-                'global_idx': idx,
-                'task_response_time': task_response_time,
-                'task_execution_time': task_execution_time,
-                'task_waiting_retrieval_time': task_waiting_retrieval_time,
-                'dependency_count': len(dependency_map[task_id]),
-                'dependent_count': len(dependent_map[task_id]),
-                'was_dispatched': was_dispatched,
-                'ran_to_completion': ran_to_completion
-            }
-            task_stats.append(row)
-
-        self.task_stats = task_stats
-
     def reload_template(self, runtime_template):
         # init template and data parser
         self.runtime_template = os.path.join(self.logs_dir, Path(runtime_template).name)
         super().__init__(self.runtime_template)
 
         # exclude library tasks
-        self.tasks = {tid: t for tid, t in self.tasks.items() if not t.is_library_task}
+        # self.tasks = {tid: t for tid, t in self.tasks.items() if not t.is_library_task}
 
         # load metadata if available
         self.metadata = {}
