@@ -55,10 +55,8 @@ class DataParser:
         self.vine_logs_dir = os.path.join(self.runtime_template, 'vine-logs')
         self.json_files_dir = os.path.join(self.runtime_template, 'json-files')
         self.pkl_files_dir = os.path.join(self.runtime_template, 'pkl-files')
-        self.svg_files_dir = os.path.join(self.runtime_template, 'svg-files')
         ensure_dir(self.json_files_dir, replace=False)
         ensure_dir(self.pkl_files_dir, replace=False)
-        ensure_dir(self.svg_files_dir, replace=False)
 
         self.debug = os.path.join(self.vine_logs_dir, 'debug')
         self.transactions = os.path.join(self.vine_logs_dir, 'transactions')

@@ -150,7 +150,7 @@ def main():
             missing.append(path)
         elif not os.path.exists(os.path.join(path, 'vine-logs')):
             no_vine_logs.append(path)
-    
+
     if missing:
         print("❌ The following directories do not exist:")
         for m in missing:
@@ -163,7 +163,7 @@ def main():
             print(f"  - {m}")
         # filter out directories without vine-logs
         full_paths = [p for p in full_paths if p not in no_vine_logs]
-        
+
     if not full_paths:
         print("❌ No valid log directories found to process")
         sys.exit(1)

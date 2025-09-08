@@ -3,6 +3,72 @@ from collections import defaultdict
 from taskvine_report.utils import *
 
 
+class CompletionIndex:
+    def __init__(self, finish_times: list[float], total_tasks: int):
+        self.total = max(int(total_tasks), 1)
+        if not finish_times:
+            self.df = pl.DataFrame({'time': [0.0], 'pct': [0.0]})
+            return
+
+        df = pl.DataFrame({'time': finish_times}).sort('time')
+        df = (
+            df.group_by('time')
+              .len()
+              .rename({'len': 'delta'})
+              .with_columns(pl.col('delta').cum_sum().alias('done'))
+              .with_columns((pl.col('done') / self.total * 100.0).alias('pct'))
+              .select(['time', 'pct'])
+        )
+        if df['time'][0] > 0.0:
+            df = pl.concat([pl.DataFrame({'time': [0.0], 'pct': [0.0]}), df], how='vertical_relaxed')
+        self.df = df
+
+    @classmethod
+    def from_dp(cls, dp):
+        try:
+            min_time, _ = dp.manager.get_min_max_time()
+        except Exception:
+            min_time = None
+        base = float(min_time) if min_time is not None else float(getattr(dp.manager, 'time_start', 0.0) or 0.0)
+
+        # only successful tasks with a 'when_done' timestamp, to match the "Done" series
+        tasks = (t for t in dp.tasks.values() if not getattr(t, 'is_library_task', False))
+        finish_times = []
+        for t in tasks:
+            if getattr(t, 'task_status', None) == 0 and getattr(t, 'when_done', None) is not None:
+                finish_times.append(float(t.when_done - base))
+
+        total = len(finish_times)  # denominator equals final Done count
+        return cls(finish_times, total)
+
+    def apply(self, df: pl.DataFrame, time_col: str = 'time',
+              out_col: str = 'workflow_completion_percentage') -> pl.DataFrame:
+        assert time_col in df.columns, "time column is required"
+        if self.df is None or self.df.height == 0:
+            out = df.with_columns(pl.lit(0.0).alias(out_col))
+            cols = out.columns
+            return out.select([time_col, out_col] + [c for c in cols if c not in (time_col, out_col)])
+
+        df2 = df.with_row_count('__row__')
+        df_sorted = df2.sort(time_col)
+
+        joined = (
+            df_sorted.join_asof(
+                self.df.rename({'pct': out_col}),
+                left_on=time_col,
+                right_on='time',
+                strategy='backward'
+            )
+            .with_columns(pl.col(out_col).fill_null(0.0))
+            .with_columns(pl.when(pl.col(time_col) < 0).then(0.0).otherwise(pl.col(out_col)).alias(out_col))
+            .sort('__row__')
+            .drop(['__row__'])  # keep the left time column
+        )
+
+        cols = joined.columns
+        return joined.select([time_col, out_col] + [c for c in cols if c not in (time_col, out_col)])
+        
+
 class CSVManager:
     def __init__(self, runtime_template,
                  data_parser=None,
@@ -47,6 +113,10 @@ class CSVManager:
         self.csv_file_task_execution_details = os.path.join(self.csv_files_dir, 'task_execution_details.csv')
         self.csv_file_file_replica_activation_intervals = os.path.join(self.csv_files_dir, 'file_replica_activation_intervals.csv')
 
+        # svg files
+        self.svg_files_dir = os.path.join(self.runtime_template, 'svg-files')
+        ensure_dir(self.svg_files_dir, replace=False)
+
         self.dp = data_parser
         if self.dp:
             assert self.runtime_template == self.dp.runtime_template
@@ -58,6 +128,11 @@ class CSVManager:
                     'MAX_TIME': [self.MAX_TIME]
                 })
                 write_df_to_csv(df, self.csv_file_time_domain, index=False)
+            self.ci = CompletionIndex.from_dp(self.dp)
+
+    def add_workflow_completion_percentage(self, df, time_col: str = 'time'):
+        assert time_col in df.columns, "time column is required"
+        return self.ci.apply(df, time_col=time_col)
 
     def generate_csv_files(self):
         # return if no tasks were dispatched
@@ -87,24 +162,6 @@ class CSVManager:
             
             self.generate_subgraphs_and_graph_metrics()
             progress.advance(task_id)
-
-    def add_workflow_completion_percentage(self, df):
-        def map_fn(t):
-            if t < 0:
-                return 0
-            denom = self.MAX_TIME - self.MIN_TIME
-            if denom <= 0:
-                return 0
-            return t / denom * 100
-        
-        assert "time" in df.columns, "time column is required"
-        df = df.with_columns(
-            pl.col("time").map_elements(map_fn, return_dtype=pl.Float64)
-            .alias("workflow_completion_percentage")
-        )
-        cols = df.columns
-        reordered = ["time", "workflow_completion_percentage"] + [c for c in cols if c not in ("time", "workflow_completion_percentage")]
-        return df.select(reordered)
 
     def generate_file_metrics(self):
         base_time = self.MIN_TIME
