@@ -356,7 +356,7 @@ class DataParser:
         puturl_id = parts.index("puturl") if "puturl" in parts else parts.index("puturl_now")
         file_name = parts[puturl_id + 2]
         size_in_mb = int(parts[puturl_id + 4]) / 2**20
-        transfer_id = parts[puturl_id + 7]
+        transfer_id = parts[puturl_id + 6]
 
         # the file name is the name on the worker's side
         file = self.ensure_file_info_entry(file_name, size_in_mb, timestamp)
@@ -494,6 +494,8 @@ class DataParser:
         elif "RUNNING (2) to WAITING_RETRIEVAL (3)" in line:    # as expected
             task.set_when_waiting_retrieval(timestamp)
             # update the coremap
+            if not task.worker_entry:
+                raise ValueError(f"task {task_id} has no worker entry")
             worker = self.workers[task.worker_entry]
         elif "WAITING_RETRIEVAL (3) to RETRIEVED (4)" in line:  # as expected
             task.set_when_retrieved(timestamp)

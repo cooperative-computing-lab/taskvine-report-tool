@@ -10,6 +10,7 @@ import os
 import sys
 import fnmatch
 import traceback as tb
+from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from taskvine_report.src.data_parser import DataParser
@@ -61,6 +62,21 @@ def find_matching_directories(root_dir, patterns):
         sys.exit(1)
 
 
+def find_valid_dirs(root_dir: str):
+    required = {"debug", "performance", "taskgraph", "transactions", "workflow.json"}
+    root = Path(root_dir)
+    results = []
+
+    for path in root.rglob("*"):
+        if path.is_dir():
+            vine_logs = path / "vine-logs"
+            if vine_logs.is_dir():
+                entries = {p.name for p in vine_logs.iterdir()}
+                if required.issubset(entries):
+                    results.append(str(path))
+    return results
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog='vine_parse',
@@ -73,13 +89,13 @@ def main():
         help='Base directory containing log folders (default: current directory)'
     )
     
-    parser.add_argument(
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
         '--templates', 
         type=str, 
         nargs='+',
-        required=True,
         help='List of log directory names/patterns. Use shell glob expansion without quotes: '
-             '--templates exp* test* checkpoint_*. Quotes will be automatically removed if provided. Required.'
+             '--templates exp* test* checkpoint_*. Quotes will be automatically removed if provided.'
     )
 
     parser.add_argument(
@@ -98,6 +114,12 @@ def main():
         '--debug',
         action='store_true',
         help='Enable debug mode'
+    )
+
+    group.add_argument(
+        '-R', '--recursive',
+        action='store_true',
+        help='Enable recursive mode'
     )
 
     parser.add_argument(
@@ -133,14 +155,16 @@ def main():
 
     root_dir = os.path.abspath(args.logs_dir)
 
-    # find directories matching the regex patterns
-    matched_dirs = find_matching_directories(root_dir, args.templates)
-    
-    # remove duplicates while preserving order
-    deduped_names = remove_duplicates_preserve_order(matched_dirs)
+    if args.recursive:
+        full_paths = find_valid_dirs(root_dir)
+    else:
+        matched_dirs = find_matching_directories(root_dir, args.templates)
+        deduped_names = remove_duplicates_preserve_order(matched_dirs)
+        full_paths = [os.path.join(root_dir, name) for name in deduped_names]
 
-    # construct full paths
-    full_paths = [os.path.join(root_dir, name) for name in deduped_names]
+    # resolve symlinks and deduplicate again after resolution
+    full_paths = [str(Path(p).resolve()) for p in full_paths]
+    full_paths = remove_duplicates_preserve_order(full_paths)
 
     # check if all directories exist and have vine-logs subdirectory
     missing = []
