@@ -1,6 +1,27 @@
 import { Toolbox } from './toolbox.js';
-import jsPDF from "https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.es.min.js";
-import { svg2pdf } from 'https://cdn.skypack.dev/svg2pdf.js';
+
+let jsPDF = null;
+let svg2pdf = null;
+
+async function ensurePdfDependencies() {
+    if (!jsPDF) {
+        try {
+            const module = await import("https://cdn.jsdelivr.net/npm/jspdf@2.5.1/+esm");
+            jsPDF = module?.default ?? module.jsPDF ?? module;
+        } catch (error) {
+            console.error('Failed to load jsPDF:', error);
+        }
+    }
+
+    if (!svg2pdf) {
+        try {
+            const module = await import("https://cdn.jsdelivr.net/npm/svg2pdf@1.1.1/src/index.min.js");
+            svg2pdf = module?.default ?? module.svg2pdf ?? module;
+        } catch (error) {
+            console.error('Failed to load svg2pdf:', error);
+        }
+    }
+}
 
 
 export class BaseModule {
@@ -1219,9 +1240,21 @@ export class BaseModule {
         this._rasterizeAndDownload('jpeg', filename, quality);
     }    
     
-    downloadPDF() {
+    async downloadPDF() {
+        await ensurePdfDependencies();
+
+        if (typeof jsPDF !== 'function') {
+            console.error('jsPDF is not available. Unable to export PDF.');
+            return;
+        }
+
+        if (typeof svg2pdf !== 'function') {
+            console.error('svg2pdf is not available. Unable to export PDF.');
+            return;
+        }
+
         const svgElement = this.svgNode;
-    
+
         const width = svgElement.clientWidth;
         const height = svgElement.clientHeight;
         svgElement.setAttribute('width', width);
@@ -1241,15 +1274,18 @@ export class BaseModule {
         }
         applyInlineStyles(svgElement);
     
-        const doc = new jsPDF({
-            orientation: 'landscape',
-            unit: 'pt',
-            format: [width, height],
-        });
-    
-        svg2pdf(svgElement, doc, { x: 0, y: 0, width, height }).then(() => {
+        try {
+            const doc = new jsPDF({
+                orientation: 'landscape',
+                unit: 'pt',
+                format: [width, height],
+            });
+
+            await svg2pdf(svgElement, doc, { x: 0, y: 0, width, height });
             doc.save(`${this.id.replace(/-/g, '_')}.pdf`);
-        });
+        } catch (error) {
+            console.error('Failed to export PDF:', error);
+        }
     }
 
     downloadSVG(filename = null) {
