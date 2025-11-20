@@ -799,7 +799,7 @@ class DataParser:
 
     def _clean_debug_file(self):
         result = subprocess.run(
-            ["grep", "-n", "tcp: listening on port 9124", self.debug],
+            ["grep", "-n", "tcp: listening on port", self.debug],
             capture_output=True,
             text=True,
             check=False
@@ -809,11 +809,15 @@ class DataParser:
             return
             
         lines = result.stdout.strip().split('\n')
-        if len(lines) <= 1:
+        # Filter out empty lines that might result from strip().split()
+        lines = [line for line in lines if line]
+        
+        if len(lines) == 0:
             return
 
         last_match_line_num = int(lines[-1].split(':')[0])
-        print(f"Found {len(lines)} entries in the debug file, only keeping the last one")
+        if len(lines) > 1:
+            print(f"Found {len(lines)} entries in the debug file, only keeping the last one")
 
         debug_cleaned = os.path.join(self.vine_logs_dir, 'debug.cleaned')
         

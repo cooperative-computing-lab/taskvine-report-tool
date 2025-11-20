@@ -1,5 +1,5 @@
 import { Toolbox } from './toolbox.js';
-import { jsPDF } from 'https://cdn.skypack.dev/jspdf';
+import jsPDF from "https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.es.min.js";
 import { svg2pdf } from 'https://cdn.skypack.dev/svg2pdf.js';
 
 
