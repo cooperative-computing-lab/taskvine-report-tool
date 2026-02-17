@@ -723,92 +723,20 @@ export class BaseModule {
         this.leftDomain = domain;
     }
 
-    _deriveFallbackTickValues(scaleType, domain) {
-        if (!Array.isArray(domain) || domain.length === 0) {
-            return [];
-        }
-
-        if (scaleType === 'linear') {
-            if (domain.length < 2) {
-                return [];
-            }
-            const start = Number(domain[0]);
-            const end = Number(domain[1]);
-            if (!Number.isFinite(start) || !Number.isFinite(end)) {
-                return [];
-            }
-            if (start === end) {
-                return [start];
-            }
-            return [start, end];
-        }
-
-        const seen = new Set();
-        const uniqueDomain = [];
-        domain.forEach(value => {
-            const key = String(value);
-            if (!seen.has(key)) {
-                seen.add(key);
-                uniqueDomain.push(value);
-            }
-        });
-        return uniqueDomain;
-    }
-
-    _sanitizeTickValues(tickValues, scaleType, domain) {
-        const values = Array.isArray(tickValues) ? tickValues : [];
-        const normalized = values
-            .filter(value => value !== null && value !== undefined)
-            .map(value => (scaleType === 'linear' ? Number(value) : value))
-            .filter(value => (scaleType === 'linear' ? Number.isFinite(value) : true));
-
-        const seen = new Set();
-        const uniqueValues = [];
-        normalized.forEach(value => {
-            const key = typeof value === 'number' ? value.toString() : String(value);
-            if (!seen.has(key)) {
-                seen.add(key);
-                uniqueValues.push(value);
-            }
-        });
-
-        if (uniqueValues.length > 0) {
-            return uniqueValues;
-        }
-
-        return this._deriveFallbackTickValues(scaleType, domain);
-    }
-
     setTopTickValues(tickValues) {
-        this.topTickValues = this._sanitizeTickValues(
-            tickValues,
-            this.topScaleType,
-            this.topDomain
-        );
+        this.topTickValues = tickValues;
     }
 
     setRightTickValues(tickValues) {
-        this.rightTickValues = this._sanitizeTickValues(
-            tickValues,
-            this.rightScaleType,
-            this.rightDomain
-        );
+        this.rightTickValues = tickValues;
     }
 
     setBottomTickValues(tickValues) {
-        this.bottomTickValues = this._sanitizeTickValues(
-            tickValues,
-            this.bottomScaleType,
-            this.bottomDomain
-        );
+        this.bottomTickValues = tickValues;
     }
 
     setLeftTickValues(tickValues) {
-        this.leftTickValues = this._sanitizeTickValues(
-            tickValues,
-            this.leftScaleType,
-            this.leftDomain
-        );
+        this.leftTickValues = tickValues;
     }
 
     setTopFormatter(formatter) {
@@ -1564,10 +1492,12 @@ export class BaseModule {
             this.setBottomDomain(this.data['x_domain']);
             this.setBottomTickValues(this.data['x_tick_values']);
             this.setBottomFormatter(eval(this.data['x_tick_formatter']));
+            this.setBottomTickValues(this._dedupeTicksByFormatter(this.bottomTickValues, this.bottomFormatter));
         } else if (this.topScaleType) {
             this.setTopDomain(this.data['x_domain']);
             this.setTopTickValues(this.data['x_tick_values']);
             this.setTopFormatter(eval(this.data['x_tick_formatter']));
+            this.setTopTickValues(this._dedupeTicksByFormatter(this.topTickValues, this.topFormatter));
         } else {
             /* some modules do not require setting domains */
             return;
@@ -1577,14 +1507,54 @@ export class BaseModule {
             this.setLeftDomain(this.data['y_domain']);
             this.setLeftTickValues(this.data['y_tick_values']);
             this.setLeftFormatter(eval(this.data['y_tick_formatter']));
+            this.setLeftTickValues(this._dedupeTicksByFormatter(this.leftTickValues, this.leftFormatter));
         } else if (this.rightScaleType) {
             this.setRightDomain(this.data['y_domain']);
             this.setRightTickValues(this.data['y_tick_values']);
             this.setRightFormatter(eval(this.data['y_tick_formatter']));
+            this.setRightTickValues(this._dedupeTicksByFormatter(this.rightTickValues, this.rightFormatter));
         } else {
             /* some modules do not require setting domains */
             return;
         }
+    }
+
+    _dedupeTicksByFormatter(ticks, formatter) {
+        if (!Array.isArray(ticks) || ticks.length <= 1 || typeof formatter !== 'function') {
+            return ticks;
+        }
+
+        const labels = ticks.map(t => {
+            try {
+                return String(formatter(t));
+            } catch {
+                return String(t);
+            }
+        });
+
+        const uniqueLabels = [];
+        const firstIndexByLabel = new Map();
+        const lastIndexByLabel = new Map();
+        labels.forEach((label, idx) => {
+            if (!firstIndexByLabel.has(label)) {
+                uniqueLabels.push(label);
+                firstIndexByLabel.set(label, idx);
+            }
+            lastIndexByLabel.set(label, idx);
+        });
+
+        if (uniqueLabels.length === labels.length) {
+            return ticks;
+        }
+
+        const selectedIndices = uniqueLabels.map((label, order) => {
+            if (order === uniqueLabels.length - 1) {
+                return lastIndexByLabel.get(label);
+            }
+            return firstIndexByLabel.get(label);
+        });
+
+        return selectedIndices.map(i => ticks[i]);
     }
 
     _getUniqueLegendCheckboxId(id) {
