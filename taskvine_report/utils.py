@@ -74,16 +74,27 @@ def compute_linear_tick_values(domain, num_ticks=5, round_digits=2):
     start, end = domain
     if num_ticks < 2:
         raise ValueError("num_ticks must be at least 2")
-    step = (end - start) / (num_ticks - 1)
+    if start == end:
+        value = float(start)
+        if round_digits is None:
+            return [value]
+        if round_digits == 0:
+            return [int(round(value))]
+        return [round(value, round_digits)]
 
+    step = (end - start) / (num_ticks - 1)
     values = [float(start + i * step) for i in range(num_ticks)]
 
     if round_digits is None:
-        return values
+        rounded_values = values
     elif round_digits == 0:
-        return [int(v) for v in values]
+        rounded_values = [int(round(v)) for v in values]
     else:
-        return [round(v, round_digits) for v in values]
+        rounded_values = [round(v, round_digits) for v in values]
+
+    # De-duplicate rounded ticks to avoid outputs like [0, 0, 1, 1, 1].
+    unique_values = list(dict.fromkeys(rounded_values))
+    return unique_values
 
 def compute_discrete_tick_values(domain_list, num_ticks=5):
     if not domain_list:
