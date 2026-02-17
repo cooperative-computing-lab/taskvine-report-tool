@@ -59,9 +59,9 @@ class DataParser:
         ensure_dir(self.pkl_files_dir, replace=False)
 
         self.debug = os.path.join(self.vine_logs_dir, 'debug')
-        self.transactions = os.path.join(self.vine_logs_dir, 'transactions')
-        self.taskgraph = os.path.join(self.vine_logs_dir, 'taskgraph')
-        for file_path in [self.debug, self.transactions, self.taskgraph]:
+        self.transactions = os.path.join(self.vine_logs_dir, 'transactions')   # not necessary
+        self.taskgraph = os.path.join(self.vine_logs_dir, 'taskgraph')         # not necessary
+        for file_path in [self.debug]:
             if not os.path.exists(file_path):
                 raise ValueError(f"file {file_path} does not exist")
 
@@ -100,6 +100,7 @@ class DataParser:
         self.debug_current_parts = None
         self.debug_current_timestamp = None
         self._init_debug_handlers()
+        self.sending_task_to_worker_entry = None
 
     def _init_debug_handlers(self):
         def H(name, cond, action):
@@ -108,9 +109,9 @@ class DataParser:
 
         self.debug_handlers = [
 
-            H("send_task",
-            lambda l, p, ctx: ("task" in p and self.count_elements_after_current_parts("task") == 1) or ctx.sending_task,
-            lambda l, p, ctx: ctx._handle_debug_line_send_task_to_worker()),
+            H("busy_on",
+            lambda l, p, ctx: "busy on" in l,
+            lambda l, p, ctx: ctx._handle_debug_line_busy_on()),
 
             H("puturl",
             lambda l, p, ctx: "puturl" in p or "puturl_now" in p,
@@ -238,14 +239,18 @@ class DataParser:
                     break
 
         # read the first line containing "MANAGER" and "START" in transactions file
-        with open(self.transactions, 'r') as file:
-            for line in file:
-                if line.startswith('#'):
-                    continue
-                if "MANAGER" in line and "START" in line:
-                    parts = line.strip().split()
-                    mgr_start_timestamp = int(int(parts[0]) / 1e6)
-                    break
+        if os.path.exists(self.transactions):
+            with open(self.transactions, 'r') as file:
+                for line in file:
+                    if line.startswith('#'):
+                        continue
+                    if "MANAGER" in line and "START" in line:
+                        parts = line.strip().split()
+                        mgr_start_timestamp = int(int(parts[0]) / 1e6)
+                        break
+        # otherwise, report the error
+        else:
+            raise ValueError("Could not find manager start timestamp in transactions file.")
 
         if mgr_start_datestring is None or mgr_start_timestamp is None:
             raise ValueError("Could not find required timestamps.")
@@ -356,7 +361,7 @@ class DataParser:
         puturl_id = parts.index("puturl") if "puturl" in parts else parts.index("puturl_now")
         file_name = parts[puturl_id + 2]
         size_in_mb = int(parts[puturl_id + 4]) / 2**20
-        transfer_id = parts[puturl_id + 6]
+        transfer_id = parts[-1]
 
         # the file name is the name on the worker's side
         file = self.ensure_file_info_entry(file_name, size_in_mb, timestamp)
@@ -454,18 +459,20 @@ class DataParser:
                 task.set_when_ready(timestamp)
                 self.add_task(task)
             task = self.tasks[(task_id, self.current_try_id[task_id])]
-            task.set_when_running(timestamp)
-            task.is_library_task = True
+            self._match_sending_task_to_worker_entry(task, timestamp, True)
             return
 
         task_entry = (task_id, self.current_try_id[task_id])
         task = self.tasks[task_entry]
+
         if "READY (1) to RUNNING (2)" in line:                  # as expected
             # it could be that the task related info was unable to be sent (also comes with a "failed to send" message)
             # in this case, even the state is switched to running, there is no worker info
             if self.manager.when_first_task_start_commit is None:
                 self.manager.set_when_first_task_start_commit(timestamp)
-            task.set_when_running(timestamp)
+
+            self._match_sending_task_to_worker_entry(task, timestamp, False)
+
             if not task.worker_entry:
                 return
             else:
@@ -491,6 +498,10 @@ class DataParser:
         elif "DONE (5) to WAITING_RETRIEVAL (3)" in line:
             print(f"Warning: task {task_id} state change: from DONE (5) to WAITING_RETRIEVAL (3)")
             pass
+        elif "READY (1) to RETRIEVED (4)" in line:
+            # this can happen such as inputs missing
+            task.set_when_retrieved(timestamp)
+            task.set_task_status(timestamp, 1)
         elif "RUNNING (2) to WAITING_RETRIEVAL (3)" in line:    # as expected
             task.set_when_waiting_retrieval(timestamp)
             # update the coremap
@@ -589,6 +600,10 @@ class DataParser:
         size_in_mb = int(parts[cache_update_idx + 4]) / 2**20
         transfer_id = parts[cache_update_idx + 8]   # 'X' or a real id
 
+        # note: the transfer may be from an unknown worker and the transfer id could be invalid
+        if transfer_id != 'X' and file_name not in self.files:
+            return
+
         # if this is a task-generated file, it is the first time the file is cached on this worker, otherwise we only update the stage in time
         file = self.ensure_file_info_entry(file_name, size_in_mb, timestamp)
 
@@ -596,7 +611,6 @@ class DataParser:
         worker_entry = self.get_current_worker_entry_by_ip_port(ip, port)
         # TODO: better handle a special case where the file is created by a previous manager
         if worker_entry is None:
-            del self.files[file_name]
             return
         worker = self.workers[worker_entry]
         
@@ -692,6 +706,15 @@ class DataParser:
 
     def _handle_debug_line_listening_on_port(self):
         self.manager.set_time_start(self.debug_current_timestamp)
+
+    def _handle_debug_line_busy_on(self):
+        parts = self.debug_current_parts
+        busy_idx = parts.index("busy")
+        worker_ip, worker_port = WorkerInfo.extract_ip_port_from_string(parts[busy_idx - 1])
+        worker_entry = self.get_current_worker_entry_by_ip_port(worker_ip, worker_port)
+        if worker_entry is None:
+            raise ValueError(f"worker {worker_ip}:{worker_port} is not found")
+        self.sending_task_to_worker_entry = worker_entry
 
     def _handle_debug_line_send_task_to_worker(self):
         parts = self.debug_current_parts
@@ -811,7 +834,7 @@ class DataParser:
         lines = result.stdout.strip().split('\n')
         # Filter out empty lines that might result from strip().split()
         lines = [line for line in lines if line]
-        
+
         if len(lines) == 0:
             return
 
@@ -829,6 +852,16 @@ class DataParser:
         
         with open(debug_cleaned, 'w', encoding='utf-8') as output_file:
             output_file.writelines(lines_to_keep)
+
+    def _match_sending_task_to_worker_entry(self, task, when_running, is_library_task):
+        if self.sending_task_to_worker_entry is not None:
+            task.set_worker_entry(self.sending_task_to_worker_entry)
+            task.set_when_running(when_running)
+            task.is_library_task = is_library_task
+        else:
+            # if no busy on was above then the task commission failed and sending task to worker entry is None
+            task.set_task_status(when_running, 43 << 3)   # failed to dispatch
+        self.sending_task_to_worker_entry = None
 
     def parse_debug(self):
         # Remove existing debug.cleaned file if exists

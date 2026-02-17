@@ -65,10 +65,9 @@ class WorkerInfo:
         self.machine_name = machine_name
 
     def set_transfer_port(self, transfer_port):
-        transfer_port = int(transfer_port)
-        if self.transfer_port and transfer_port != self.transfer_port:
-            raise ValueError(f"transfer port mismatch for worker {self.ip}:{self.port}")
-        self.transfer_port = transfer_port
+        # note: a worker may silently restart by itself and report a different transfer port with the same ip and port
+        # in this case, we just update the transfer port
+        self.transfer_port = int(transfer_port)
 
     def run_task(self, task):
         assert self.coremap is not None

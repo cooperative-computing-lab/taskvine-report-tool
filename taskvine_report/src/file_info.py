@@ -94,6 +94,10 @@ class FileInfo():
                 for transfer in self.unindexed_transfers[worker_entry]:
                     transfer.cache_update(time_stage_in)
         else:
+            # note: the transfer id can be stale from a previous manager
+            if transfer_id not in self.indexed_transfers:
+                print(f"Warning: transfer id {transfer_id} not found for file {self.filename} on worker {worker_entry}")
+                return
             transfer = self.indexed_transfers[transfer_id]
             transfer.cache_update(time_stage_in)
 
@@ -106,6 +110,10 @@ class FileInfo():
             for transfer in self.unindexed_transfers[worker_entry]:
                 transfer.cache_invalid(time_stage_out)
         else:
+            # note: the transfer id can be stale from a previous manager
+            if transfer_id not in self.indexed_transfers:
+                print(f"Warning: transfer id {transfer_id} not found for file {self.filename} on worker {worker_entry}")
+                return
             transfer = self.indexed_transfers[transfer_id]
             transfer.cache_invalid(time_stage_out)
 

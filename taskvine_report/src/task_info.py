@@ -62,7 +62,7 @@ class TaskInfo:
         self.worker_id = None
         self.core_id = []       # a task can be assigned to multiple cores
         self.committed_worker_hash = None
-        self.cores_requested = None
+        self.cores_requested = 1
         self.gpus_requested = None
         self.memory_requested_mb = None
         self.disk_requested_mb = None

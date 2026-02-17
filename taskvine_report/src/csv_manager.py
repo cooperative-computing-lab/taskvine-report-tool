@@ -1014,9 +1014,16 @@ class CSVManager:
 
         def _find(x):
             parent.setdefault(x, x)
-            if parent[x] != x:
-                parent[x] = _find(parent[x])  # path compression
-            return parent[x]
+            root = x
+            while parent[root] != root:
+                root = parent[root]
+
+            while x != root:
+                px = parent[x]
+                parent[x] = root
+                x = px
+
+            return root
 
         def _union(x, y):
             root_x = _find(x)
