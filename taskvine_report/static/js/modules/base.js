@@ -723,20 +723,92 @@ export class BaseModule {
         this.leftDomain = domain;
     }
 
+    _deriveFallbackTickValues(scaleType, domain) {
+        if (!Array.isArray(domain) || domain.length === 0) {
+            return [];
+        }
+
+        if (scaleType === 'linear') {
+            if (domain.length < 2) {
+                return [];
+            }
+            const start = Number(domain[0]);
+            const end = Number(domain[1]);
+            if (!Number.isFinite(start) || !Number.isFinite(end)) {
+                return [];
+            }
+            if (start === end) {
+                return [start];
+            }
+            return [start, end];
+        }
+
+        const seen = new Set();
+        const uniqueDomain = [];
+        domain.forEach(value => {
+            const key = String(value);
+            if (!seen.has(key)) {
+                seen.add(key);
+                uniqueDomain.push(value);
+            }
+        });
+        return uniqueDomain;
+    }
+
+    _sanitizeTickValues(tickValues, scaleType, domain) {
+        const values = Array.isArray(tickValues) ? tickValues : [];
+        const normalized = values
+            .filter(value => value !== null && value !== undefined)
+            .map(value => (scaleType === 'linear' ? Number(value) : value))
+            .filter(value => (scaleType === 'linear' ? Number.isFinite(value) : true));
+
+        const seen = new Set();
+        const uniqueValues = [];
+        normalized.forEach(value => {
+            const key = typeof value === 'number' ? value.toString() : String(value);
+            if (!seen.has(key)) {
+                seen.add(key);
+                uniqueValues.push(value);
+            }
+        });
+
+        if (uniqueValues.length > 0) {
+            return uniqueValues;
+        }
+
+        return this._deriveFallbackTickValues(scaleType, domain);
+    }
+
     setTopTickValues(tickValues) {
-        this.topTickValues = tickValues;
+        this.topTickValues = this._sanitizeTickValues(
+            tickValues,
+            this.topScaleType,
+            this.topDomain
+        );
     }
 
     setRightTickValues(tickValues) {
-        this.rightTickValues = tickValues;
+        this.rightTickValues = this._sanitizeTickValues(
+            tickValues,
+            this.rightScaleType,
+            this.rightDomain
+        );
     }
 
     setBottomTickValues(tickValues) {
-        this.bottomTickValues = tickValues;
+        this.bottomTickValues = this._sanitizeTickValues(
+            tickValues,
+            this.bottomScaleType,
+            this.bottomDomain
+        );
     }
 
     setLeftTickValues(tickValues) {
-        this.leftTickValues = tickValues;
+        this.leftTickValues = this._sanitizeTickValues(
+            tickValues,
+            this.leftScaleType,
+            this.leftDomain
+        );
     }
 
     setTopFormatter(formatter) {
