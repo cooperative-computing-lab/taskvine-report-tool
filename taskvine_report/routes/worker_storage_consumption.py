@@ -5,9 +5,33 @@ worker_storage_consumption_bp = Blueprint(
     'worker_storage_consumption', __name__, url_prefix='/api'
 )
 
+def _is_worker_storage_column(column_name):
+    if not isinstance(column_name, str):
+        return False
+    if column_name in {"time", "workflow_completion_percentage"}:
+        return False
+
+    # Worker series are written as "<host>:<port>:<core>"
+    parts = column_name.rsplit(":", 2)
+    if len(parts) != 3:
+        return False
+    host, port, core = parts
+    return bool(host) and port.isdigit() and core.isdigit()
+
+def _sanitize_worker_storage_df(df):
+    if "time" not in df.columns:
+        raise KeyError("Missing required column in worker storage CSV: time")
+
+    worker_cols = [col for col in df.columns if _is_worker_storage_column(col)]
+    kept_columns = ["time"] + worker_cols
+    dropped_columns = [col for col in df.columns if col not in kept_columns]
+    return df[kept_columns], dropped_columns
+
 def aggregate_storage_data(df):
+    if len(df.columns) <= 1:
+        return []
     df_indexed = df.set_index('time')
-    df_filled = df_indexed.fillna(method='ffill').fillna(0)
+    df_filled = df_indexed.ffill().fillna(0)
     aggregated_series = df_filled.sum(axis=1)
     aggregated = aggregated_series.reset_index()
     aggregated.columns = ['time', 'total_storage']
@@ -19,7 +43,12 @@ def get_worker_storage_consumption():
     try:
         accumulated = request.args.get('accumulated', 'false').lower() == 'true'
         
-        df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_worker_storage_consumption)
+        raw_df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_worker_storage_consumption)
+        df, dropped_columns = _sanitize_worker_storage_df(raw_df)
+        if dropped_columns:
+            current_app.config["RUNTIME_STATE"].log_info(
+                f"Ignoring non-worker storage columns: {dropped_columns}"
+            )
         x_domain = get_current_time_domain()
         
         if accumulated:

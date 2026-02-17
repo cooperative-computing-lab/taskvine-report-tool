@@ -47,6 +47,30 @@ export class WorkerStorageConsumptionModule extends BaseModule {
         }
     }
 
+    _isWorkerStorageSeriesKey(key) {
+        if (typeof key !== 'string' || key === 'workflow_completion_percentage') {
+            return false;
+        }
+        const parts = key.split(':');
+        if (parts.length < 3) {
+            return false;
+        }
+        const core = parts[parts.length - 1];
+        const port = parts[parts.length - 2];
+        const host = parts.slice(0, parts.length - 2).join(':');
+        return Boolean(host) && /^\d+$/.test(port) && /^\d+$/.test(core);
+    }
+
+    _getSanitizedStorageData() {
+        const raw = this.data?.storage_data;
+        if (!raw || typeof raw !== 'object') {
+            return {};
+        }
+        return Object.fromEntries(
+            Object.entries(raw).filter(([worker]) => this._isWorkerStorageSeriesKey(worker))
+        );
+    }
+
     legendOnToggle(id, visible) {
         if (this._fetchDataParams.accumulated) {
             // In accumulated mode, toggle the single line
@@ -65,8 +89,9 @@ export class WorkerStorageConsumptionModule extends BaseModule {
             this.clearLegend();
         } else {
             // Separate mode: legend for each worker
-            if (this.data.storage_data) {
-                const legendItems = Object.keys(this.data.storage_data).map((worker, idx) => ({
+            const storageData = this._getSanitizedStorageData();
+            if (Object.keys(storageData).length > 0) {
+                const legendItems = Object.keys(storageData).map((worker, idx) => ({
                     id: escapeWorkerId(worker),
                     label: worker,
                     color: getWorkerColor(worker, idx)
@@ -98,8 +123,9 @@ export class WorkerStorageConsumptionModule extends BaseModule {
             }
         } else {
             // Separate mode: plot line for each worker
-            if (this.data.storage_data) {
-                Object.entries(this.data.storage_data).forEach(([worker, points], idx) => {
+            const storageData = this._getSanitizedStorageData();
+            if (Object.keys(storageData).length > 0) {
+                Object.entries(storageData).forEach(([worker, points], idx) => {
                     const safeId = escapeWorkerId(worker);
                     const color = getWorkerColor(worker, idx);
                     this.plotPath(points, {
