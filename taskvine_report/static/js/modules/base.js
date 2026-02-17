@@ -161,8 +161,20 @@ export class BaseModule {
     async fetchDataAndPlot() {
         this.clearSVG();
         this.plotSpinner();
-        await this.fetchData();
-        this.plot();
+        try {
+            const isReadyToPlot = await this.fetchData();
+            if (!isReadyToPlot) {
+                return;
+            }
+            this.plot();
+        } catch (error) {
+            console.error(`Error fetching data for module ${this.id}:`, error);
+        } finally {
+            const existingSpinner = document.getElementById(`${this.id}-spinner`);
+            if (existingSpinner) {
+                existingSpinner.remove();
+            }
+        }
     }
 
     createToolboxItemDownloadSVG() {
@@ -599,9 +611,15 @@ export class BaseModule {
         const response = await fetch(`${this.api_url}?${params.toString()}`);
         const data = await response.json();
         
-        if (!data) {
-            console.warn('Invalid or missing data');
-            return;
+        if (!response.ok || !data || data.error) {
+            console.warn(
+                `Skipping plot for ${this.id} due to invalid backend response from ${this.api_url}`,
+                data
+            );
+            this.clearLegend();
+            this.clearToolbox();
+            this.clearSVG();
+            return false;
         }
 
         this.data = data;
@@ -618,6 +636,7 @@ export class BaseModule {
         
         /* toolbox must be set after the legend is set b/c it checks if there are checkboxes */
         this._initToolbox();
+        return true;
     }
 
     plot() {}
