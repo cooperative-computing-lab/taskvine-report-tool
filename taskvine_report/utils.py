@@ -399,10 +399,7 @@ def read_csv_to_fd(csv_path):
         df = pd.read_csv(csv_path)
     except Exception as e:
         raise RuntimeError(f"Failed to read CSV file {csv_path}: {e}")
-    
-    if df.empty:
-        raise ValueError(f"CSV file is empty: {csv_path}")
-    
+
     return df
 
 def extract_points_from_df(df, x_col, *y_cols):
@@ -559,6 +556,8 @@ def extract_y_range_from_series_points(series_points_dict, y_index=1):
 
 def extract_size_points_from_df(df, x_col, y_col):
     points = extract_points_from_df(df, x_col, y_col)
+    if not points:
+        return [], "MB"
     unit, scale = get_size_unit_and_scale(max(p[1] for p in points))
     return [[x, y * scale] for x, y in points], unit
 
