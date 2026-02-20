@@ -606,7 +606,6 @@ class DataParser:
 
         # if this is a task-generated file, it is the first time the file is cached on this worker, otherwise we only update the stage in time
         file = self.ensure_file_info_entry(file_name, size_in_mb, timestamp)
-
         ip, port = WorkerInfo.extract_ip_port_from_string(parts[cache_update_idx - 1])
         worker_entry = self.get_current_worker_entry_by_ip_port(ip, port)
         # TODO: better handle a special case where the file is created by a previous manager
@@ -964,9 +963,9 @@ class DataParser:
     def postprocess_debug(self):
         # some post-processing in case the manager does not exit normally or has not finished yet
         # if the manager has not finished yet, we do something to set up the None values to make the plotting tool work
-        # 1. if the manager's time_end is None, we set it to the current timestamp
+        # 1. if the manager's time_end is None, we set it to the latest timestamp
         if self.manager.time_end is None:
-            print(f"Manager didn't exit normally, setting manager time_end to {self.manager.current_max_time}")
+            print(f"Manager didn't exit normally, setting manager time_end to the latest timestamp")
             self.manager.set_time_end(self.manager.current_max_time)
 
         # post-processing for tasks
@@ -1008,7 +1007,7 @@ class DataParser:
 
         # post-processing for files
         # filter files with no producers
-        self.files = {k: v for k, v in self.files.items() if len(v.producers) > 0}
+        # self.files = {k: v for k, v in self.files.items() if len(v.producers) > 0}
         # append file_idx
         for idx, file in enumerate(self.files.values(), start=1):
             file.file_idx = idx
