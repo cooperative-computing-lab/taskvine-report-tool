@@ -4,11 +4,11 @@ include requirements.txt
 include MANIFEST.in
 
 # Include static web assets
-recursive-include taskvine_report/static *
-recursive-include taskvine_report/templates *
+recursive-include src/vine_report/static *
+recursive-include src/vine_report/templates *
 
 # Include Python files
-recursive-include taskvine_report *.py
+recursive-include src/vine_report *.py
 
 # Exclude development and build artifacts
 global-exclude *.pyc

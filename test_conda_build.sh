@@ -25,7 +25,7 @@ if [ $? -eq 0 ]; then
     
     echo ""
     echo "Testing import..."
-    python -c "import taskvine_report; print('✅ Import successful, version:', taskvine_report.__version__)"
+    python -c "import src; print('✅ Import successful, version:', src.__version__)"
     
     echo ""
     echo "Testing command line tools..."

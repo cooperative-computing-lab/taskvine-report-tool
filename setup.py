@@ -11,7 +11,7 @@ import re
 
 def get_version():
     """Read version from __init__.py without importing the package"""
-    init_path = os.path.join(os.path.dirname(__file__), 'taskvine_report', '__init__.py')
+    init_path = os.path.join(os.path.dirname(__file__), 'src', '__init__.py')
     with open(init_path, 'r', encoding='utf-8') as f:
         content = f.read()
     version_match = re.search(r'^__version__ = [\'"]([^\'"]*)[\'"]', content, re.M)
@@ -37,7 +37,7 @@ setup(
         "Bug Reports": "https://github.com/cooperative-computing-lab/taskvine-report-tool/issues",
         "CCL Homepage": "https://ccl.cse.nd.edu/",
     },
-    packages=["taskvine_report", "taskvine_report.cli", "taskvine_report.routes", "taskvine_report.src"],
+    packages=["src", "src.vine_parse", "src.vine_report", "src.vine_report.routes", "src.vine_export"],
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
@@ -68,6 +68,7 @@ setup(
         "polars",
         "numpy",
         "pyarrow",
+        "matplotlib",
     ],
     extras_require={
         "dev": [
@@ -84,15 +85,16 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "vine_parse=taskvine_report.cli.parse:main",
-            "vine_report=taskvine_report.cli.report:main",
+            "vine_parse=src.vine_parse.parse:main",
+            "vine_report=src.vine_report.report:main",
+            "vine_export=src.vine_export.export:main",
         ],
     },
     include_package_data=True,
     package_data={
-        "taskvine_report": [
+        "src.vine_report": [
             "templates/*",
-            "templates/**/*", 
+            "templates/**/*",
             "static/*",
             "static/**/*",
             "static/**/**/*",

@@ -13,8 +13,9 @@ build:
   script: "{{ PYTHON }} -m pip install . -vv"
   number: 0
   entry_points:
-    - vine_parse = taskvine_report.cli.parse:main
-    - vine_report = taskvine_report.cli.report:main
+    - vine_parse = src.vine_parse.parse:main
+    - vine_report = src.vine_report.report:main
+    - vine_export = src.vine_export.export:main
 
 requirements:
   host:
@@ -42,13 +43,15 @@ requirements:
 
 test:
   imports:
-    - taskvine_report
-    - taskvine_report.cli
-    - taskvine_report.routes
-    - taskvine_report.src
+    - src
+    - src.vine_parse
+    - src.vine_report
+    - src.vine_report.routes
+    - src.vine_export
   commands:
     - vine_parse --help
     - vine_report --help
+    - vine_export --help
 
 about:
   home: https://github.com/cooperative-computing-lab/taskvine-report-tool
