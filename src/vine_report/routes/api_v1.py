@@ -10,7 +10,7 @@ from flask import Blueprint, current_app, g, jsonify, make_response, request, se
 
 from src.vine_report.request_context import bind_snapshot
 from src.vine_report.run_store import RunStoreError
-from src.vine_report.api_contract import API_SCHEMA, API_VERSION
+from src.vine_report.api_contract import API_CAPABILITIES, API_SCHEMA, API_VERSION
 from src.vine_report.metric_service import metric_payload
 from src.vine_parse.diagnostics import PARSER_CONTRACT_VERSION
 from src import __version__
@@ -79,6 +79,7 @@ def health():
         "service": "taskvine-report-tool",
         "version": __version__,
         "api_schema": API_SCHEMA,
+        "capabilities": list(API_CAPABILITIES),
         "parser_contract_version": PARSER_CONTRACT_VERSION,
         "run_count": len(catalog.list_runs()),
         "runtime": current_app.config["RUNTIME_METRICS"].snapshot(),
@@ -93,6 +94,7 @@ def diagnostics():
             "name": "taskvine-report-tool",
             "version": __version__,
             "api_schema": API_SCHEMA,
+            "capabilities": list(API_CAPABILITIES),
             "parser_contract_version": PARSER_CONTRACT_VERSION,
         },
         "runtime": {

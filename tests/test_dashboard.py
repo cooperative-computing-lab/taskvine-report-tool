@@ -99,6 +99,7 @@ class DashboardAPITest(unittest.TestCase):
         self.assertEqual(health.json["schema_version"], "report-api/v1")
         self.assertEqual(health.json["data"]["status"], "ok")
         self.assertEqual(health.json["data"]["run_count"], 2)
+        self.assertIn("source-backed-metrics-v1", health.json["data"]["capabilities"])
         self.assertEqual(health.json["data"]["runtime"]["request_threads"], 8)
 
         self.client.get("/api/v1/runs/run-a")

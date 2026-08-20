@@ -108,3 +108,16 @@ test('source-backed metric renders only validated evidence', async ({ page }) =>
   await expect(card.locator('.section-title')).toHaveAttribute('title', /Source: transactions; coverage 100\.0%/);
   expect(browserErrors).toEqual([]);
 });
+
+test('new frontend blocks an older backend with one actionable message', async ({ page }) => {
+  await page.route('**/api/v1/health', async route => {
+    const response = await route.fetch();
+    const payload = await response.json();
+    delete payload.data.capabilities;
+    await route.fulfill({ response, json: payload });
+  });
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'TaskVine Report server restart required' })).toBeVisible();
+  await expect(page.locator('body')).toContainText('newer JavaScript bundle than the running backend');
+  await expect(page.locator('.module-state.error')).toHaveCount(0);
+});

@@ -1,4 +1,6 @@
-import { moduleClasses, enabledModuleConfigs } from './modules/configs.js?v=5.1';
+import { moduleClasses, enabledModuleConfigs } from './modules/configs.js?v=5.2';
+
+const REQUIRED_SERVER_CAPABILITY = 'source-backed-metrics-v1';
 
 const moduleObjects = {};
 const loadedGroups = new Set();
@@ -128,6 +130,15 @@ function showBanner(message = '') {
     const banner = $('#app-banner');
     banner.textContent = message;
     banner.classList.toggle('hidden', !message);
+}
+
+function showRestartRequired(reason) {
+    document.body.innerHTML = `
+        <main style="max-width:680px;margin:12vh auto;padding:32px;font:16px/1.55 system-ui;color:#292927">
+            <h1 style="margin:0 0 12px;font-size:28px">TaskVine Report server restart required</h1>
+            <p>${escapeHTML(reason)}</p>
+            <p>Stop the running <code>vine_report</code> process, start it again, then reload this page.</p>
+        </main>`;
 }
 
 function updateURL(replace = true) {
@@ -619,13 +630,19 @@ async function initialize() {
     const requiredShell = ['#view-overview', '#overview-dashboard', '#modal-backdrop', '[data-time-filter]'];
     const missingShell = requiredShell.filter(selector => !document.querySelector(selector));
     if (missingShell.length) {
-        document.body.innerHTML = `
-            <main style="max-width:680px;margin:12vh auto;padding:32px;font:16px/1.55 system-ui;color:#142033">
-                <h1 style="margin:0 0 12px">TaskVine Report server restart required</h1>
-                <p>This page loaded a new JavaScript bundle with an older cached HTML template.</p>
-                <p>Stop the running <code>vine_report</code> process, start it again, then reload this page.</p>
-            </main>`;
+        showRestartRequired('This page loaded a new JavaScript bundle with an older cached HTML template.');
         console.error('TaskVine UI bundle/template mismatch. Restart vine_report to refresh the cached template.');
+        return;
+    }
+    try {
+        const health = await getJSON('/api/v1/health');
+        if (!health.capabilities?.includes(REQUIRED_SERVER_CAPABILITY)) {
+            showRestartRequired('This page loaded a newer JavaScript bundle than the running backend.');
+            console.error(`TaskVine backend is missing capability ${REQUIRED_SERVER_CAPABILITY}.`);
+            return;
+        }
+    } catch (error) {
+        showBanner(`Dashboard initialization failed: ${error.message}`);
         return;
     }
     const params = new URLSearchParams(window.location.search);

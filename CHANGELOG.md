@@ -21,6 +21,8 @@
   identifiers; execution tries follow ordered READY events.
 - The ambiguous legacy task-concurrency view is hidden pending a versioned
   lifecycle contract.
+- The frontend verifies backend capabilities before loading charts and shows a
+  single restart instruction when a live server is older than its JS bundle.
 
 ### Compatibility
 
