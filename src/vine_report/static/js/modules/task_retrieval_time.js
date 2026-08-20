@@ -1,4 +1,4 @@
-import { BaseModule } from './base.js';
+import { BaseModule } from './base.js?v=5.0';
 
 export class TaskRetrievalTimeModule extends BaseModule {
     constructor(id, title, api_url) {

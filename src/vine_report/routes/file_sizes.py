@@ -1,3 +1,4 @@
+from src.vine_report.request_context import get_run_snapshot
 from src.utils import *
 from flask import Blueprint, jsonify, current_app
 
@@ -21,9 +22,9 @@ def _empty_file_sizes_payload():
 @check_and_reload_data()
 def get_file_sizes():
     try:
-        df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_sizes)
+        df = read_csv_to_fd(get_run_snapshot().csv_file_sizes)
         if "file_idx" not in df.columns or "file_name" not in df.columns:
-            current_app.config["RUNTIME_STATE"].log_info(
+            get_run_snapshot().log_info(
                 "file_sizes.csv missing required columns (file_idx/file_name), returning empty payload"
             )
             return jsonify(_empty_file_sizes_payload())
@@ -34,7 +35,7 @@ def get_file_sizes():
             size_col = "file_size"
             unit = "MB"
         elif size_col is None:
-            current_app.config["RUNTIME_STATE"].log_info(
+            get_run_snapshot().log_info(
                 "file_sizes.csv missing size columns, returning empty payload"
             )
             return jsonify(_empty_file_sizes_payload())
@@ -57,5 +58,5 @@ def get_file_sizes():
         })
 
     except Exception as e:
-        current_app.config["RUNTIME_STATE"].log_error(f"Error in get_file_sizes: {e}")
+        get_run_snapshot().log_error(f"Error in get_file_sizes: {e}")
         return jsonify({'error': str(e)}), 500

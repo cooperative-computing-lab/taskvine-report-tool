@@ -1,3 +1,4 @@
+from src.vine_report.request_context import get_run_snapshot
 from src.utils import *
 from flask import Blueprint, jsonify, current_app, request
 
@@ -12,9 +13,9 @@ def get_task_concurrency():
         recovery_only = request.args.get('recovery-task-only', 'false').lower() == 'true'
         
         # select appropriate CSV file based on parameter
-        csv_file = (current_app.config["RUNTIME_STATE"].csv_file_task_concurrency_recovery_only 
+        csv_file = (get_run_snapshot().csv_file_task_concurrency_recovery_only
                    if recovery_only 
-                   else current_app.config["RUNTIME_STATE"].csv_file_task_concurrency)
+                   else get_run_snapshot().csv_file_task_concurrency)
         
         df = read_csv_to_fd(csv_file)
         phase_data = {}
@@ -36,5 +37,5 @@ def get_task_concurrency():
         })
 
     except Exception as e:
-        current_app.config["RUNTIME_STATE"].log_error(f"Error in get_task_concurrency: {e}")
+        get_run_snapshot().log_error(f"Error in get_task_concurrency: {e}")
         return jsonify({'error': str(e)}), 500

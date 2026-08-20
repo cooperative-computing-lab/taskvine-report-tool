@@ -37,16 +37,13 @@ setup(
         "Bug Reports": "https://github.com/cooperative-computing-lab/taskvine-report-tool/issues",
         "CCL Homepage": "https://ccl.cse.nd.edu/",
     },
-    packages=["src", "src.vine_parse", "src.vine_report", "src.vine_report.routes", "src.vine_export"],
+    packages=["src", "src.vine_parse", "src.vine_parse.sources", "src.vine_report", "src.vine_report.routes", "src.vine_export"],
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
         "Intended Audience :: Science/Research",
         "Operating System :: OS Independent",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.7",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
@@ -55,7 +52,7 @@ setup(
         "Topic :: System :: Distributed Computing",
         "Topic :: System :: Monitoring",
     ],
-    python_requires=">=3.7",
+    python_requires=">=3.10",
     install_requires=[
         "flask",
         "pandas",
@@ -101,4 +98,4 @@ setup(
         ],
     },
     keywords=["taskvine", "workflow", "visualization", "monitoring", "distributed-computing", "ccl", "notre-dame"],
-) 
+)

@@ -1,3 +1,4 @@
+from src.vine_report.request_context import get_run_snapshot
 from src.utils import *
 from flask import Blueprint, jsonify, current_app
 
@@ -7,7 +8,7 @@ file_retention_time_bp = Blueprint('file_retention_time', __name__, url_prefix='
 @check_and_reload_data()
 def get_file_retention_time():
     try:
-        df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_retention_time)
+        df = read_csv_to_fd(get_run_snapshot().csv_file_retention_time)
         points = extract_points_from_df(df, 'file_idx', 'retention_time')
         x_domain = extract_x_range_from_points(points)
         y_domain = extract_y_range_from_points(points)
@@ -24,5 +25,5 @@ def get_file_retention_time():
         })
 
     except Exception as e:
-        current_app.config["RUNTIME_STATE"].log_error(f"Error in get_file_retention_time: {e}")
+        get_run_snapshot().log_error(f"Error in get_file_retention_time: {e}")
         return jsonify({'error': str(e)}), 500

@@ -1,3 +1,4 @@
+from src.vine_report.request_context import get_run_snapshot
 from src.utils import *
 
 import pandas as pd
@@ -76,8 +77,8 @@ LEGEND_SCHEMA = {
 }
 
 def calculate_legend(successful_tasks, unsuccessful_tasks, workers):
-    # Get metadata from preloaded RUNTIME_STATE
-    metadata = current_app.config["RUNTIME_STATE"].metadata
+    # Metadata belongs to the request-pinned immutable snapshot.
+    metadata = get_run_snapshot().metadata
     
     counts = defaultdict(int)
 
@@ -158,7 +159,7 @@ def downsample_tasks(tasks, key="execution_time", max_tasks=None):
 def get_task_execution_details():
     try:
         # Read data from CSV file
-        df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_task_execution_details)
+        df = read_csv_to_fd(get_run_snapshot().csv_file_task_execution_details)
         
         successful_tasks = []
         unsuccessful_tasks = []
@@ -278,5 +279,5 @@ def get_task_execution_details():
         return jsonify(data)
 
     except Exception as e:
-        current_app.config["RUNTIME_STATE"].log_error(f"Error in get_task_execution_details: {e}")
+        get_run_snapshot().log_error(f"Error in get_task_execution_details: {e}")
         return jsonify({'error': str(e)}), 500

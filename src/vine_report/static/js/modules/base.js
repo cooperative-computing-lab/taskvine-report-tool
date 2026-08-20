@@ -1,4 +1,4 @@
-import { Toolbox } from './toolbox.js';
+import { Toolbox } from './toolbox.js?v=5.0';
 
 let jsPDF = null;
 let svg2pdf = null;
@@ -46,6 +46,11 @@ export class BaseModule {
         this.api_url = api_url;
 
         this._folder = null;
+        this._revision = null;
+        this._runGeneration = 0;
+        this._requestSequence = 0;
+        this._renderSequence = 0;
+        this._abortController = null;
         this._fetchDataParams = {}; // Parameters for fetchData calls
 
         this.svgContainer = null;
@@ -58,11 +63,11 @@ export class BaseModule {
         
         this.tooltip = null;
 
-        this.tickFontSize = 12;
-        this.padding = 40;
-        this.highlightColor = 'orange';
-        this.highlightRadius = 6;
-        this.highlightStrokeWidth = 3;
+        this.tickFontSize = '14px';
+        this.padding = 48;
+        this.highlightColor = '#d96f24';
+        this.highlightRadius = 5;
+        this.highlightStrokeWidth = 2;
 
         /* plotting parameters */
         this.svg = null;
@@ -112,8 +117,13 @@ export class BaseModule {
         this._cdfMode = false;
     }
 
-    switchFolder(folder) {
+    switchFolder(folder, revision = null, generation = 0) {
+        this._abortController?.abort();
         this._folder = folder;
+        this._revision = revision;
+        this._runGeneration = generation;
+        this._requestSequence += 1;
+        this._renderSequence += 1;
         this._cdfMode = false;
         /* if the folder is switched, clear the plot */
         this.clearPlot();
@@ -200,22 +210,69 @@ export class BaseModule {
     }
 
     async fetchDataAndPlot() {
+        const renderSequence = ++this._renderSequence;
+        this._clearModuleState();
         this.clearSVG();
         this.plotSpinner();
         try {
             const isReadyToPlot = await this.fetchData();
-            if (!isReadyToPlot) {
+            if (!isReadyToPlot || renderSequence !== this._renderSequence) {
                 return;
             }
             this._invokePlot();
+            if (this._globalTimeWindow) {
+                this.applyGlobalTimeWindow(...this._globalTimeWindow);
+            }
         } catch (error) {
+            if (error?.name === 'AbortError') return;
+            if (renderSequence !== this._renderSequence) return;
             console.error(`Error fetching data for module ${this.id}:`, error);
+            this._showModuleState('This chart could not be loaded. Retry or reload the run.', 'error');
         } finally {
             const existingSpinner = document.getElementById(`${this.id}-spinner`);
-            if (existingSpinner) {
+            if (existingSpinner && renderSequence === this._renderSequence) {
                 existingSpinner.remove();
             }
         }
+    }
+
+    _clearModuleState() {
+        document.getElementById(`${this.id}-module-state`)?.remove();
+    }
+
+    _showModuleState(message, kind = 'empty') {
+        this._clearModuleState();
+        const content = document.querySelector(`#${this.id} .section-content`);
+        if (!content) return;
+        const state = document.createElement('div');
+        state.id = `${this.id}-module-state`;
+        state.className = `module-state ${kind}`;
+        state.textContent = message;
+        content.appendChild(state);
+    }
+
+    applyGlobalTimeWindow(startPercent = 0, endPercent = 100) {
+        this._globalTimeWindow = [startPercent, endPercent];
+        const fullDomain = this.data?.x_domain;
+        if (!Array.isArray(fullDomain) || fullDomain.length !== 2 || this.bottomScaleType !== 'linear') {
+            return false;
+        }
+        const [fullMin, fullMax] = fullDomain.map(Number);
+        if (!Number.isFinite(fullMin) || !Number.isFinite(fullMax) || fullMax <= fullMin) {
+            return false;
+        }
+        const start = Math.max(0, Math.min(95, Number(startPercent))) / 100;
+        const end = Math.max(start + 0.01, Math.min(100, Number(endPercent))) / 100;
+        const span = fullMax - fullMin;
+        const domain = [fullMin + span * start, fullMin + span * end];
+        this.setBottomDomain(domain);
+        this.setBottomTickValues(this._dedupeTicksByFormatter(
+            this._computeLinearTicks(domain, 6), this.bottomFormatter
+        ));
+        this.clearSVG();
+        this._plotAxes();
+        this._invokePlot();
+        return true;
     }
 
     createToolboxItemDownloadSVG() {
@@ -629,10 +686,15 @@ export class BaseModule {
         // Merge module params with any extra params (extra params take precedence)
         const allParams = { ...moduleParams, ...extraParams };
         
-        // Build query parameters starting with folder
-        const params = new URLSearchParams({
-            folder: this._folder
-        });
+        const requestFolder = this._folder;
+        const requestRevision = this._revision;
+        const requestGeneration = this._runGeneration;
+        const requestSequence = ++this._requestSequence;
+        this._abortController?.abort();
+        const controller = new AbortController();
+        this._abortController = controller;
+
+        const params = new URLSearchParams();
         
         // Add any extra parameters passed by subclasses
         // Support both simple key-value pairs and JSON-style objects
@@ -653,17 +715,33 @@ export class BaseModule {
             }
         });
         
-        const response = await fetch(`${this.api_url}?${params.toString()}`);
-        const data = await response.json();
+        const baseURL = requestRevision
+            ? `/api/v1/runs/${encodeURIComponent(requestFolder)}/revisions/${encodeURIComponent(requestRevision)}/charts/${encodeURIComponent(this.id)}`
+            : this.api_url;
+        if (!requestRevision) params.set('folder', requestFolder);
+        const response = await fetch(`${baseURL}?${params.toString()}`, { signal: controller.signal });
+        const payload = await response.json();
+        const apiError = typeof payload?.error === 'object' ? payload.error.message : payload?.error;
+        const data = payload?.schema_version === 'report-api/v1' ? payload.data : payload;
+
+        const stale = controller.signal.aborted
+            || requestFolder !== this._folder
+            || requestRevision !== this._revision
+            || requestGeneration !== this._runGeneration
+            || requestSequence !== this._requestSequence
+            || (payload?.run_id && payload.run_id !== requestFolder)
+            || (payload?.revision && payload.revision !== requestRevision);
+        if (stale) return false;
         
-        if (!response.ok || !data || data.error) {
+        if (!response.ok || !data || apiError || data.error) {
             console.warn(
                 `Skipping plot for ${this.id} due to invalid backend response from ${this.api_url}`,
-                data
+                payload
             );
             this.clearLegend();
             this.clearToolbox();
             this.clearSVG();
+            this._showModuleState(apiError || data?.error || 'No compatible data is available for this chart.', 'empty');
             return false;
         }
 
@@ -1409,7 +1487,9 @@ export class BaseModule {
         }
     
         const link = document.createElement('a');
-        link.href = `${this.api_url}/export-csv`;
+        link.href = this._revision
+            ? `/api/v1/runs/${encodeURIComponent(this._folder)}/revisions/${encodeURIComponent(this._revision)}/exports/${encodeURIComponent(this.id)}.csv`
+            : `${this.api_url}/export-csv?folder=${encodeURIComponent(this._folder)}`;
         link.download = filename;
         document.body.appendChild(link);
         link.click();
@@ -1420,8 +1500,17 @@ export class BaseModule {
         if (this._boundResize) {
             window.removeEventListener('resize', this._boundResize);
         }
-        this._boundResize = _.debounce(() => this._invokePlot(), 300);
+        this._boundResize = _.debounce(() => this.resizePlot(), 300);
         window.addEventListener('resize', this._boundResize);
+    }
+
+    resizePlot() {
+        if (!this.data || !this.svgContainer?.isConnected) return;
+        this.clearSVG();
+        this._setAxesFromFetchedData();
+        this._plotAxes();
+        this._setupZoomAndScroll();
+        this._invokePlot();
     }
 
 

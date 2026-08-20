@@ -337,20 +337,22 @@ def prefer_zero_else_max(series):
     return series.max()
 
 def get_current_time_domain():
-    csv_file_time_domain = current_app.config["RUNTIME_STATE"].csv_file_time_domain
+    from src.vine_report.request_context import get_run_snapshot
+    csv_file_time_domain = get_run_snapshot().csv_file_time_domain
     if not os.path.exists(csv_file_time_domain):
         raise ValueError(f"Time domain file not found: {csv_file_time_domain}")
     
     df = pd.read_csv(csv_file_time_domain)
-    min_time = df['MIN_TIME'].iloc[0]
-    max_time = df['MAX_TIME'].iloc[0]
-    return [0, max_time - min_time]
+    min_time = float(df['MIN_TIME'].iloc[0])
+    max_time = float(df['MAX_TIME'].iloc[0])
+    return [0.0, max_time - min_time]
 
 def check_and_reload_data():
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            current_app.config["RUNTIME_STATE"].reload_data_if_needed()
+            from src.vine_report.request_context import get_run_snapshot
+            snapshot = get_run_snapshot()
 
             response = func(*args, **kwargs)
 
@@ -370,7 +372,7 @@ def check_and_reload_data():
                 response_size = 0
 
             route_name = func.__name__
-            current_app.config["RUNTIME_STATE"].log_info(f"Route {route_name} response size: {response_size/1024/1024:.2f} MB")
+            snapshot.log_info(f"Route {route_name} response size: {response_size/1024/1024:.2f} MB")
 
             return response
         return wrapper
@@ -488,7 +490,13 @@ def extract_points_from_df(df, x_col, *y_cols):
         raise KeyError(f"Missing columns in DataFrame: {missing}")
 
     points = df[list(cols)].dropna().itertuples(index=False, name=None)
-    return list(points)
+    # pandas may yield NumPy scalar objects for integer-only CSV columns.
+    # Flask's JSON encoder intentionally rejects those implementation types,
+    # so normalize at the shared dataframe boundary used by chart routes.
+    return [
+        tuple(value.item() if isinstance(value, np.generic) else value for value in point)
+        for point in points
+    ]
 
 
 def extract_series_points_dict(df, x_col):
@@ -652,10 +660,11 @@ def ensure_dir(path, replace=False):
     os.makedirs(path)
 
 def get_current_runtime_template():
-    return current_app.config["RUNTIME_STATE"].runtime_template
+    from src.vine_report.request_context import get_run_snapshot
+    return get_run_snapshot().runtime_template
 
 def request_template_matches_current_runtime_template(request):
-    return request.args.get('folder') == get_current_runtime_template()
+    return request.args.get('folder') == Path(get_current_runtime_template()).name
 
 # Task status mappings
 TASK_STATUS_NAMES = {

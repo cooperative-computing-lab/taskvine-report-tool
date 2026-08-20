@@ -4,13 +4,20 @@ from .worker_info import WorkerInfo
 from .task_info import TaskInfo
 from .file_info import FileInfo, IndexedTransferEvent, UnindexedTransferEvent
 from .manager_info import ManagerInfo
+from .diagnostics import (
+    LogCompatibilityError,
+    ParseDiagnostics,
+    infer_timezone_offset,
+    installed_tool_version,
+)
+from .sources import LegacyDebugSource
 
 import os
 import math
 import pandas as pd
 import polars as pl
-import traceback
 import re
+from pathlib import Path
 from functools import lru_cache
 from datetime import datetime
 import numpy as np
@@ -41,7 +48,8 @@ class DataParser:
     def __init__(self,
                  runtime_template, 
                  enablee_checkpoint_pkl_files=False, 
-                 debug_mode=False):
+                 debug_mode=False,
+                 timezone_offset=None):
         self.runtime_template = runtime_template
         self.enablee_checkpoint_pkl_files = enablee_checkpoint_pkl_files
 
@@ -74,6 +82,11 @@ class DataParser:
         self.pkl_file_metadata = os.path.join(self.pkl_files_dir, 'metadata.pkl')
 
         self.manager = ManagerInfo()
+        self.diagnostics = ParseDiagnostics(
+            self.runtime_template,
+            self.debug,
+            installed_tool_version(),
+        )
 
         # tasks
         self.tasks = {}        # key: (task_id, task_try_id), value: TaskInfo
@@ -92,6 +105,7 @@ class DataParser:
 
         # status
         self.debug_mode = debug_mode
+        self.timezone_offset_override = timezone_offset
         self.receiving_resources_from_worker = None
         self.sending_task = None
         self.mini_task_transferring = None
@@ -257,11 +271,40 @@ class DataParser:
 
         offset_seconds = self._read_manager_timezone_offset(debug_file_path)
         if offset_seconds is not None:
+            if (
+                self.timezone_offset_override is not None
+                and self.timezone_offset_override != offset_seconds
+            ):
+                raise ValueError(
+                    "Explicit timezone offset does not match debug metadata: {} != {}".format(
+                        self.timezone_offset_override, offset_seconds
+                    )
+                )
             self._set_fixed_time_zone(offset_seconds)
+            self.diagnostics.set_timezone_evidence("debug_metadata", offset_seconds)
             print(f"Set debug timestamp offset to {self.manager.equivalent_tz} ({self.manager.time_zone_offset_hours} hours)")
             return
 
-        raise ValueError("Could not find timezone offset in debug file.")
+        if self.timezone_offset_override is not None:
+            self._set_fixed_time_zone(self.timezone_offset_override)
+            self.diagnostics.set_timezone_evidence("explicit_override", self.timezone_offset_override)
+            print(f"Set debug timestamp offset to {self.manager.equivalent_tz} ({self.manager.time_zone_offset_hours} hours)")
+            return
+
+        inferred = infer_timezone_offset(
+            Path(debug_file_path),
+            Path(self.vine_logs_dir) / "transactions",
+        )
+        if inferred is not None:
+            self._set_fixed_time_zone(inferred)
+            self.diagnostics.set_timezone_evidence("inferred_from_transactions", inferred)
+            print(f"Inferred debug timestamp offset as {self.manager.equivalent_tz} ({self.manager.time_zone_offset_hours} hours)")
+            return
+
+        raise ValueError(
+            "Could not determine debug timezone offset from metadata or transactions; "
+            "use --timezone-offset ±HHMM."
+        )
 
     @lru_cache(maxsize=4096)
     def datestring_to_timestamp(self, datestring):
@@ -900,23 +943,24 @@ class DataParser:
         timestamp = self.debug_current_timestamp
         self.manager.set_current_max_time(timestamp)
 
-        if self.debug_mode:
-            for cond_fn, handler_fn in self.debug_handlers:
-                if cond_fn(line, parts, self):
-                    try:
-                        handler_fn(line, parts, self)
-                    except Exception:
-                        raise ValueError(f"Failed in handler {handler_fn.__name__}")
-                    self.debug_handler_profiling[handler_fn]["hits"] += 1
-                    return
-        else:
-            for cond_fn, handler_fn in self.debug_handlers:
-                if cond_fn(line, parts, self):
-                    try:
-                        handler_fn(line, parts, self)
-                    except Exception:
-                        raise ValueError(f"Failed in handler {handler_fn.__name__}")
-                    return
+        for cond_fn, handler_fn in self.debug_handlers:
+            try:
+                matches = cond_fn(line, parts, self)
+            except Exception as exc:
+                raise ValueError(
+                    "Failed while matching handler {}: {}".format(handler_fn.__name__, exc)
+                ) from exc
+            if not matches:
+                continue
+            try:
+                handler_fn(line, parts, self)
+            except Exception as exc:
+                raise ValueError(
+                    "Failed in handler {}: {}".format(handler_fn.__name__, exc)
+                ) from exc
+            self.debug_handler_profiling[handler_fn]["hits"] += 1
+            return handler_fn.__name__
+        return None
 
     def _clean_debug_file(self):
         result = subprocess.run(
@@ -1006,7 +1050,7 @@ class DataParser:
         
         try:
             self.set_time_zone()
-        except Exception as e:
+        except Exception:
             self._clean_debug_file()
             self.set_time_zone(debug_cleaned)
         
@@ -1018,32 +1062,47 @@ class DataParser:
         unit, scale = get_size_unit_and_scale(debug_file_size_mb)
         debug_file_size_str = f"{floor_decimal(debug_file_size_mb * scale, 2)} {unit}"
 
+        self.diagnostics.select_source(debug_file_to_use)
+
         with create_progress_bar() as progress:
             task_id = progress.add_task(f"[green]Parsing debug ({debug_file_size_str})", total=total_lines)
             resort_debug_handlers_interval = 10000
-            with open(debug_file_to_use, 'rb') as file:
-                for i, raw_line in enumerate(file):
-                    progress.update(task_id, advance=1)
-                    if i % resort_debug_handlers_interval == 0:
-                        self._resort_debug_handlers()
-                    try:
-                        self.debug_current_line = raw_line.decode('utf-8').strip()
-                        self.debug_current_parts = self.debug_current_line.strip().split(" ")
-                    except UnicodeDecodeError:
-                        # this sometimes happens, especially when the manager handles a null pointer
-                        continue
-                    try:
-                        datestring = self.debug_current_parts[0] + " " + self.debug_current_parts[1]
-                        self.debug_current_timestamp = floor_decimal(self.datestring_to_timestamp(datestring), 2)
-                    except Exception:
-                        # this line does not start with a timestamp, which sometimes happens
-                        continue
-                    try:
-                        self.parse_debug_line()
-                    except Exception as e:
-                        print(f"Error parsing line {i}: {self.debug_current_line}")
-                        print(traceback.format_exc())
-                        exit(1)
+            source = LegacyDebugSource(debug_file_to_use)
+            for record in source.records():
+                progress.update(task_id, advance=1)
+                self.diagnostics.record_raw(record.raw)
+                if (record.line_number - 1) % resort_debug_handlers_interval == 0:
+                    self._resort_debug_handlers()
+                if record.decode_error:
+                    self.diagnostics.record_decode_error(record.line_number, record.decode_error)
+                    continue
+                self.debug_current_line = record.text
+                self.debug_current_parts = self.debug_current_line.strip().split(" ")
+                try:
+                    datestring = self.debug_current_parts[0] + " " + self.debug_current_parts[1]
+                    self.debug_current_timestamp = floor_decimal(self.datestring_to_timestamp(datestring), 2)
+                except Exception:
+                    # Non-record lines are expected in human-oriented debug output.
+                    continue
+                self.diagnostics.record_timestamped()
+                self.diagnostics.record_metadata(self.debug_current_line)
+                try:
+                    handler = self.parse_debug_line()
+                except Exception as exc:
+                    handler_name = "unknown"
+                    match = re.search(r"handler ([^:]+)", str(exc))
+                    if match:
+                        handler_name = match.group(1)
+                    self.diagnostics.record_contract_error(
+                        record.line_number, handler_name, str(exc)
+                    )
+                    raise LogCompatibilityError(
+                        record.line_number, handler_name, str(exc)
+                    ) from exc
+                if handler:
+                    self.diagnostics.record_handled(handler, self.debug_current_line)
+                else:
+                    self.diagnostics.record_unhandled(record.line_number, self.debug_current_line)
 
         if self.debug_mode:
             print("\n=== Handler Profiling Summary ===")
@@ -1057,12 +1116,22 @@ class DataParser:
                 print(f"{name:<20} {hits:>10}")
 
     def parse_logs(self):
-        self.parse_debug()
-        self.postprocess_debug()
+        try:
+            self.parse_debug()
+            if self.manager.time_end is None:
+                self.diagnostics.note_partial("manager_end_missing_or_log_truncated")
+            self.postprocess_debug()
 
-        # checkpoint pkl files so that later analysis can be done without re-parsing the debug file
-        if self.enablee_checkpoint_pkl_files:
-            self.checkpoint_pkl_files()
+            # checkpoint pkl files so that later analysis can be done without re-parsing the debug file
+            if self.enablee_checkpoint_pkl_files:
+                self.checkpoint_pkl_files()
+        except BaseException as exc:
+            self.diagnostics.finalize(error=exc, stage="parse")
+            self.diagnostics.write()
+            raise
+        else:
+            self.diagnostics.finalize()
+            self.diagnostics.write()
 
     def checkpoint_pkl_files(self):
         with create_progress_bar() as progress:

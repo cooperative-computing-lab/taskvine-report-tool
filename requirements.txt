@@ -8,3 +8,5 @@ pytz
 graphviz
 polars
 pyarrow
+numpy
+matplotlib

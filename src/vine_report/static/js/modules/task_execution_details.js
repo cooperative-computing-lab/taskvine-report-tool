@@ -1,5 +1,5 @@
-import { BaseModule } from './base.js';
-import { getTaskInnerHTML, getWorkerInnerHTML } from './utils.js';
+import { BaseModule } from './base.js?v=5.0';
+import { getTaskInnerHTML, getWorkerInnerHTML } from './utils.js?v=5.0';
 
 export class TaskExecutionDetailsModule extends BaseModule {
     constructor(id, title, api_url) {

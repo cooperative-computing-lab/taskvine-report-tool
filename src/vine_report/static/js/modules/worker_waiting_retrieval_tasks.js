@@ -1,5 +1,5 @@
-import { BaseModule } from './base.js';
-import { escapeWorkerId, getWorkerColor } from './utils.js';
+import { BaseModule } from './base.js?v=5.0';
+import { escapeWorkerId, getWorkerColor } from './utils.js?v=5.0';
 
 export class WorkerWaitingRetrievalTasksModule extends BaseModule {
     constructor(id, title, api_url) {

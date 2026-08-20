@@ -1,3 +1,4 @@
+from src.vine_report.request_context import get_run_snapshot
 from src.utils import *
 from flask import Blueprint, jsonify, current_app
 
@@ -7,7 +8,7 @@ worker_waiting_retrieval_tasks_bp = Blueprint('worker_waiting_retrieval_tasks', 
 @check_and_reload_data()
 def get_worker_waiting_retrieval_tasks():
     try:
-        df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_worker_waiting_retrieval_tasks)
+        df = read_csv_to_fd(get_run_snapshot().csv_file_worker_waiting_retrieval_tasks)
         data = extract_series_points_dict(df, 'time')
         x_domain = get_current_time_domain()
         y_domain = extract_y_range_from_series_points(data)
@@ -22,5 +23,5 @@ def get_worker_waiting_retrieval_tasks():
             'y_tick_formatter': d3_int_formatter(),
         })
     except Exception as e:
-        current_app.config["RUNTIME_STATE"].log_error(f"Error in get_worker_waiting_retrieval_tasks: {e}")
+        get_run_snapshot().log_error(f"Error in get_worker_waiting_retrieval_tasks: {e}")
         return jsonify({'error': str(e)}), 500

@@ -26,27 +26,27 @@ export const sectionVisibility = {
     'file-created-size': true,
 };
 
-import { TaskExecutionDetailsModule } from './task_execution_details.js';
-import { TaskConcurrencyModule } from './task_concurrency.js';
-import { TaskResponseTimeModule } from './task_response_time.js';
-import { TaskExecutionTimeModule } from './task_execution_time.js';
-import { TaskCompletionPercentilesModule } from './task_completion_percentiles.js';
-import { TaskDependenciesModule } from './task_dependencies.js';
-import { TaskDependentsModule } from './task_dependents.js';
-import { TaskRetrievalTimeModule } from './task_retrieval_time.js';
-import { TaskSubgraphsModule } from './task_subgraphs.js';
-import { WorkerIncomingTransfersModule } from './worker_incoming_transfers.js';
-import { WorkerOutgoingTransfersModule } from './worker_outgoing_transfers.js';
-import { WorkerStorageConsumptionModule } from './worker_storage_consumption.js';
-import { WorkerConcurrencyModule } from './worker_concurrency.js';
-import { WorkerExecutinigTasksModule } from './worker_executing_tasks.js';
-import { WorkerWaitingRetrievalTasksModule } from './worker_waiting_retrieval_tasks.js';
-import { WorkerLifetimeModule } from './worker_lifetime.js';
-import { FileTransferredSizeModule } from './file_transferred_size.js';
-import { FileCreatedSizeModule } from './file_created_size.js';
-import { FileRetentionTimeModule } from './file_retention_time.js';
-import { FileSizesModule } from './file_sizes.js';
-import { FileConcurrentReplicasModule } from './file_concurrent_replicas.js';
+import { TaskExecutionDetailsModule } from './task_execution_details.js?v=5.0';
+import { TaskConcurrencyModule } from './task_concurrency.js?v=5.0';
+import { TaskResponseTimeModule } from './task_response_time.js?v=5.0';
+import { TaskExecutionTimeModule } from './task_execution_time.js?v=5.0';
+import { TaskCompletionPercentilesModule } from './task_completion_percentiles.js?v=5.0';
+import { TaskDependenciesModule } from './task_dependencies.js?v=5.0';
+import { TaskDependentsModule } from './task_dependents.js?v=5.0';
+import { TaskRetrievalTimeModule } from './task_retrieval_time.js?v=5.0';
+import { TaskSubgraphsModule } from './task_subgraphs.js?v=5.0';
+import { WorkerIncomingTransfersModule } from './worker_incoming_transfers.js?v=5.0';
+import { WorkerOutgoingTransfersModule } from './worker_outgoing_transfers.js?v=5.0';
+import { WorkerStorageConsumptionModule } from './worker_storage_consumption.js?v=5.0';
+import { WorkerConcurrencyModule } from './worker_concurrency.js?v=5.0';
+import { WorkerExecutinigTasksModule } from './worker_executing_tasks.js?v=5.0';
+import { WorkerWaitingRetrievalTasksModule } from './worker_waiting_retrieval_tasks.js?v=5.0';
+import { WorkerLifetimeModule } from './worker_lifetime.js?v=5.0';
+import { FileTransferredSizeModule } from './file_transferred_size.js?v=5.0';
+import { FileCreatedSizeModule } from './file_created_size.js?v=5.0';
+import { FileRetentionTimeModule } from './file_retention_time.js?v=5.0';
+import { FileSizesModule } from './file_sizes.js?v=5.0';
+import { FileConcurrentReplicasModule } from './file_concurrent_replicas.js?v=5.0';
 
 export const moduleClasses = {
     'task-execution-details': TaskExecutionDetailsModule,
@@ -73,27 +73,27 @@ export const moduleClasses = {
 };
 
 export const moduleConfigs = [
-    { id: 'task-execution-details', title: 'Task Execution Details', api_url: '/api/task-execution-details' },
-    { id: 'task-concurrency', title: 'Task Concurrency', api_url: '/api/task-concurrency' },
-    { id: 'task-response-time', title: 'Task Response Time', api_url: '/api/task-response-time' },
-    { id: 'task-execution-time', title: 'Task Execution Time', api_url: '/api/task-execution-time' },
-    { id: 'task-retrieval-time', title: 'Task Retrieval Time', api_url: '/api/task-retrieval-time' },
-    { id: 'task-completion-percentiles', title: 'Task Completion Percentiles', api_url: '/api/task-completion-percentiles' },
-    { id: 'task-dependencies', title: 'Task Dependencies', api_url: '/api/task-dependencies' },
-    { id: 'task-dependents', title: 'Task Dependents', api_url: '/api/task-dependents' },
-    { id: 'task-subgraphs', title: 'Task Subgraphs', api_url: '/api/task-subgraphs' },
-    { id: 'worker-concurrency', title: 'Worker Concurrency', api_url: '/api/worker-concurrency' },
-    { id: 'worker-storage-consumption', title: 'Worker Storage Consumption', api_url: '/api/worker-storage-consumption' },
-    { id: 'worker-incoming-transfers', title: 'Worker Incoming Transfers', api_url: '/api/worker-incoming-transfers' },
-    { id: 'worker-outgoing-transfers', title: 'Worker Outgoing Transfers', api_url: '/api/worker-outgoing-transfers' },
-    { id: 'worker-executing-tasks', title: 'Worker Executing Tasks', api_url: '/api/worker-executing-tasks' },
-    { id: 'worker-waiting-retrieval-tasks', title: 'Worker Waiting Retrieval Tasks', api_url: '/api/worker-waiting-retrieval-tasks' },
-    { id: 'worker-lifetime', title: 'Worker Lifetime', api_url: '/api/worker-lifetime' },
-    { id: 'file-sizes', title: 'File Sizes', api_url: '/api/file-sizes' },
-    { id: 'file-concurrent-replicas', title: 'File Concurrent Replicas', api_url: '/api/file-concurrent-replicas' },
-    { id: 'file-retention-time', title: 'File Retention Time', api_url: '/api/file-retention-time' },
-    { id: 'file-transferred-size', title: 'File Transferred Size', api_url: '/api/file-transferred-size' },
-    { id: 'file-created-size', title: 'File Created Size', api_url: '/api/file-created-size' },
+    { id: 'task-execution-details', group: 'tasks', timeLinked: true, title: 'Task Execution Timeline', api_url: '/api/task-execution-details' },
+    { id: 'task-concurrency', group: 'tasks', timeLinked: true, title: 'Task Concurrency', api_url: '/api/task-concurrency' },
+    { id: 'task-response-time', group: 'tasks', title: 'Task Response Time', api_url: '/api/task-response-time' },
+    { id: 'task-execution-time', group: 'tasks', title: 'Task Execution Time', api_url: '/api/task-execution-time' },
+    { id: 'task-retrieval-time', group: 'tasks', title: 'Task Retrieval Time', api_url: '/api/task-retrieval-time' },
+    { id: 'task-completion-percentiles', group: 'tasks', title: 'Task Completion Percentiles', api_url: '/api/task-completion-percentiles' },
+    { id: 'task-dependencies', group: 'tasks', title: 'Task Dependencies', api_url: '/api/task-dependencies' },
+    { id: 'task-dependents', group: 'tasks', title: 'Task Dependents', api_url: '/api/task-dependents' },
+    { id: 'task-subgraphs', group: 'tasks', title: 'Task Subgraphs', api_url: '/api/task-subgraphs' },
+    { id: 'worker-concurrency', group: 'workers', timeLinked: true, title: 'Worker Concurrency', api_url: '/api/worker-concurrency' },
+    { id: 'worker-storage-consumption', group: 'workers', timeLinked: true, title: 'Worker Storage Consumption', api_url: '/api/worker-storage-consumption' },
+    { id: 'worker-incoming-transfers', group: 'transfers', timeLinked: true, title: 'Incoming Transfers', api_url: '/api/worker-incoming-transfers' },
+    { id: 'worker-outgoing-transfers', group: 'transfers', timeLinked: true, title: 'Outgoing Transfers', api_url: '/api/worker-outgoing-transfers' },
+    { id: 'worker-executing-tasks', group: 'workers', timeLinked: true, title: 'Executing Tasks by Worker', api_url: '/api/worker-executing-tasks' },
+    { id: 'worker-waiting-retrieval-tasks', group: 'workers', timeLinked: true, title: 'Waiting Retrieval by Worker', api_url: '/api/worker-waiting-retrieval-tasks' },
+    { id: 'worker-lifetime', group: 'workers', title: 'Worker Lifetime', api_url: '/api/worker-lifetime' },
+    { id: 'file-sizes', group: 'files', title: 'File Sizes', api_url: '/api/file-sizes' },
+    { id: 'file-concurrent-replicas', group: 'files', title: 'Concurrent Replicas', api_url: '/api/file-concurrent-replicas' },
+    { id: 'file-retention-time', group: 'files', title: 'File Retention Time', api_url: '/api/file-retention-time' },
+    { id: 'file-transferred-size', group: 'files', timeLinked: true, title: 'Cumulative Data Transferred', api_url: '/api/file-transferred-size' },
+    { id: 'file-created-size', group: 'files', timeLinked: true, title: 'Cumulative Data Created', api_url: '/api/file-created-size' },
 ];
 
 /** Module configs filtered by sectionVisibility (only enabled sections) */

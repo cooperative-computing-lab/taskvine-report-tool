@@ -1,3 +1,4 @@
+from src.vine_report.request_context import get_run_snapshot
 from flask import Blueprint, jsonify, request, current_app
 import graphviz
 import os
@@ -349,7 +350,7 @@ def compare_metadata_structure(metadata1, metadata2):
         
         return True
     except (KeyError, TypeError, ValueError) as e:
-        current_app.config["RUNTIME_STATE"].logger.info(f"Metadata structure comparison error: {e}")
+        get_run_snapshot().logger.info(f"Metadata structure comparison error: {e}")
         return False
 
 def validate_metadata_against_current_data(metadata, subgraph_tasks):
@@ -360,12 +361,12 @@ def validate_metadata_against_current_data(metadata, subgraph_tasks):
         current_metadata = generate_subgraph_metadata(subgraph_tasks, metadata['subgraph_id'])
         
         if not compare_metadata_structure(metadata, current_metadata):
-            current_app.config["RUNTIME_STATE"].logger.info(f"Metadata structure mismatch for subgraph {metadata['subgraph_id']}")
+            get_run_snapshot().logger.info(f"Metadata structure mismatch for subgraph {metadata['subgraph_id']}")
             return False
         
         return True
     except Exception as e:
-        current_app.config["RUNTIME_STATE"].logger.info(f"Metadata validation error: {e}")
+        get_run_snapshot().logger.info(f"Metadata validation error: {e}")
         return False
 
 def render_svg(subgraph_tasks, svg_file_path, params_dict=None):
@@ -381,11 +382,11 @@ def render_svg(subgraph_tasks, svg_file_path, params_dict=None):
         if svg_content:
             metadata = load_metadata(metadata_file_path)
             if metadata and validate_metadata_against_current_data(metadata, subgraph_tasks):
-                current_app.config["RUNTIME_STATE"].logger.info(f"Using cached SVG for {svg_file_path}")
+                get_run_snapshot().logger.info(f"Using cached SVG for {svg_file_path}")
                 return svg_content
     
     # generate new SVG
-    current_app.config["RUNTIME_STATE"].logger.info(f"Cache miss for {svg_file_path}, generating a new SVG")
+    get_run_snapshot().logger.info(f"Cache miss for {svg_file_path}, generating a new SVG")
     if not shutil.which('dot'):
         error_svg = generate_error_svg("Graphviz not installed. Please install graphviz package.")
         with open(svg_file_path, 'w') as f:
@@ -445,7 +446,7 @@ def get_task_subgraphs():
             return create_response(error='Invalid subgraph ID', status_code=400)
 
         # read df_subgraphs
-        csv_dir = current_app.config["RUNTIME_STATE"].csv_files_dir
+        csv_dir = get_run_snapshot().csv_files_dir
         if not csv_dir:
             return create_response(error='CSV directory not configured', status_code=500)
 
@@ -453,13 +454,13 @@ def get_task_subgraphs():
         
         # handle filename search when subgraph_id=0 and filename is provided
         if subgraph_id == 0 and filename:
-            current_app.config["RUNTIME_STATE"].logger.info(f"Searching for filename pattern '{filename}' (substring match) in {len(df_subgraphs)} tasks across {len(df_subgraphs['subgraph_id'].unique())} subgraphs")
+            get_run_snapshot().logger.info(f"Searching for filename pattern '{filename}' (substring match) in {len(df_subgraphs)} tasks across {len(df_subgraphs['subgraph_id'].unique())} subgraphs")
             found_subgraph_id = find_subgraph_by_filename(df_subgraphs, filename.strip())
             if found_subgraph_id:
                 subgraph_id = found_subgraph_id
-                current_app.config["RUNTIME_STATE"].logger.info(f"Found filename pattern '{filename}' in subgraph {subgraph_id}")
+                get_run_snapshot().logger.info(f"Found filename pattern '{filename}' in subgraph {subgraph_id}")
             else:
-                current_app.config["RUNTIME_STATE"].logger.warning(f"Filename pattern '{filename}' not found")
+                get_run_snapshot().logger.warning(f"Filename pattern '{filename}' not found")
                 return create_response(
                     legend=generate_legend(df_subgraphs),
                     error=f"Filename pattern '{filename}' not found in any subgraph"
@@ -467,13 +468,13 @@ def get_task_subgraphs():
         
         # handle task_id search when subgraph_id=0 and task_id is provided
         if subgraph_id == 0 and task_id:
-            current_app.config["RUNTIME_STATE"].logger.info(f"Searching for task ID '{task_id}' (exact match) in {len(df_subgraphs)} tasks across {len(df_subgraphs['subgraph_id'].unique())} subgraphs")
+            get_run_snapshot().logger.info(f"Searching for task ID '{task_id}' (exact match) in {len(df_subgraphs)} tasks across {len(df_subgraphs['subgraph_id'].unique())} subgraphs")
             found_subgraph_id = find_subgraph_by_task_id(df_subgraphs, task_id.strip())
             if found_subgraph_id:
                 subgraph_id = found_subgraph_id
-                current_app.config["RUNTIME_STATE"].logger.info(f"Found task ID '{task_id}' in subgraph {subgraph_id}")
+                get_run_snapshot().logger.info(f"Found task ID '{task_id}' in subgraph {subgraph_id}")
             else:
-                current_app.config["RUNTIME_STATE"].logger.warning(f"Task ID '{task_id}' not found")
+                get_run_snapshot().logger.warning(f"Task ID '{task_id}' not found")
                 return create_response(
                     legend=generate_legend(df_subgraphs),
                     error=f"Task ID '{task_id}' not found in any subgraph"
@@ -491,7 +492,7 @@ def get_task_subgraphs():
             )
 
         # setup svg path
-        svg_dir = current_app.config["RUNTIME_STATE"].svg_files_dir
+        svg_dir = get_run_snapshot().svg_files_dir
         if not svg_dir:
             return create_response(error='SVG directory not configured', status_code=500)
         os.makedirs(svg_dir, exist_ok=True)
@@ -523,5 +524,5 @@ def get_task_subgraphs():
             svg_content=svg_content
         )
     except Exception as e:
-        current_app.config["RUNTIME_STATE"].logger.error(f'Error in get_task_subgraphs: {e}')
+        get_run_snapshot().logger.error(f'Error in get_task_subgraphs: {e}')
         return create_response(error=str(e), status_code=500)

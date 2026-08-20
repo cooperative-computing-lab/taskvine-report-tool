@@ -1,3 +1,4 @@
+from src.vine_report.request_context import get_run_snapshot
 from src.utils import *
 from flask import Blueprint, jsonify, current_app, request
 
@@ -43,10 +44,10 @@ def get_worker_storage_consumption():
     try:
         accumulated = request.args.get('accumulated', 'false').lower() == 'true'
         
-        raw_df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_worker_storage_consumption)
+        raw_df = read_csv_to_fd(get_run_snapshot().csv_file_worker_storage_consumption)
         df, dropped_columns = _sanitize_worker_storage_df(raw_df)
         if dropped_columns:
-            current_app.config["RUNTIME_STATE"].log_info(
+            get_run_snapshot().log_info(
                 f"Ignoring non-worker storage columns: {dropped_columns}"
             )
         x_domain = get_current_time_domain()
@@ -87,5 +88,5 @@ def get_worker_storage_consumption():
             })
 
     except Exception as e:
-        current_app.config["RUNTIME_STATE"].log_error(f"Error in get_worker_storage_consumption: {e}")
+        get_run_snapshot().log_error(f"Error in get_worker_storage_consumption: {e}")
         return jsonify({'error': str(e)}), 500
