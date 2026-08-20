@@ -142,6 +142,9 @@ def _summary_stamp(csv_dir: Path) -> tuple:
         "worker_concurrency.csv", "worker_lifetime.csv",
         "file_transferred_size.csv", "file_created_size.csv",
         "worker_storage_consumption.csv",
+        "metric_contracts.csv", "metric_task_latency.csv",
+        "metric_task_throughput.csv", "metric_worker_capacity.csv",
+        "metric_transfer_throughput.csv",
     )
     csv_stamp = tuple(
         (name, (csv_dir / name).stat().st_mtime_ns if (csv_dir / name).exists() else 0)
@@ -153,6 +156,96 @@ def _summary_stamp(csv_dir: Path) -> tuple:
         ("parse-diagnostics.json", diagnostics.stat().st_mtime_ns if diagnostics.exists() else 0),
         ("parse-manifest.json", manifest.stat().st_mtime_ns if manifest.exists() else 0),
     )
+
+
+def _metric_contracts(csv_dir: Path) -> dict:
+    path = csv_dir / "metric_contracts.csv"
+    if not path.is_file():
+        return {}
+    with path.open(newline="", encoding="utf-8", errors="replace") as handle:
+        return {row.get("metric_id"): row for row in csv.DictReader(handle)}
+
+
+def _validated_metric_summary(csv_dir: Path) -> dict | None:
+    """Return independently validated KPI groups for a contracted report."""
+    contracts = _metric_contracts(csv_dir)
+    if not contracts:
+        return None
+
+    attempts = []
+    task_pass = all(contracts.get(key, {}).get("status") == "PASS" for key in ("task-throughput", "task-latency"))
+    task_path = csv_dir / "metric_task_latency.csv"
+    if task_pass and task_path.is_file():
+        with task_path.open(newline="", encoding="utf-8", errors="replace") as handle:
+            for row in csv.DictReader(handle):
+                try:
+                    task_id = int(row["task_id"])
+                    attempt = int(row["attempt"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                attempts.append((task_id, attempt, row))
+    else:
+        task_pass = False
+    final_by_task = {}
+    for task_id, attempt, row in attempts:
+        if task_id not in final_by_task or attempt > final_by_task[task_id][0]:
+            final_by_task[task_id] = (attempt, row)
+    successful = sum(row.get("outcome") == "SUCCESS" for _, row in final_by_task.values()) if task_pass else None
+    total = len(final_by_task) if task_pass else None
+
+    execution = [_number_or_none(row.get("execution_seconds")) for _, _, row in attempts]
+    queue = [_number_or_none(row.get("queue_seconds")) for _, _, row in attempts]
+    execution = [value for value in execution if value is not None]
+    queue = [value for value in queue if value is not None]
+    capacity = csv_dir / "metric_worker_capacity.csv"
+    transfer = csv_dir / "metric_transfer_throughput.csv"
+    transfer_pass = contracts.get("transfer-throughput", {}).get("status") == "PASS" and transfer.is_file()
+    transferred_bytes = None
+    if transfer_pass:
+        transferred_bytes = 0.0
+        with transfer.open(newline="", encoding="utf-8", errors="replace") as handle:
+            for row in csv.DictReader(handle):
+                transferred_bytes += (_number_or_none(row.get("input_bytes")) or 0)
+                transferred_bytes += (_number_or_none(row.get("output_bytes")) or 0)
+    capacity_pass = contracts.get("worker-capacity", {}).get("status") == "PASS" and capacity.is_file()
+    return {
+        "total_tasks": total,
+        "total_attempts": len(attempts) if task_pass else None,
+        "successful_tasks": successful,
+        "unsuccessful_tasks": total - successful if task_pass else None,
+        "success_rate": successful / total if task_pass and total else None,
+        "execution": _values_stats(execution) if task_pass else _values_stats([]),
+        "response": _values_stats(queue) if task_pass else _values_stats([]),
+        "peak_active_workers": _max_series_value(capacity, "active_workers") if capacity_pass else None,
+        "transferred_mb": transferred_bytes / (1024 * 1024) if transferred_bytes is not None else None,
+        "metric_contracts": {
+            key: {
+                "status": contract["status"],
+                "coverage": _number_or_none(contract.get("coverage")),
+                "semantics_version": int(contract.get("semantics_version") or 1),
+            }
+            for key, contract in contracts.items()
+        },
+    }
+
+
+def _number_or_none(value):
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return None
+    return result if math.isfinite(result) else None
+
+
+def _values_stats(values: list[float]) -> dict:
+    if not values:
+        return {"mean": None, "p50": None, "p95": None, "max": None}
+    return {
+        "mean": sum(values) / len(values),
+        "p50": _percentile(values, 0.5),
+        "p95": _percentile(values, 0.95),
+        "max": max(values),
+    }
 
 
 def _data_quality(run_dir: Path) -> dict:
@@ -217,6 +310,14 @@ def _finding(
 
 def _build_findings(summary: dict) -> list[dict]:
     findings = []
+    quality = summary.get("data_quality", {})
+    if quality.get("status") in {"PARTIAL", "FAIL"}:
+        findings.append(_finding(
+            "warning" if quality.get("status") == "PARTIAL" else "critical",
+            "Source evidence is incomplete",
+            "Some metrics are hidden because their source contract did not pass validation.",
+            "data_quality",
+        ))
     rate = summary["success_rate"]
     if rate is not None and rate < 0.8:
         findings.append(_finding(
@@ -280,6 +381,11 @@ def _cached_summary(csv_dir_string: str, stamp: tuple, run_id: str) -> dict:
     successful = int(meta.get("successful_tasks") or 0)
     unsuccessful = int(meta.get("unsuccessful_tasks") or 0)
     duration = float(meta.get("manager_duration") or 0)
+    validated = _validated_metric_summary(csv_dir)
+    if validated is not None:
+        total = validated["total_tasks"]
+        successful = validated["successful_tasks"]
+        unsuccessful = validated["unsuccessful_tasks"]
 
     summary = {
         "run": run_id,
@@ -288,28 +394,29 @@ def _cached_summary(csv_dir_string: str, stamp: tuple, run_id: str) -> dict:
         "end_time": meta.get("manager_end_time"),
         "duration_seconds": duration,
         "total_tasks": total,
-        "total_all_tasks": int(meta.get("total_all_tasks") or total),
+        "total_attempts": validated["total_attempts"] if validated is not None else total,
+        "total_all_tasks": int(meta.get("total_all_tasks") or (total or 0)),
         "library_tasks": int(meta.get("total_library_tasks") or 0),
         "successful_tasks": successful,
         "unsuccessful_tasks": unsuccessful,
         "success_rate": successful / total if total else None,
         "workers": int(meta.get("total_workers") or 0),
         "files": int(meta.get("total_files") or 0),
-        "throughput_tasks_per_second": total / duration if duration else None,
+        "throughput_tasks_per_second": successful / duration if successful is not None and duration else None,
         "recovery": {
             "total": int(meta.get("recovery_tasks") or 0),
             "successful": int(meta.get("recovery_successful") or 0),
             "unsuccessful": int(meta.get("recovery_unsuccessful") or 0),
         },
         "timing": {
-            "execution": _series_stats(csv_dir / "task_execution_time.csv", "Execution Time"),
-            "response": _series_stats(csv_dir / "task_response_time.csv", "Response Time"),
+            "execution": validated["execution"] if validated is not None else _series_stats(csv_dir / "task_execution_time.csv", "Execution Time"),
+            "response": validated["response"] if validated is not None else _series_stats(csv_dir / "task_response_time.csv", "Response Time"),
             "worker_lifetime": _series_stats(csv_dir / "worker_lifetime.csv", "LifeTime (s)"),
         },
-        "peak_active_workers": _max_series_value(
+        "peak_active_workers": validated["peak_active_workers"] if validated is not None else _max_series_value(
             csv_dir / "worker_concurrency.csv", "Active Workers (count)"
         ),
-        "transferred_mb": _max_series_value(
+        "transferred_mb": validated["transferred_mb"] if validated is not None else _max_series_value(
             csv_dir / "file_transferred_size.csv", "cumulative_size_mb"
         ),
         "created_mb": _max_series_value(
@@ -319,6 +426,7 @@ def _cached_summary(csv_dir_string: str, stamp: tuple, run_id: str) -> dict:
             csv_dir / "worker_storage_consumption.csv", ignored_columns=2
         ),
     }
+    summary["metric_contracts"] = validated["metric_contracts"] if validated is not None else {}
     summary["findings"] = _build_findings(summary)
     return summary
 

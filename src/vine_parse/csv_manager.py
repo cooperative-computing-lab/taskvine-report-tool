@@ -146,7 +146,7 @@ class CSVManager:
             return
 
         with create_progress_bar() as progress:
-            task_id = progress.add_task("[green]Generating plotting data", total=7)
+            task_id = progress.add_task("[green]Generating plotting data", total=8)
 
             self.generate_metadata()
             progress.advance(task_id)
@@ -167,6 +167,19 @@ class CSVManager:
             progress.advance(task_id)
             
             self.generate_subgraphs_and_graph_metrics()
+            progress.advance(task_id)
+
+            # Operational metrics use source-specific facts and explicit quality
+            # contracts. They are generated before the immutable parse manifest.
+            from .metric_facts import generate_metric_facts
+            metric_evidence = generate_metric_facts(self.runtime_template, self.dp)
+            self.dp.diagnostics.data["metric_evidence"] = metric_evidence
+            for reason in metric_evidence.get("partial_reasons", []):
+                if reason not in self.dp.diagnostics.data["partial_reasons"]:
+                    self.dp.diagnostics.data["partial_reasons"].append(reason)
+            if metric_evidence.get("partial_reasons") and self.dp.diagnostics.data.get("status") == "PASS":
+                self.dp.diagnostics.data["status"] = "PARTIAL"
+            self.dp.diagnostics.write()
             progress.advance(task_id)
 
     def generate_file_metrics(self):

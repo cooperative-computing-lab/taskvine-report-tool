@@ -14,7 +14,7 @@ from .sources import LegacyTransactionSource
 
 
 DIAGNOSTICS_SCHEMA_VERSION = 1
-PARSER_CONTRACT_VERSION = 1
+PARSER_CONTRACT_VERSION = 2
 DIAGNOSTICS_FILENAME = "parse-diagnostics.json"
 MANIFEST_FILENAME = "parse-manifest.json"
 

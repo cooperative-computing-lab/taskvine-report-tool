@@ -1,4 +1,4 @@
-import { moduleClasses, enabledModuleConfigs } from './modules/configs.js?v=5.0';
+import { moduleClasses, enabledModuleConfigs } from './modules/configs.js?v=5.1';
 
 const moduleObjects = {};
 const loadedGroups = new Set();
@@ -282,7 +282,9 @@ function renderSummary(summary) {
     const start = summary.start_time ? new Date(summary.start_time * 1000).toLocaleString() : 'Unknown start';
     setText('overview-subtitle', `${start} · ${formatDuration(summary.duration_seconds)} wall time · ${formatNumber(summary.files)} files`);
     setText('kpi-tasks', formatNumber(summary.total_tasks));
-    setText('kpi-throughput', `${formatNumber(summary.throughput_tasks_per_second, 2)} tasks / second`);
+    setText('kpi-throughput', summary.throughput_tasks_per_second == null
+        ? 'Unavailable under current data contract'
+        : `${formatNumber(summary.throughput_tasks_per_second, 2)} successful tasks / second`);
     setText('kpi-success', formatPercent(summary.success_rate));
     setText('kpi-failures', `${formatNumber(summary.unsuccessful_tasks)} unsuccessful tasks`);
     setText('kpi-duration', formatDuration(summary.duration_seconds));

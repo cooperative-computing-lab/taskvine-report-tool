@@ -1,0 +1,510 @@
+"""Source-backed observability facts and metric contracts.
+
+The legacy debug parser remains responsible for detailed TaskVine objects.  This
+module deliberately derives operational metrics from the less ambiguous
+transaction and performance streams, then reconciles them with parser objects.
+No chart is allowed to invent a missing terminal event or resource sample.
+"""
+
+from __future__ import annotations
+
+import csv
+import json
+import math
+import re
+from collections import Counter, defaultdict
+from pathlib import Path
+
+from .diagnostics import sha256_file
+from .sources import LegacyTransactionSource
+
+
+METRIC_SEMANTICS_VERSION = 1
+METRIC_CONTRACT_FILENAME = "metric_contracts.csv"
+_JSON_OBJECT_RE = re.compile(r"\{[^{}]*\}")
+
+
+def _finite(value):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _resource_value(resources: dict, key: str):
+    value = resources.get(key)
+    if isinstance(value, list) and value:
+        return _finite(value[0])
+    return _finite(value)
+
+
+def _last_json(payload: str) -> dict:
+    matches = _JSON_OBJECT_RE.findall(payload)
+    if not matches:
+        return {}
+    try:
+        value = json.loads(matches[-1])
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _write_csv(path: Path, fields: list[str], rows: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows({key: row.get(key) for key in fields} for row in rows)
+
+
+def _bucket_rows(events, start_epoch, end_epoch, value_keys, max_points=400):
+    duration = max(0.0, end_epoch - start_epoch)
+    width = max(1.0, math.ceil(duration / max_points))
+    buckets = defaultdict(lambda: defaultdict(float))
+    for timestamp, values in events:
+        offset = max(0.0, timestamp - start_epoch)
+        index = int(offset // width)
+        for key, value in values.items():
+            buckets[index][key] += value
+    rows = []
+    for index in sorted(buckets):
+        row = {"time": round(index * width, 6), "bucket_seconds": width}
+        for key in value_keys:
+            row[key] = buckets[index].get(key, 0.0)
+        rows.append(row)
+    return rows
+
+
+class MetricFactBuilder:
+    """Build immutable metric projections and explicit quality contracts."""
+
+    def __init__(self, runtime_template: str, data_parser):
+        self.run = Path(runtime_template)
+        self.logs = self.run / "vine-logs"
+        self.csv_dir = self.run / "csv-files"
+        self.dp = data_parser
+        self.contracts = []
+        self.partial_reasons = []
+        self.provenance = {}
+
+    def _contract(
+        self,
+        metric_id,
+        status,
+        source,
+        coverage,
+        unit,
+        inclusion,
+        exclusions,
+        caveat="",
+    ):
+        self.contracts.append({
+            "metric_id": metric_id,
+            "semantics_version": METRIC_SEMANTICS_VERSION,
+            "status": status,
+            "source": source,
+            "coverage": round(float(coverage), 6),
+            "unit": unit,
+            "inclusion": inclusion,
+            "exclusions": exclusions,
+            "caveat": caveat,
+        })
+
+    def _downgrade_contract(self, metric_id, caveat):
+        for contract in self.contracts:
+            if contract["metric_id"] != metric_id:
+                continue
+            contract["status"] = "PARTIAL"
+            existing = contract.get("caveat", "")
+            contract["caveat"] = "; ".join(value for value in (existing, caveat) if value)
+            return
+
+    def _task_classification(self, task_id, attempt, terminal_status):
+        task = self.dp.tasks.get((task_id, attempt)) if self.dp is not None else None
+        is_library = bool(getattr(task, "is_library_task", False))
+        is_recovery = bool(getattr(task, "is_recovery_task", False))
+        if terminal_status == "LIBRARY_EXIT":
+            is_library = True
+        return is_library, is_recovery, task is not None
+
+    def _transactions(self):
+        path = self.logs / "transactions"
+        if not path.is_file():
+            return None
+        records = list(LegacyTransactionSource(str(path)).records())
+        malformed = sum(record.error is not None for record in records)
+        self.provenance["transactions"] = {
+            "path": str(path.resolve()),
+            "sha256": sha256_file(path),
+            "size_bytes": path.stat().st_size,
+            "records": len(records),
+            "malformed_records": malformed,
+            "adapter": LegacyTransactionSource.adapter_id,
+        }
+        if malformed:
+            self.partial_reasons.append("metric_transactions_malformed")
+        return records
+
+    def _performance(self):
+        path = self.logs / "performance"
+        if not path.is_file():
+            return None
+        rows = []
+        malformed = 0
+        header = None
+        with path.open(encoding="utf-8", errors="replace") as handle:
+            for raw in handle:
+                line = raw.strip()
+                if not line:
+                    continue
+                if line.startswith("#"):
+                    candidate = line.lstrip("# ").split()
+                    if candidate and candidate[0] == "timestamp":
+                        header = candidate
+                    continue
+                parts = line.split()
+                if header is None or len(parts) != len(header):
+                    malformed += 1
+                    continue
+                try:
+                    rows.append({key: float(value) for key, value in zip(header, parts)})
+                except ValueError:
+                    malformed += 1
+        self.provenance["performance"] = {
+            "path": str(path.resolve()),
+            "sha256": sha256_file(path),
+            "size_bytes": path.stat().st_size,
+            "records": len(rows),
+            "malformed_records": malformed,
+            "format": "taskvine.performance.unversioned",
+        }
+        if malformed:
+            self.partial_reasons.append("metric_performance_malformed")
+        return rows
+
+    def build(self):
+        transaction_records = self._transactions()
+        performance_rows = self._performance()
+        if transaction_records is None:
+            for metric_id in (
+                "task-throughput", "task-latency", "failure-timeline",
+                "worker-churn", "transfer-throughput",
+            ):
+                self._contract(metric_id, "UNAVAILABLE", "transactions", 0, "", "", "all", "transactions file missing")
+            self._write_empty_transaction_outputs()
+            start_epoch = None
+        else:
+            start_epoch = self._build_transaction_metrics(transaction_records)
+        self._build_capacity(performance_rows, start_epoch)
+        _write_csv(
+            self.csv_dir / METRIC_CONTRACT_FILENAME,
+            ["metric_id", "semantics_version", "status", "source", "coverage", "unit", "inclusion", "exclusions", "caveat"],
+            self.contracts,
+        )
+        return {
+            "semantics_version": METRIC_SEMANTICS_VERSION,
+            "sources": self.provenance,
+            "partial_reasons": sorted(set(self.partial_reasons)),
+            "contracts": {row["metric_id"]: row for row in self.contracts},
+        }
+
+    def _write_empty_transaction_outputs(self):
+        _write_csv(self.csv_dir / "metric_task_throughput.csv", ["time", "bucket_seconds", "successful", "failed", "success_rate_per_second", "failure_rate_per_second"], [])
+        _write_csv(self.csv_dir / "metric_task_latency.csv", ["task_id", "attempt", "category", "outcome", "queue_seconds", "execution_seconds", "retrieval_seconds"], [])
+        _write_csv(self.csv_dir / "metric_failure_timeline.csv", ["time", "status", "count"], [])
+        _write_csv(self.csv_dir / "metric_worker_churn.csv", ["time", "connected", "disconnected", "active", "reason"], [])
+        _write_csv(self.csv_dir / "metric_transfer_throughput.csv", ["time", "bucket_seconds", "input_bytes", "output_bytes", "input_bytes_per_second", "output_bytes_per_second"], [])
+
+    def _build_transaction_metrics(self, records):
+        starts = []
+        ends = []
+        current_attempt = defaultdict(int)
+        attempts = {}
+        worker_events = []
+        transfer_events = []
+        malformed_payloads = 0
+
+        for record in records:
+            if record.timestamp_us is None:
+                continue
+            timestamp = record.timestamp_us / 1e6
+            fields = record.payload.split()
+            if record.entity == "MANAGER" and len(fields) >= 2:
+                if fields[1] == "START":
+                    starts.append(timestamp)
+                elif fields[1] == "END":
+                    ends.append(timestamp)
+                continue
+            if record.entity == "WORKER" and len(fields) >= 2:
+                action = fields[1]
+                worker_id = fields[0]
+                if action == "CONNECTION":
+                    worker_events.append((timestamp, worker_id, 1, "CONNECTED"))
+                elif action == "DISCONNECTION":
+                    reason = fields[2] if len(fields) > 2 else "UNKNOWN"
+                    worker_events.append((timestamp, worker_id, -1, reason))
+                elif action == "TRANSFER" and len(fields) >= 7:
+                    try:
+                        direction = fields[2]
+                        size_bytes = float(fields[4])
+                        wall_time_us = float(fields[5])
+                        transfer_events.append((timestamp, direction, size_bytes, wall_time_us))
+                    except ValueError:
+                        malformed_payloads += 1
+                continue
+            if record.entity != "TASK" or len(fields) < 2:
+                continue
+            try:
+                task_id = int(fields[0])
+            except ValueError:
+                malformed_payloads += 1
+                continue
+            state = fields[1]
+            if state in {"READY", "WAITING"}:
+                try:
+                    json_start = next(i for i, value in enumerate(fields) if value.startswith("{"))
+                    resource_attempt = int(fields[json_start - 1])
+                    category = fields[2]
+                except (StopIteration, ValueError, IndexError):
+                    malformed_payloads += 1
+                    continue
+                previous_attempt = current_attempt.get(task_id, 0)
+                if previous_attempt:
+                    previous = attempts.get((task_id, previous_attempt))
+                    if previous is not None and not previous.get("outcome"):
+                        parsed = self.dp.tasks.get((task_id, previous_attempt)) if self.dp is not None else None
+                        status_name = getattr(parsed, "task_status_name", None) or "unsuccessful-unknown"
+                        previous["outcome"] = status_name.removeprefix("unsuccessful-").replace("-", "_").upper()
+                        previous["terminal"] = timestamp
+                # The transaction field is a resource allocation attempt, not
+                # an execution-try identity: it can repeat across many retries.
+                # READY event order is the stable execution-attempt sequence
+                # and matches the debug-derived TaskInfo key.
+                attempt = previous_attempt + 1
+                current_attempt[task_id] = attempt
+                fact = attempts.setdefault((task_id, attempt), {"task_id": task_id, "attempt": attempt})
+                fact.update({"category": category, "ready": timestamp, "resource_attempt": resource_attempt})
+                continue
+            attempt = current_attempt.get(task_id)
+            if not attempt:
+                # Library processes may transition without a TASK READY record.
+                # They are outside application metrics and are not malformed
+                # application evidence.
+                continue
+            fact = attempts.setdefault((task_id, attempt), {"task_id": task_id, "attempt": attempt, "category": ""})
+            if state == "RUNNING":
+                fact["running"] = timestamp
+            elif state == "WAITING_RETRIEVAL":
+                fact["waiting_retrieval"] = timestamp
+            elif state == "RETRIEVED":
+                fact["retrieved"] = timestamp
+                fact["terminal"] = timestamp
+                fact["outcome"] = fields[2] if len(fields) > 2 else "UNKNOWN"
+                resources = _last_json(record.payload)
+                fact["worker_start"] = _resource_value(resources, "time_worker_start")
+                fact["worker_end"] = _resource_value(resources, "time_worker_end")
+            elif state == "DONE":
+                fact["done"] = timestamp
+                fact.setdefault("outcome", fields[2] if len(fields) > 2 else "UNKNOWN")
+
+        if malformed_payloads:
+            self.partial_reasons.append("metric_transaction_payload_malformed")
+        all_timestamps = [record.timestamp_us / 1e6 for record in records if record.timestamp_us is not None]
+        if not all_timestamps:
+            self._write_empty_transaction_outputs()
+            return None
+        start_epoch = starts[-1] if starts else min(all_timestamps)
+        end_epoch = ends[-1] if ends else max(all_timestamps)
+        run_complete = bool(ends)
+        source_status = "PASS" if run_complete and not malformed_payloads and not self.partial_reasons else "PARTIAL"
+        if not run_complete:
+            self.partial_reasons.append("metric_manager_end_missing")
+
+        app_attempts = []
+        terminal_events = []
+        failure_events = []
+        latency_rows = []
+        terminal_application = 0
+        complete_queue = complete_execution = complete_retrieval = 0
+        classified_attempts = 0
+        for key in sorted(attempts):
+            fact = attempts[key]
+            outcome = fact.get("outcome")
+            is_library, is_recovery, classified = self._task_classification(fact["task_id"], fact["attempt"], outcome)
+            classified_attempts += classified
+            if is_library or is_recovery:
+                continue
+            app_attempts.append(fact)
+            terminal_time = fact.get("terminal") or fact.get("retrieved") or fact.get("done")
+            if terminal_time is not None and outcome:
+                terminal_application += 1
+                if outcome == "SUCCESS":
+                    terminal_events.append((terminal_time, {"successful": 1.0, "failed": 0.0}))
+                else:
+                    terminal_events.append((terminal_time, {"successful": 0.0, "failed": 1.0}))
+                    failure_events.append((terminal_time, outcome))
+            queue = None
+            if fact.get("ready") is not None and fact.get("running") is not None:
+                queue = max(0.0, fact["running"] - fact["ready"])
+                complete_queue += 1
+            execution = None
+            if fact.get("worker_start") is not None and fact.get("worker_end") is not None:
+                execution = max(0.0, fact["worker_end"] - fact["worker_start"])
+                complete_execution += 1
+            elif fact.get("running") is not None and fact.get("waiting_retrieval") is not None:
+                execution = max(0.0, fact["waiting_retrieval"] - fact["running"])
+                complete_execution += 1
+            elif fact.get("running") is not None and fact.get("terminal") is not None:
+                execution = max(0.0, fact["terminal"] - fact["running"])
+                complete_execution += 1
+            retrieval = None
+            if fact.get("waiting_retrieval") is not None and fact.get("retrieved") is not None:
+                retrieval = max(0.0, fact["retrieved"] - fact["waiting_retrieval"])
+                complete_retrieval += 1
+            latency_rows.append({
+                "task_id": fact["task_id"], "attempt": fact["attempt"],
+                "category": fact.get("category", ""), "outcome": outcome or "INCOMPLETE",
+                "queue_seconds": queue, "execution_seconds": execution,
+                "retrieval_seconds": retrieval,
+            })
+
+        throughput_rows = _bucket_rows(terminal_events, start_epoch, end_epoch, ["successful", "failed"])
+        for row in throughput_rows:
+            row["successful"] = int(row["successful"])
+            row["failed"] = int(row["failed"])
+            row["success_rate_per_second"] = row["successful"] / row["bucket_seconds"]
+            row["failure_rate_per_second"] = row["failed"] / row["bucket_seconds"]
+        _write_csv(self.csv_dir / "metric_task_throughput.csv", ["time", "bucket_seconds", "successful", "failed", "success_rate_per_second", "failure_rate_per_second"], throughput_rows)
+        _write_csv(self.csv_dir / "metric_task_latency.csv", ["task_id", "attempt", "category", "outcome", "queue_seconds", "execution_seconds", "retrieval_seconds"], latency_rows)
+
+        failure_buckets = defaultdict(Counter)
+        width = max(1.0, math.ceil(max(0.0, end_epoch - start_epoch) / 400))
+        for timestamp, status in failure_events:
+            failure_buckets[int(max(0, timestamp - start_epoch) // width)][status] += 1
+        failure_rows = [
+            {"time": index * width, "status": status, "count": count}
+            for index in sorted(failure_buckets)
+            for status, count in sorted(failure_buckets[index].items())
+        ]
+        _write_csv(self.csv_dir / "metric_failure_timeline.csv", ["time", "status", "count"], failure_rows)
+
+        active = 0
+        churn_rows = []
+        for timestamp, _, delta, reason in sorted(worker_events):
+            active = max(0, active + delta)
+            churn_rows.append({
+                "time": max(0.0, timestamp - start_epoch),
+                "connected": int(delta > 0), "disconnected": int(delta < 0),
+                "active": active, "reason": reason,
+            })
+        _write_csv(self.csv_dir / "metric_worker_churn.csv", ["time", "connected", "disconnected", "active", "reason"], churn_rows)
+
+        transfer_bucket_events = []
+        total_input = total_output = 0.0
+        for timestamp, direction, size_bytes, _ in transfer_events:
+            values = {"input_bytes": 0.0, "output_bytes": 0.0}
+            if direction == "INPUT":
+                values["input_bytes"] = size_bytes
+                total_input += size_bytes
+            elif direction == "OUTPUT":
+                values["output_bytes"] = size_bytes
+                total_output += size_bytes
+            transfer_bucket_events.append((timestamp, values))
+        transfer_rows = _bucket_rows(transfer_bucket_events, start_epoch, end_epoch, ["input_bytes", "output_bytes"])
+        for row in transfer_rows:
+            row["input_bytes_per_second"] = row["input_bytes"] / row["bucket_seconds"]
+            row["output_bytes_per_second"] = row["output_bytes"] / row["bucket_seconds"]
+        _write_csv(self.csv_dir / "metric_transfer_throughput.csv", ["time", "bucket_seconds", "input_bytes", "output_bytes", "input_bytes_per_second", "output_bytes_per_second"], transfer_rows)
+
+        total_attempts = len(app_attempts)
+        classification_coverage = classified_attempts / len(attempts) if attempts else 0
+        if classification_coverage < 0.995:
+            self.partial_reasons.append("metric_task_classification_incomplete")
+            source_status = "PARTIAL"
+        terminal_coverage = terminal_application / total_attempts if total_attempts else 0
+        latency_denominator = max(1, total_attempts)
+        status = source_status if terminal_coverage >= 0.995 else "PARTIAL"
+        self._contract("task-throughput", status, "transactions+debug-classification", min(terminal_coverage, classification_coverage), "attempts/s", "application attempts only", "library,recovery,incomplete", "Terminal event is RETRIEVED; no synthetic completions.")
+        latency_coverage = min(complete_queue, complete_execution) / latency_denominator
+        self._contract("task-latency", source_status if latency_coverage >= 0.995 else "PARTIAL", "transactions+debug-classification", min(latency_coverage, classification_coverage), "seconds", "application attempts only", "missing phase endpoints", "Each latency field has independent coverage.")
+        self._contract("failure-timeline", status, "transactions+debug-classification", min(terminal_coverage, classification_coverage), "attempts", "unsuccessful application attempts", "library,recovery,incomplete", "Statuses are TaskVine terminal outcomes.")
+        churn_coverage = 1.0 if run_complete else 0.0
+        self._contract("worker-churn", source_status, "transactions", churn_coverage, "workers", "worker sessions", "open sessions are censored", "Disconnect reasons are source values.")
+        self._contract("transfer-throughput", source_status, "transactions", 1.0 if transfer_events else 0.0, "bytes/s", "completed INPUT and OUTPUT payloads", "avoided/cache-hit transfers", "Payload throughput is not physical link utilization.")
+        self._transaction_totals = {"input_bytes": total_input, "output_bytes": total_output, "worker_connections": sum(delta > 0 for _, _, delta, _ in worker_events)}
+        return start_epoch
+
+    def _build_capacity(self, rows, start_epoch):
+        fields = ["time", "active_workers", "tasks_running", "total_cores", "committed_cores", "core_occupancy_ratio"]
+        if not rows:
+            _write_csv(self.csv_dir / "metric_worker_capacity.csv", fields, [])
+            self._contract("worker-capacity", "UNAVAILABLE", "performance", 0, "cores", "manager capacity samples", "all", "performance file missing")
+            return
+        if start_epoch is None:
+            start_epoch = rows[0]["timestamp"] / 1e6
+        output = []
+        valid = 0
+        for row in rows:
+            total = row.get("total_cores", 0.0)
+            committed = row.get("committed_cores", 0.0)
+            ratio = committed / total if total > 0 else None
+            valid += all(
+                key in row
+                for key in ("timestamp", "workers_connected", "tasks_running", "total_cores", "committed_cores")
+            )
+            output.append({
+                "time": max(0.0, row["timestamp"] / 1e6 - start_epoch),
+                "active_workers": row.get("workers_connected"),
+                "tasks_running": row.get("tasks_running"),
+                "total_cores": total,
+                "committed_cores": committed,
+                "core_occupancy_ratio": ratio,
+            })
+        # Preserve endpoints and extrema while bounding presentation size.
+        if len(output) > 4000:
+            stride = math.ceil(len(output) / 3996)
+            selected = {0, len(output) - 1}
+            selected.update(range(0, len(output), stride))
+            for key in ("active_workers", "tasks_running", "total_cores", "committed_cores"):
+                selected.add(max(range(len(output)), key=lambda index: output[index][key] or 0))
+            output = [output[index] for index in sorted(selected)]
+        _write_csv(self.csv_dir / "metric_worker_capacity.csv", fields, output)
+
+        transfer_ok = True
+        churn_ok = True
+        transfer_caveats = []
+        churn_caveats = []
+        totals = getattr(self, "_transaction_totals", None)
+        if totals:
+            last = rows[-1]
+            for perf_key, tx_key in (("bytes_sent", "input_bytes"), ("bytes_received", "output_bytes")):
+                if perf_key not in last:
+                    transfer_ok = False
+                    transfer_caveats.append(f"{perf_key}_missing")
+                    continue
+                observed = float(last.get(perf_key, 0.0))
+                expected = float(totals[tx_key])
+                tolerance = max(1.0, abs(observed) * 0.01)
+                if abs(observed - expected) > tolerance:
+                    transfer_ok = False
+                    transfer_caveats.append(f"{perf_key}_mismatch")
+            if "workers_joined" not in last:
+                churn_ok = False
+                churn_caveats.append("workers_joined_missing")
+            elif int(last["workers_joined"]) != totals["worker_connections"]:
+                churn_ok = False
+                churn_caveats.append("worker_connections_mismatch")
+        if not transfer_ok or not churn_ok:
+            self.partial_reasons.append("metric_cross_source_mismatch")
+        if not transfer_ok:
+            self._downgrade_contract("transfer-throughput", ";".join(transfer_caveats))
+        if not churn_ok:
+            self._downgrade_contract("worker-churn", ";".join(churn_caveats))
+        coverage = valid / len(rows)
+        status = "PASS" if coverage >= 0.995 and not self.provenance["performance"]["malformed_records"] else "PARTIAL"
+        self._contract("worker-capacity", status, "performance", coverage, "cores", "manager capacity samples", "zero-capacity samples from occupancy ratio", "Committed capacity is a scheduler occupancy proxy, not CPU utilization.")
+
+
+def generate_metric_facts(runtime_template: str, data_parser):
+    return MetricFactBuilder(runtime_template, data_parser).build()

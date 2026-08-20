@@ -76,7 +76,7 @@ class DashboardAPITest(unittest.TestCase):
         self.assertIn("TaskVine Report", page)
         self.assertIn("Task Explorer", page)
         self.assertIn("Compare runs", page)
-        self.assertIn("css/app.css') }}?v=4.5", Path("src/vine_report/templates/index.html").read_text())
+        self.assertIn("css/app.css') }}?v=5.1", Path("src/vine_report/templates/index.html").read_text())
 
     def test_v1_contract_matches_registered_routes(self):
         contract = json.loads(Path("docs/api-v1-contract.json").read_text(encoding="utf-8"))
@@ -146,6 +146,17 @@ class DashboardAPITest(unittest.TestCase):
         self.assertIn("evidence", data["findings"][0])
         self.assertIn("observed", data["findings"][0]["evidence"])
         self.assertEqual(data["data_quality"]["status"], "UNKNOWN")
+
+    def test_summary_cache_invalidates_when_source_csv_changes(self):
+        first = self.client.get("/api/dashboard/summary", query_string={"folder": "run-a"}).json
+        self.assertEqual(first["total_tasks"], 10)
+        metadata = self.root / "run-a" / "csv-files" / "metadata.csv"
+        time.sleep(0.01)
+        rows = list(csv.reader(metadata.open(encoding="utf-8")))
+        rows = [[key, "11"] if key == "total_tasks" else [key, value] for key, value in rows]
+        self._write(metadata, rows[0], rows[1:])
+        second = self.client.get("/api/dashboard/summary", query_string={"folder": "run-a"}).json
+        self.assertEqual(second["total_tasks"], 11)
 
     def test_summary_exposes_parse_quality_without_raw_errors(self):
         logs_dir = self.root / "run-a" / "vine-logs"
@@ -303,6 +314,40 @@ class DashboardAPITest(unittest.TestCase):
         self.assertEqual(response.json["run_id"], "run-a")
         self.assertEqual(response.json["revision"], revision)
         self.assertEqual(response.json["data"]["observed_run"], "run-a")
+
+    def test_source_metric_endpoint_is_pinned_and_fail_closed(self):
+        csv_dir = self.root / "run-a" / "csv-files"
+        self._write(
+            csv_dir / "metric_contracts.csv",
+            ["metric_id", "semantics_version", "status", "source", "coverage", "unit", "inclusion", "exclusions", "caveat"],
+            [["task-throughput", 1, "PASS", "transactions", 1, "attempts/s", "application", "library,recovery", ""]],
+        )
+        self._write(
+            csv_dir / "metric_task_throughput.csv",
+            ["time", "bucket_seconds", "successful", "failed", "success_rate_per_second", "failure_rate_per_second"],
+            [[0, 1, 2, 0, 2, 0], [1, 1, 1, 1, 1, 1]],
+        )
+        revision = self.client.post("/api/v1/runs/run-a/refresh").json["revision"]
+        response = self.client.get(
+            f"/api/v1/runs/run-a/revisions/{revision}/metrics/task-throughput"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["run_id"], "run-a")
+        self.assertTrue(response.json["data"]["available"])
+        self.assertEqual(response.json["data"]["series"][0]["points"], [[0.0, 2.0], [1.0, 1.0]])
+
+        unavailable = self.client.get(
+            f"/api/v1/runs/run-a/revisions/{revision}/metrics/task-latency"
+        )
+        self.assertEqual(unavailable.status_code, 200)
+        self.assertFalse(unavailable.json["data"]["available"])
+        self.assertEqual(unavailable.json["data"]["series"], [])
+
+        summary = self.client.get(
+            f"/api/v1/runs/run-a/revisions/{revision}/summary"
+        ).json["data"]
+        self.assertIsNone(summary["total_tasks"])
+        self.assertIsNone(summary["transferred_mb"])
 
     def test_integer_csv_chart_scalars_are_json_serializable(self):
         revision = self.client.get("/api/v1/runs/run-a").json["revision"]

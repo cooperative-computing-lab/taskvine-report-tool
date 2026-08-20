@@ -94,3 +94,17 @@ test('chart geometry, orange hover, and vertical resizing remain coherent', asyn
   expect(browserErrors).toEqual([]);
   expect(serverErrors).toEqual([]);
 });
+
+test('source-backed metric renders only validated evidence', async ({ page }) => {
+  const browserErrors = [];
+  page.on('pageerror', error => browserErrors.push(error.message));
+  await page.goto('/?run=run-a');
+  await expectRun(page, 'run-a');
+  await page.locator('.nav-item[data-view="tasks"]').click();
+
+  const card = page.locator('[data-module="task-throughput"]');
+  await expect(card).toBeVisible();
+  await expect(card.locator('path.task-throughput-metric-line').first()).toBeVisible();
+  await expect(card.locator('.section-title')).toHaveAttribute('title', /Source: transactions; coverage 100\.0%/);
+  expect(browserErrors).toEqual([]);
+});

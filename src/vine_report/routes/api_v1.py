@@ -11,6 +11,7 @@ from flask import Blueprint, current_app, g, jsonify, make_response, request, se
 from src.vine_report.request_context import bind_snapshot
 from src.vine_report.run_store import RunStoreError
 from src.vine_report.api_contract import API_SCHEMA, API_VERSION
+from src.vine_report.metric_service import metric_payload
 from src.vine_parse.diagnostics import PARSER_CONTRACT_VERSION
 from src import __version__
 from .dashboard import (
@@ -161,6 +162,15 @@ def tasks(run_id, revision):
     data = raw.get_json(silent=True)
     if raw.status_code >= 400:
         return raw
+    return jsonify(_envelope(data, snapshot))
+
+
+@api_v1_bp.get("/runs/<run_id>/revisions/<revision>/metrics/<metric_id>")
+def metric(run_id, revision, metric_id):
+    snapshot = _pinned(run_id, revision)
+    data = metric_payload(snapshot, metric_id)
+    if data is None:
+        raise RunStoreError("metric_not_found", f"metric '{metric_id}' was not found", 404)
     return jsonify(_envelope(data, snapshot))
 
 

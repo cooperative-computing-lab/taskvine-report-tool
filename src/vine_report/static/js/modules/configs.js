@@ -4,7 +4,10 @@
  */
 export const sectionVisibility = {
     'task-execution-details': true,
-    'task-concurrency': true,
+    'task-concurrency': false,
+    'task-throughput': true,
+    'task-latency': true,
+    'failure-timeline': true,
     'task-response-time': true,
     'task-execution-time': true,
     'task-retrieval-time': true,
@@ -13,9 +16,12 @@ export const sectionVisibility = {
     'task-dependents': false,
     'task-subgraphs': false,
     'worker-concurrency': true,
+    'worker-capacity': true,
+    'worker-churn': true,
     'worker-storage-consumption': true,
     'worker-incoming-transfers': true,
     'worker-outgoing-transfers': true,
+    'transfer-throughput': true,
     'worker-executing-tasks': true,
     'worker-waiting-retrieval-tasks': false,
     'worker-lifetime': true,
@@ -47,6 +53,7 @@ import { FileCreatedSizeModule } from './file_created_size.js?v=5.0';
 import { FileRetentionTimeModule } from './file_retention_time.js?v=5.0';
 import { FileSizesModule } from './file_sizes.js?v=5.0';
 import { FileConcurrentReplicasModule } from './file_concurrent_replicas.js?v=5.0';
+import { SourceMetricModule } from './source_metric.js?v=5.1';
 
 export const moduleClasses = {
     'task-execution-details': TaskExecutionDetailsModule,
@@ -70,9 +77,18 @@ export const moduleClasses = {
     'file-retention-time': FileRetentionTimeModule,
     'file-transferred-size': FileTransferredSizeModule,
     'file-created-size': FileCreatedSizeModule,
+    'task-throughput': SourceMetricModule,
+    'task-latency': SourceMetricModule,
+    'failure-timeline': SourceMetricModule,
+    'worker-capacity': SourceMetricModule,
+    'worker-churn': SourceMetricModule,
+    'transfer-throughput': SourceMetricModule,
 };
 
 export const moduleConfigs = [
+    { id: 'task-throughput', group: 'tasks', timeLinked: true, title: 'Application Throughput', api_url: '' },
+    { id: 'task-latency', group: 'tasks', title: 'Task Latency Distribution', api_url: '' },
+    { id: 'failure-timeline', group: 'tasks', timeLinked: true, title: 'Failure Timeline', api_url: '' },
     { id: 'task-execution-details', group: 'tasks', timeLinked: true, title: 'Task Execution Timeline', api_url: '/api/task-execution-details' },
     { id: 'task-concurrency', group: 'tasks', timeLinked: true, title: 'Task Concurrency', api_url: '/api/task-concurrency' },
     { id: 'task-response-time', group: 'tasks', title: 'Task Response Time', api_url: '/api/task-response-time' },
@@ -83,9 +99,12 @@ export const moduleConfigs = [
     { id: 'task-dependents', group: 'tasks', title: 'Task Dependents', api_url: '/api/task-dependents' },
     { id: 'task-subgraphs', group: 'tasks', title: 'Task Subgraphs', api_url: '/api/task-subgraphs' },
     { id: 'worker-concurrency', group: 'workers', timeLinked: true, title: 'Worker Concurrency', api_url: '/api/worker-concurrency' },
+    { id: 'worker-capacity', group: 'workers', timeLinked: true, title: 'Worker Capacity', api_url: '' },
+    { id: 'worker-churn', group: 'workers', timeLinked: true, title: 'Worker Churn', api_url: '' },
     { id: 'worker-storage-consumption', group: 'workers', timeLinked: true, title: 'Worker Storage Consumption', api_url: '/api/worker-storage-consumption' },
     { id: 'worker-incoming-transfers', group: 'transfers', timeLinked: true, title: 'Incoming Transfers', api_url: '/api/worker-incoming-transfers' },
     { id: 'worker-outgoing-transfers', group: 'transfers', timeLinked: true, title: 'Outgoing Transfers', api_url: '/api/worker-outgoing-transfers' },
+    { id: 'transfer-throughput', group: 'transfers', timeLinked: true, title: 'Transfer Throughput', api_url: '' },
     { id: 'worker-executing-tasks', group: 'workers', timeLinked: true, title: 'Executing Tasks by Worker', api_url: '/api/worker-executing-tasks' },
     { id: 'worker-waiting-retrieval-tasks', group: 'workers', timeLinked: true, title: 'Waiting Retrieval by Worker', api_url: '/api/worker-waiting-retrieval-tasks' },
     { id: 'worker-lifetime', group: 'workers', title: 'Worker Lifetime', api_url: '/api/worker-lifetime' },

@@ -22,6 +22,12 @@ is used to validate its own record structure and, when necessary, to infer the
 debug wall-clock offset from the manager-start epoch. It is not silently used as
 a complete replacement data source.
 
+Operational charts use a narrower metric contract: transaction task attempts,
+worker sessions, and transfers are reconciled with debug-derived task
+classification, while manager capacity samples come from `performance`. Each
+metric is independently versioned and fail-closed; `PARTIAL` and `UNAVAILABLE`
+contracts are diagnostic evidence, not plot-ready data.
+
 ## Status and exit-code contract
 
 | Status | Meaning | `vine_parse` exit |

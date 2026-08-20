@@ -80,6 +80,12 @@ vine_parse --logs-dir /home/user/logs --templates workflow_001 --timezone-offset
 state. See [the log compatibility contract](docs/log-compatibility.md) for the
 maintenance and release gates.
 
+Source-backed operational metrics are emitted with an explicit PASS, PARTIAL,
+or UNAVAILABLE contract. The dashboard only plots PASS data; incomplete or
+unreconciled evidence is shown as unavailable instead of being estimated. See
+[the source-backed metrics contract](docs/source-backed-metrics.md) for exact
+sources, units, inclusion rules, and acceptance thresholds.
+
 #### `vine_report` - Start Web Server
 
 **Prerequisite:** run `vine_parse` first so `csv-files` exist.
@@ -141,6 +147,7 @@ change one another's data source.
 - `GET /api/v1/runs/<run_id>/revisions/<revision>/summary`
 - `GET /api/v1/runs/<run_id>/revisions/<revision>/tasks`
 - `GET /api/v1/runs/<run_id>/revisions/<revision>/charts/<chart_id>`
+- `GET /api/v1/runs/<run_id>/revisions/<revision>/metrics/<metric_id>`
 - `GET /api/v1/runs/<run_id>/revisions/<revision>/exports/<export_id>.csv`
 - `GET /api/v1/compare?runs=<baseline>,<candidate>`
 

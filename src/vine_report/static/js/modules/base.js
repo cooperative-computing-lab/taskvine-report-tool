@@ -44,6 +44,7 @@ export class BaseModule {
         this.id = id;
         this.title = title;
         this.api_url = api_url;
+        this.endpointKind = 'charts';
 
         this._folder = null;
         this._revision = null;
@@ -716,13 +717,13 @@ export class BaseModule {
         });
         
         const baseURL = requestRevision
-            ? `/api/v1/runs/${encodeURIComponent(requestFolder)}/revisions/${encodeURIComponent(requestRevision)}/charts/${encodeURIComponent(this.id)}`
+            ? `/api/v1/runs/${encodeURIComponent(requestFolder)}/revisions/${encodeURIComponent(requestRevision)}/${this.endpointKind}/${encodeURIComponent(this.id)}`
             : this.api_url;
         if (!requestRevision) params.set('folder', requestFolder);
         const response = await fetch(`${baseURL}?${params.toString()}`, { signal: controller.signal });
         const payload = await response.json();
         const apiError = typeof payload?.error === 'object' ? payload.error.message : payload?.error;
-        const data = payload?.schema_version === 'report-api/v1' ? payload.data : payload;
+        const rawData = payload?.schema_version === 'report-api/v1' ? payload.data : payload;
 
         const stale = controller.signal.aborted
             || requestFolder !== this._folder
@@ -732,6 +733,7 @@ export class BaseModule {
             || (payload?.run_id && payload.run_id !== requestFolder)
             || (payload?.revision && payload.revision !== requestRevision);
         if (stale) return false;
+        const data = this.transformFetchedData(rawData);
         
         if (!response.ok || !data || apiError || data.error) {
             console.warn(
@@ -760,6 +762,10 @@ export class BaseModule {
         /* toolbox must be set after the legend is set b/c it checks if there are checkboxes */
         this._initToolbox();
         return true;
+    }
+
+    transformFetchedData(data) {
+        return data;
     }
 
     plot() {}
