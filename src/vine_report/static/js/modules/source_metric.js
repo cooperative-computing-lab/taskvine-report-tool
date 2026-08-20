@@ -60,6 +60,8 @@ export class SourceMetricModule extends BaseModule {
                 ? '(d) => d3.format(".0%")(d)'
                 : payload.metric_id === 'transfer-throughput'
                     ? '(d) => d3.format("~s")(d) + "B/s"'
+                    : payload.metric_id === 'task-throughput'
+                        ? '(d) => d3.format(".2~f")(d)'
                     : '(d) => d3.format("~s")(d)',
         };
     }

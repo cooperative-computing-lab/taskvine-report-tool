@@ -109,6 +109,23 @@ test('source-backed metric renders only validated evidence', async ({ page }) =>
   expect(browserErrors).toEqual([]);
 });
 
+test('every visible chart section has a readable explanation', async ({ page }) => {
+  await page.goto('/?run=run-a');
+  await expectRun(page, 'run-a');
+  for (const view of ['tasks', 'workers', 'transfers', 'files']) {
+    await page.locator(`.nav-item[data-view="${view}"]`).click();
+    const cards = page.locator(`#modules-${view} .module-card`);
+    await expect(cards.first()).toBeVisible();
+    const descriptions = cards.locator('.section-description');
+    await expect(descriptions).toHaveCount(await cards.count());
+    const checks = await descriptions.evaluateAll(nodes => nodes.map(node => ({
+      text: node.textContent.trim(),
+      fontSize: Number.parseFloat(getComputedStyle(node).fontSize),
+    })));
+    expect(checks.every(item => item.text.length >= 45 && item.fontSize >= 15)).toBe(true);
+  }
+});
+
 test('new frontend blocks an older backend with one actionable message', async ({ page }) => {
   await page.route('**/api/v1/health', async route => {
     const response = await route.fetch();

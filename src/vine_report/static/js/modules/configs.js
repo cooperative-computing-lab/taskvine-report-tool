@@ -32,6 +32,36 @@ export const sectionVisibility = {
     'file-created-size': true,
 };
 
+export const sectionDescriptions = {
+    'task-throughput': 'Shows how quickly application task attempts finish. Compare successful and failed rates to identify slowdowns or bursts of failure.',
+    'task-latency': 'Compares the queue, execution, and retrieval time distributions. Curves farther to the left indicate lower latency.',
+    'failure-timeline': 'Groups failed application attempts by outcome over the run, making failure clusters and recurring causes easier to spot.',
+    'task-execution-details': 'Places every recorded task attempt on its worker and time axis. Use it to find idle gaps, long-running work, and retries.',
+    'task-concurrency': 'Tracks how many tasks occupy each lifecycle state as the workflow progresses.',
+    'task-response-time': 'Shows the recorded delay from a task becoming ready until it runs or fails before dispatch.',
+    'task-execution-time': 'Shows the time each task attempt spent executing, helping reveal outliers and uneven workloads.',
+    'task-retrieval-time': 'Shows how long completed task outputs remained in retrieval before reaching the manager.',
+    'task-completion-percentiles': 'Shows when successive percentages of tasks completed relative to the beginning of the run.',
+    'task-dependencies': 'Shows how many upstream producer tasks each task depends on through its input files.',
+    'task-dependents': 'Shows how many downstream tasks consume each task’s output files.',
+    'task-subgraphs': 'Summarizes connected task groups inferred from input and output relationships.',
+    'worker-concurrency': 'Tracks the number of connected workers over time, revealing scale-up, scale-down, and availability gaps.',
+    'worker-capacity': 'Compares available cores, committed cores, and running tasks over time. Committed cores represent scheduler occupancy, not CPU utilization.',
+    'worker-churn': 'Tracks active workers as connections open and close, making unstable worker populations visible.',
+    'worker-storage-consumption': 'Shows the amount of TaskVine-managed file data retained on each worker over time.',
+    'worker-incoming-transfers': 'Shows concurrent transfers arriving at each worker, helping identify receivers under sustained transfer pressure.',
+    'worker-outgoing-transfers': 'Shows concurrent transfers leaving each worker, helping identify heavily used data sources.',
+    'transfer-throughput': 'Shows completed input and output payload bytes per second. This is payload throughput, not physical network utilization.',
+    'worker-executing-tasks': 'Shows how many tasks each worker executes over time, revealing load balance and idle capacity.',
+    'worker-waiting-retrieval-tasks': 'Shows completed tasks waiting for output retrieval on each worker.',
+    'worker-lifetime': 'Compares how long workers remained connected to the manager during the run.',
+    'file-sizes': 'Compares the sizes of files observed in the workflow and highlights unusually large data objects.',
+    'file-concurrent-replicas': 'Shows the maximum number of simultaneous replicas observed for each file.',
+    'file-retention-time': 'Shows how long each file remained present across worker transfers, from first stage-in to last stage-out.',
+    'file-transferred-size': 'Tracks the cumulative volume of file data transferred as the workflow progresses.',
+    'file-created-size': 'Tracks the cumulative size of files first observed or produced during the run.',
+};
+
 import { TaskExecutionDetailsModule } from './task_execution_details.js?v=5.0';
 import { TaskConcurrencyModule } from './task_concurrency.js?v=5.0';
 import { TaskResponseTimeModule } from './task_response_time.js?v=5.0';
@@ -53,7 +83,7 @@ import { FileCreatedSizeModule } from './file_created_size.js?v=5.0';
 import { FileRetentionTimeModule } from './file_retention_time.js?v=5.0';
 import { FileSizesModule } from './file_sizes.js?v=5.0';
 import { FileConcurrentReplicasModule } from './file_concurrent_replicas.js?v=5.0';
-import { SourceMetricModule } from './source_metric.js?v=5.1';
+import { SourceMetricModule } from './source_metric.js?v=5.3';
 
 export const moduleClasses = {
     'task-execution-details': TaskExecutionDetailsModule,
@@ -118,4 +148,4 @@ export const moduleConfigs = [
 /** Module configs filtered by sectionVisibility (only enabled sections) */
 export const enabledModuleConfigs = moduleConfigs.filter(
     (c) => sectionVisibility[c.id] !== false
-);
+).map((config) => ({ ...config, description: sectionDescriptions[config.id] || '' }));

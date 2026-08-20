@@ -1,4 +1,4 @@
-import { moduleClasses, enabledModuleConfigs } from './modules/configs.js?v=5.2';
+import { moduleClasses, enabledModuleConfigs } from './modules/configs.js?v=5.3';
 
 const REQUIRED_SERVER_CAPABILITY = 'source-backed-metrics-v1';
 
@@ -217,6 +217,13 @@ function setupModules() {
         const module = new moduleClasses[config.id](config.id, config.title, config.api_url);
         moduleObjects[config.id] = module;
         card.appendChild(module.renderSkeleton());
+        const header = card.querySelector('.section-header');
+        if (header && config.description) {
+            const description = document.createElement('p');
+            description.className = 'section-description';
+            description.textContent = config.description;
+            header.appendChild(description);
+        }
         root.appendChild(card);
         module.init();
         attachModuleResizer(card, module);
