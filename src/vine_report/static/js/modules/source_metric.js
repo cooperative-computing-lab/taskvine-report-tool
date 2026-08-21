@@ -1,4 +1,4 @@
-import { BaseModule } from './base.js?v=5.1';
+import { BaseModule } from './base.js?v=5.4';
 
 const COLORS = ['#d96f24', '#747474', '#a9a9a5', '#4e4e4e', '#e6a06d', '#94948f'];
 
@@ -86,6 +86,7 @@ export class SourceMetricModule extends BaseModule {
 
     plot() {
         if (!this.data?.series) return;
+        const cursorSeries = [];
         this.data.series.forEach((series, index) => {
             const id = `${this.id}-series-${index}`;
             this.plotPath(series.points, {
@@ -94,11 +95,25 @@ export class SourceMetricModule extends BaseModule {
                 stroke: COLORS[index % COLORS.length],
                 strokeWidth: index === 0 ? 2.2 : 1.8,
                 curveType: this.data.kind === 'cdf' ? d3.curveMonotoneX : d3.curveStepAfter,
-                tooltipFormatter: point => `${series.name}: ${point[1]}`,
+                disableHover: true,
+            });
+            cursorSeries.push({
+                id,
+                name: series.name,
+                color: COLORS[index % COLORS.length],
+                points: series.points,
             });
             if (this.seriesVisibility.get(index) === false) {
                 this.svg.select(`#${id}`).style('display', 'none');
             }
+        });
+        this.installLineCursor(cursorSeries, {
+            interpolation: this.data.kind === 'cdf' ? 'linear' : 'step',
+            xFormatter: eval(this.data.x_tick_formatter),
+            yFormatter: eval(this.data.y_tick_formatter),
+            xLabel: this.data.axes?.x?.label || 'Time',
+            xUnit: this.data.axes?.x?.unit || 'seconds',
+            isVisible: (_series, index) => this.seriesVisibility.get(index) !== false,
         });
     }
 }

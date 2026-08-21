@@ -1,4 +1,4 @@
-import { moduleClasses, enabledModuleConfigs, installMetricCatalog } from './modules/configs.js?v=5.4';
+import { moduleClasses, enabledModuleConfigs, installMetricCatalog } from './modules/configs.js?v=5.5';
 
 const REQUIRED_SERVER_CAPABILITY = 'source-backed-metrics-v1';
 

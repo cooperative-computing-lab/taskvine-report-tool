@@ -16,6 +16,18 @@ modules.
 4. `GenericMetricModule` renders standard line, step, scatter, and point charts.
    Only structurally unique visualizations keep custom modules.
 
+## Shared line interaction
+
+Standard line renderers delegate plot-wide inspection to `LineCursor` through
+`BaseModule.installLineCursor`. The interaction layer owns the vertical guide,
+per-series markers, viewport-aware tooltip, and binary-search sampling. Renderers
+only provide series data, formatting, visibility, and either linear or step
+interpolation semantics; do not add separate per-path hover implementations.
+
+The cursor reports every visible series whose domain contains the current x
+coordinate. It is animation-frame throttled, and its lifecycle follows the base
+module so redraws and view changes cannot leave stale overlays behind.
+
 Legacy `/api/*` and `/api/v1/.../charts/*` routes remain compatibility adapters.
 New frontend code should use `/api/v1/.../metrics/<metric_id>`.
 

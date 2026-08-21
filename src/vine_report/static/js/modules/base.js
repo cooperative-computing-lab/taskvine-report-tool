@@ -1,4 +1,5 @@
 import { Toolbox } from './toolbox.js?v=5.0';
+import { LineCursor } from './line_cursor.js?v=1.0';
 
 let jsPDF = null;
 let svg2pdf = null;
@@ -116,6 +117,7 @@ export class BaseModule {
 
         this._hasScatterPlot = false;
         this._cdfMode = false;
+        this._lineCursor = null;
     }
 
     switchFolder(folder, revision = null, generation = 0) {
@@ -190,6 +192,7 @@ export class BaseModule {
     }
 
     _resetHoverState() {
+        this._lineCursor?.hide();
         const tooltip = document.getElementById('vine-tooltip');
         if (tooltip) tooltip.style.visibility = 'hidden';
         if (!this.svgNode) return;
@@ -576,6 +579,8 @@ export class BaseModule {
     }
 
     clearSVG() {
+        this._lineCursor?.destroy();
+        this._lineCursor = null;
         /* remove the node from the DOM */
         while (this.svgNode.firstChild) {
             this.svgNode.removeChild(this.svgNode.firstChild);
@@ -1136,6 +1141,19 @@ export class BaseModule {
                     tooltip.style.visibility = 'hidden';
                 });
         }
+    }
+
+    installLineCursor(series, options = {}) {
+        this._lineCursor?.destroy();
+        this._lineCursor = new LineCursor({
+            svg: this.svg,
+            xScale: this.bottomScale,
+            yScale: this.leftScale,
+            series,
+            tooltip: document.getElementById('vine-tooltip'),
+            ...options,
+        });
+        this._lineCursor.mount();
     }
 
     plotHorizontalRect(x_start, x_width, y_start, y_height, fill, opacity, tooltipInnerHTML, className = '') {

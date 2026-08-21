@@ -109,6 +109,35 @@ test('source-backed metric renders only validated evidence', async ({ page }) =>
   expect(browserErrors).toEqual([]);
 });
 
+test('line grids inspect every visible series at the cursor x position', async ({ page }) => {
+  await page.goto('/?run=run-a');
+  await expectRun(page, 'run-a');
+  await page.locator('.nav-item[data-view="workers"]').click();
+
+  const card = page.locator('[data-module="worker-capacity"]');
+  await card.scrollIntoViewIfNeeded();
+  const hitbox = card.locator('.line-cursor-hitbox');
+  await expect(hitbox).toBeVisible();
+  const box = await hitbox.boundingBox();
+  await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.45);
+
+  const tooltip = page.locator('#vine-tooltip');
+  await expect(tooltip).toHaveClass(/line-cursor-tooltip/);
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip.locator('.line-cursor-x')).toContainText('Time');
+  await expect(tooltip.locator('.line-cursor-row')).toHaveCount(3);
+  await expect(card.locator('.line-cursor-marker')).toHaveCount(3);
+  await expect(card.locator('.line-cursor-layer')).toBeVisible();
+  await expect(card.locator('.line-cursor-guide')).toHaveAttribute('x1', /\d/);
+
+  await card.locator('input#worker-capacity-series-1').uncheck();
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.45);
+  await expect(tooltip.locator('.line-cursor-row')).toHaveCount(2);
+
+  await page.mouse.move(box.x - 10, box.y - 10);
+  await expect(tooltip).toBeHidden();
+});
+
 test('every visible chart section has a readable explanation', async ({ page }) => {
   await page.goto('/?run=run-a');
   await expectRun(page, 'run-a');

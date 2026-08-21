@@ -1,4 +1,4 @@
-import { BaseModule } from './base.js?v=5.3';
+import { BaseModule } from './base.js?v=5.4';
 import { getWorkerColor } from './utils.js?v=5.0';
 
 const COLORS = ['#d96f24', '#747474', '#a9a9a5', '#4e4e4e', '#e6a06d', '#94948f'];
@@ -129,6 +129,7 @@ export class GenericMetricModule extends BaseModule {
     plot() {
         if (!this.data?.series) return;
         const renderer = this.data.renderer || this.config.renderer;
+        const cursorSeries = [];
         this.data.series.forEach((series, index) => {
             const id = this._seriesElementId(index);
             const color = getWorkerColor(series.id || series.name, index) || COLORS[index % COLORS.length];
@@ -145,8 +146,9 @@ export class GenericMetricModule extends BaseModule {
                     stroke: color,
                     strokeWidth: index === 0 ? 2.1 : 1.6,
                     curveType: this.data.curve === 'step' ? d3.curveStepAfter : d3.curveLinear,
-                    tooltipInnerHTML: series.name,
+                    disableHover: true,
                 });
+                cursorSeries.push({ id, name: series.name, color, points: series.points });
                 if (renderer === 'line_points') {
                     this.plotPoints(series.points, {
                         radius: 2,
@@ -161,5 +163,15 @@ export class GenericMetricModule extends BaseModule {
                 this.svg.selectAll(`.${id}-point`).style('display', 'none');
             }
         });
+        if (renderer !== 'scatter' && cursorSeries.length) {
+            this.installLineCursor(cursorSeries, {
+                interpolation: this.data.curve === 'step' ? 'step' : 'linear',
+                xFormatter: eval(this.data.x_tick_formatter),
+                yFormatter: eval(this.data.y_tick_formatter),
+                xLabel: this.data.axes?.x?.label || this.data.point_fields?.[0] || 'X',
+                xUnit: this.data.axes?.x?.unit,
+                isVisible: (_series, index) => this.seriesVisibility.get(index) !== false,
+            });
+        }
     }
 }
