@@ -52,7 +52,11 @@ class DashboardAPITest(unittest.TestCase):
         self._write(csv_dir / "worker_lifetime.csv", ["LifeTime (s)"], [[10], [20]])
         self._write(csv_dir / "file_transferred_size.csv", ["time", "cumulative_size_mb"], [[0, 0], [1, 100 * scale]])
         self._write(csv_dir / "file_created_size.csv", ["time", "cumulative_size_mb"], [[0, 0], [1, 50 * scale]])
-        self._write(csv_dir / "worker_storage_consumption.csv", ["time", "workflow_completion_percentage", "w1", "w2"], [[0, 0, 1, 2], [1, 100, 10 * scale, 20 * scale]])
+        self._write(
+            csv_dir / "worker_storage_consumption.csv",
+            ["time", "workflow_completion_percentage", "worker-a:9001:1", "worker-b:9002:1"],
+            [[0, 0, 1, 2], [1, 100, 10 * scale, 20 * scale]],
+        )
         self._write(csv_dir / "time_domain.csv", ["MIN_TIME", "MAX_TIME"], [[0, duration]])
         task_header = [
             "record_type", "task_id", "task_try_id", "worker_entry", "cores_requested",
@@ -100,6 +104,7 @@ class DashboardAPITest(unittest.TestCase):
         self.assertEqual(health.json["data"]["status"], "ok")
         self.assertEqual(health.json["data"]["run_count"], 2)
         self.assertIn("source-backed-metrics-v1", health.json["data"]["capabilities"])
+        self.assertIn("metric-registry-v1", health.json["data"]["capabilities"])
         self.assertEqual(health.json["data"]["runtime"]["request_threads"], 8)
 
         self.client.get("/api/v1/runs/run-a")
@@ -110,6 +115,23 @@ class DashboardAPITest(unittest.TestCase):
         self.assertEqual(len(by_run["run-a"]["current_revision"]), 64)
         self.assertGreaterEqual(by_run["run-a"]["snapshot_count"], 1)
         self.assertNotIn("path", by_run["run-a"])
+
+    def test_catalog_and_generic_metric_query_share_one_contract(self):
+        catalog = self.client.get("/api/v1/catalog")
+        self.assertEqual(catalog.status_code, 200)
+        by_id = {item["id"]: item for item in catalog.json["data"]["metrics"]}
+        self.assertEqual(by_id["worker-storage-consumption"]["title"], "Worker Cache Occupancy")
+        revision = self.client.get("/api/v1/runs/run-a").json["revision"]
+        response = self.client.get(
+            f"/api/v1/runs/run-a/revisions/{revision}/metrics/worker-storage-consumption",
+            query_string={"view": "total", "max_points": 100},
+        )
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        data = response.json["data"]
+        self.assertEqual(data["metric_id"], "worker-storage-consumption")
+        self.assertEqual(data["axes"]["y"]["unit"], "bytes")
+        self.assertEqual(max(point[1] for point in data["series"][0]["points"]), 30 * 2**20)
+        self.assertEqual(data["contract"]["status"], "PARTIAL")
 
     def test_visual_tokens_keep_text_legible_and_hover_orange(self):
         css_response = self.client.get("/static/css/app.css")

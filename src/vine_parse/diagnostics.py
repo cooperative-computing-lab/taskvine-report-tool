@@ -410,7 +410,11 @@ def write_parse_manifest(runtime_template: str, diagnostics: Dict) -> Path:
     csv_dir = run / "csv-files"
     outputs = []
     if csv_dir.is_dir():
-        for path in sorted(csv_dir.glob("*.csv")):
+        for path in sorted(
+            candidate
+            for pattern in ("*.csv", "*.parquet")
+            for candidate in csv_dir.glob(pattern)
+        ):
             outputs.append(
                 {
                     "path": path.name,

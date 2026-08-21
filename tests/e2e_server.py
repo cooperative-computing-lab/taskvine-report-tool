@@ -66,7 +66,24 @@ def make_run(root: Path, run_id: str, scale: int):
     ])
     write_csv(csv_dir / "worker_concurrency.csv", ["time", "Active Workers (count)"], [[0, 1], [5, 4 * scale], [30, 0]])
     write_csv(csv_dir / "worker_lifetime.csv", ["ID", "Worker IP Port", "LifeTime (s)"], [[1, "worker-a", 25], [2, "worker-b", 30]])
-    write_csv(csv_dir / "worker_storage_consumption.csv", ["time", "workflow_completion_percentage", "worker-a", "worker-b"], [[0, 0, 1, 2], [30, 100, 10 * scale, 20 * scale]])
+    write_csv(
+        csv_dir / "worker_storage_consumption.csv",
+        ["time", "workflow_completion_percentage", "worker-a:9001:1", "worker-b:9002:1"],
+        [[0, 0, 1, 2], [30, 100, 10 * scale, 20 * scale]],
+    )
+    worker_series_header = ["time", "workflow_completion_percentage", "worker-a:9001:1", "worker-b:9002:1"]
+    write_csv(
+        csv_dir / "worker_executing_tasks.csv", worker_series_header,
+        [[0, 0, 0, 0], [10, 33, 1, 2], [30, 100, 0, 0]],
+    )
+    write_csv(
+        csv_dir / "worker_incoming_transfers.csv", worker_series_header,
+        [[0, 0, 0, 0], [10, 33, 2, 1], [30, 100, 0, 0]],
+    )
+    write_csv(
+        csv_dir / "worker_outgoing_transfers.csv", worker_series_header,
+        [[0, 0, 0, 0], [10, 33, 1, 1], [30, 100, 0, 0]],
+    )
     write_csv(csv_dir / "file_transferred_size.csv", ["time", "cumulative_size_mb"], [[0, 0], [30, 100 * scale]])
     write_csv(csv_dir / "file_created_size.csv", ["time", "cumulative_size_mb"], [[0, 0], [30, 50 * scale]])
     write_csv(csv_dir / "file_sizes.csv", ["file_idx", "file_name", "file_size_kb"], [[1, "input-a", 10 * scale], [2, "output-b", 30 * scale], [3, "output-c", 60 * scale]])

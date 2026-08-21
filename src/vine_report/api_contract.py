@@ -2,7 +2,7 @@
 
 API_SCHEMA = "report-api/v1"
 API_VERSION = "1"
-API_CAPABILITIES = ("source-backed-metrics-v1",)
+API_CAPABILITIES = ("source-backed-metrics-v1", "metric-registry-v1")
 
 # Additive response fields are allowed within v1. Removing or renaming these
 # envelope fields or changing endpoint identity semantics requires API v2.

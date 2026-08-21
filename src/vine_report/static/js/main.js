@@ -1,4 +1,4 @@
-import { moduleClasses, enabledModuleConfigs } from './modules/configs.js?v=5.3';
+import { moduleClasses, enabledModuleConfigs, installMetricCatalog } from './modules/configs.js?v=5.4';
 
 const REQUIRED_SERVER_CAPABILITY = 'source-backed-metrics-v1';
 
@@ -214,7 +214,12 @@ function setupModules() {
         const card = document.createElement('article');
         card.className = 'module-card';
         card.dataset.module = config.id;
-        const module = new moduleClasses[config.id](config.id, config.title, config.api_url);
+        const ModuleClass = moduleClasses[config.id];
+        if (!ModuleClass) {
+            console.error(`No renderer registered for metric ${config.id}`);
+            return;
+        }
+        const module = new ModuleClass(config.id, config.title, config.api_url, config);
         moduleObjects[config.id] = module;
         card.appendChild(module.renderSkeleton());
         const header = card.querySelector('.section-header');
@@ -648,6 +653,12 @@ async function initialize() {
             console.error(`TaskVine backend is missing capability ${REQUIRED_SERVER_CAPABILITY}.`);
             return;
         }
+        if (!health.capabilities?.includes('metric-registry-v1')) {
+            showRestartRequired('This page requires the metric registry API from the running backend.');
+            return;
+        }
+        const catalog = await getJSON('/api/v1/catalog');
+        installMetricCatalog(catalog.metrics || []);
     } catch (error) {
         showBanner(`Dashboard initialization failed: ${error.message}`);
         return;

@@ -12,6 +12,8 @@ from src.vine_report.request_context import bind_snapshot
 from src.vine_report.run_store import RunStoreError
 from src.vine_report.api_contract import API_CAPABILITIES, API_SCHEMA, API_VERSION
 from src.vine_report.metric_service import metric_payload
+from src.vine_report.chart_service import ChartQueryError, chart_payload, normalize_query
+from src.vine_report.metric_registry import metric_catalog, metric_spec, standard_metric_ids
 from src.vine_parse.diagnostics import PARSER_CONTRACT_VERSION
 from src import __version__
 from .dashboard import (
@@ -69,6 +71,11 @@ def identity_headers(response):
 @api_v1_bp.get("/runs")
 def runs():
     return jsonify(_envelope({"runs": current_app.config["RUN_CATALOG"].list_runs()}))
+
+
+@api_v1_bp.get("/catalog")
+def catalog():
+    return jsonify(_envelope({"metrics": metric_catalog()}))
 
 
 @api_v1_bp.get("/health")
@@ -170,7 +177,17 @@ def tasks(run_id, revision):
 @api_v1_bp.get("/runs/<run_id>/revisions/<revision>/metrics/<metric_id>")
 def metric(run_id, revision, metric_id):
     snapshot = _pinned(run_id, revision)
-    data = metric_payload(snapshot, metric_id)
+    spec = metric_spec(metric_id)
+    if spec is not None and spec.mode != "source":
+        try:
+            data = chart_payload(
+                snapshot, metric_id,
+                normalize_query(request.args, current_app.config["DOWNSAMPLE_POINTS"]),
+            )
+        except ChartQueryError as error:
+            raise RunStoreError("invalid_parameter", str(error), 400) from error
+    else:
+        data = metric_payload(snapshot, metric_id)
     if data is None:
         raise RunStoreError("metric_not_found", f"metric '{metric_id}' was not found", 404)
     return jsonify(_envelope(data, snapshot))
@@ -194,7 +211,7 @@ def chart(run_id, revision, chart_id):
 def export(run_id, revision, chart_id):
     snapshot = _pinned(run_id, revision)
     allowed = current_app.config["CHART_ENDPOINTS"]
-    if chart_id not in allowed:
+    if chart_id not in allowed and chart_id not in standard_metric_ids():
         raise RunStoreError("chart_not_found", f"chart '{chart_id}' was not found", 404)
     filename = chart_id.replace("-", "_") + ".csv"
     path = Path(snapshot.csv_files_dir) / filename

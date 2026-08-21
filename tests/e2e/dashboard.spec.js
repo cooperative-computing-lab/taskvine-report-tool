@@ -69,7 +69,7 @@ test('chart geometry, orange hover, and vertical resizing remain coherent', asyn
   await page.locator('.nav-item[data-view="files"]').click();
 
   const card = page.locator('[data-module="file-sizes"]');
-  const point = card.locator('circle.file-size-point').first();
+  const point = card.locator('circle.file-sizes-series-0-point').first();
   await expect(point).toBeVisible();
   const widths = await card.evaluate(element => {
     const top = element.querySelector('.section-row.top').getBoundingClientRect();

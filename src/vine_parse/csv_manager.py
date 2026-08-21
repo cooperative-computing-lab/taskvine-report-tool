@@ -115,6 +115,8 @@ class CSVManager:
         self.csv_file_worker_outgoing_transfers = os.path.join(self.csv_files_dir, 'worker_outgoing_transfers.csv')
         self.csv_file_worker_storage_consumption = os.path.join(self.csv_files_dir, 'worker_storage_consumption.csv')
         self.csv_file_worker_storage_consumption_percentage = os.path.join(self.csv_files_dir, 'worker_storage_consumption_percentage.csv')
+        self.csv_file_cache_residency = os.path.join(self.csv_files_dir, 'cache_residency.csv')
+        self.parquet_file_cache_residency = os.path.join(self.csv_files_dir, 'cache_residency.parquet')
         self.csv_file_task_subgraphs = os.path.join(self.csv_files_dir, 'task_subgraphs.csv')
         self.csv_file_task_execution_details = os.path.join(self.csv_files_dir, 'task_execution_details.csv')
         self.csv_file_file_replica_activation_intervals = os.path.join(self.csv_files_dir, 'file_replica_activation_intervals.csv')
@@ -193,6 +195,7 @@ class CSVManager:
         max_size = 0
 
         all_worker_storage = defaultdict(list)
+        cache_residency_rows = []
         rows_worker_transfer_events = {
             'incoming': defaultdict(list),
             'outgoing': defaultdict(list)
@@ -203,7 +206,7 @@ class CSVManager:
             if not flattened_transfers:
                 continue
 
-            for transfer in flattened_transfers:
+            for transfer_index, transfer in enumerate(flattened_transfers, start=1):
                 # file transferred size
                 if transfer.time_stage_in:
                     t = floor_decimal(float(transfer.time_stage_in - base_time), 2)
@@ -216,8 +219,31 @@ class CSVManager:
                 if transfer.time_stage_in:
                     time_in = floor_decimal(transfer.time_stage_in - base_time, 2)
                     time_out = floor_decimal(transfer.time_stage_out - base_time, 2)
-                    size = max(0, file.size_mb)
+                    # Residency size is immutable per transfer.  The FileInfo
+                    # value remains only as a compatibility fallback for old
+                    # checkpoints created before this field existed.
+                    transfer_size = getattr(transfer, 'size_mb', None)
+                    size = max(0, transfer_size if transfer_size is not None else file.size_mb)
                     all_worker_storage[transfer.dest_worker_entry].extend([(time_in, size), (time_out, -size)])
+                    worker_id = ':'.join(map(str, transfer.dest_worker_entry))
+                    end_reason = getattr(transfer, 'end_reason', None) or 'unknown'
+                    transfer_id = getattr(transfer, 'transfer_id', None)
+                    cache_residency_rows.append({
+                        'residency_id': f"{file.file_idx}:{transfer_index}",
+                        'file_id': file.file_idx,
+                        'file_name': file.filename,
+                        'worker_id': worker_id,
+                        'transfer_id': transfer_id,
+                        'size_bytes': int(round(size * 2**20)),
+                        'start_time': time_in,
+                        'end_time': time_out,
+                        'start_epoch': float(transfer.time_stage_in),
+                        'end_epoch': float(transfer.time_stage_out),
+                        'start_evidence': 'cache_update',
+                        'end_reason': end_reason,
+                        'end_observed': end_reason not in {'synthetic_manager_end', 'unknown'},
+                        'right_censored': end_reason == 'synthetic_manager_end',
+                    })
 
                 # worker incoming / outgoing transfers
                 for role in ['incoming', 'outgoing']:
@@ -507,6 +533,29 @@ class CSVManager:
 
         write_df_to_csv(_process_rows_worker_storage_consumption(all_worker_storage, workers=self.dp.workers, percentage=False), self.csv_file_worker_storage_consumption)
         write_df_to_csv(_process_rows_worker_storage_consumption(all_worker_storage, workers=self.dp.workers, percentage=True), self.csv_file_worker_storage_consumption_percentage)
+
+        residency_schema = {
+            'residency_id': pl.String,
+            'file_id': pl.Int64,
+            'file_name': pl.String,
+            'worker_id': pl.String,
+            'transfer_id': pl.String,
+            'size_bytes': pl.Int64,
+            'start_time': pl.Float64,
+            'end_time': pl.Float64,
+            'start_epoch': pl.Float64,
+            'end_epoch': pl.Float64,
+            'start_evidence': pl.String,
+            'end_reason': pl.String,
+            'end_observed': pl.Boolean,
+            'right_censored': pl.Boolean,
+        }
+        if cache_residency_rows:
+            residency_df = pl.DataFrame(cache_residency_rows).cast(residency_schema, strict=False)
+        else:
+            residency_df = pl.DataFrame(schema=residency_schema)
+        write_df_to_csv(residency_df, self.csv_file_cache_residency)
+        residency_df.write_parquet(self.parquet_file_cache_residency, compression='zstd')
 
         def _generate_file_replica_activation_intervals():
             base_time = self.MIN_TIME

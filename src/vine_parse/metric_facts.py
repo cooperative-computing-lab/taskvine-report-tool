@@ -197,6 +197,7 @@ class MetricFactBuilder:
         else:
             start_epoch = self._build_transaction_metrics(transaction_records)
         self._build_capacity(performance_rows, start_epoch)
+        self._build_cache_occupancy(performance_rows)
         _write_csv(
             self.csv_dir / METRIC_CONTRACT_FILENAME,
             ["metric_id", "semantics_version", "status", "source", "coverage", "unit", "inclusion", "exclusions", "caveat"],
@@ -208,6 +209,149 @@ class MetricFactBuilder:
             "partial_reasons": sorted(set(self.partial_reasons)),
             "contracts": {row["metric_id"]: row for row in self.contracts},
         }
+
+    def _build_cache_occupancy(self, performance_rows):
+        """Project cache residency deltas and reconcile them with inuse_cache.
+
+        Debug cache lifecycle messages remain the per-worker source of truth.
+        The manager performance stream is an independent aggregate check; it
+        cannot replace debug because it has no worker or file dimensions.
+        """
+        fields = [
+            "time", "worker_id", "delta_bytes", "file_id", "file_name",
+            "residency_id", "reason", "evidence",
+        ]
+        quality_fields = [
+            "eligible_residencies", "projected_residencies", "right_censored",
+            "coverage", "performance_samples", "median_relative_error",
+            "peak_relative_error",
+        ]
+        if self.dp is None or not hasattr(self.dp, "files"):
+            _write_csv(self.csv_dir / "metric_worker_cache_occupancy.csv", fields, [])
+            _write_csv(self.csv_dir / "metric_worker_cache_occupancy_quality.csv", quality_fields, [])
+            return
+
+        try:
+            base_time, _ = self.dp.manager.get_min_max_time()
+            base_time = float(base_time)
+        except (AttributeError, TypeError, ValueError):
+            base_time = None
+        events = []
+        eligible = projected = censored = 0
+        aggregate_deltas = defaultdict(float)
+        for file in self.dp.files.values():
+            for index, transfer in enumerate(file.get_flattened_transfers(), start=1):
+                if transfer.time_stage_in is None:
+                    continue
+                eligible += 1
+                size_mb = getattr(transfer, "size_mb", None)
+                if size_mb is None:
+                    size_mb = getattr(file, "size_mb", None)
+                if (
+                    base_time is None or transfer.time_stage_out is None
+                    or size_mb is None or float(size_mb) < 0
+                ):
+                    continue
+                projected += 1
+                reason = getattr(transfer, "end_reason", None) or "unknown"
+                is_censored = reason == "synthetic_manager_end"
+                censored += int(is_censored)
+                size_bytes = int(round(float(size_mb) * 2**20))
+                worker_id = ":".join(map(str, transfer.dest_worker_entry))
+                residency_id = f"{file.file_idx}:{index}"
+                start = max(0.0, float(transfer.time_stage_in) - base_time)
+                end = max(start, float(transfer.time_stage_out) - base_time)
+                events.extend((
+                    {
+                        "time": start, "worker_id": worker_id,
+                        "delta_bytes": size_bytes, "file_id": file.file_idx,
+                        "file_name": file.filename, "residency_id": residency_id,
+                        "reason": "cache_update", "evidence": "observed",
+                    },
+                    {
+                        "time": end, "worker_id": worker_id,
+                        "delta_bytes": -size_bytes, "file_id": file.file_idx,
+                        "file_name": file.filename, "residency_id": residency_id,
+                        "reason": reason,
+                        "evidence": "inferred" if is_censored else "observed",
+                    },
+                ))
+                aggregate_deltas[start] += float(size_mb)
+                aggregate_deltas[end] -= float(size_mb)
+        events.sort(key=lambda row: (row["time"], row["worker_id"], row["residency_id"], -row["delta_bytes"]))
+        _write_csv(self.csv_dir / "metric_worker_cache_occupancy.csv", fields, events)
+
+        coverage = projected / eligible if eligible else 0.0
+        performance_samples = 0
+        median_relative_error = None
+        peak_relative_error = None
+        reconciliation_ok = False
+        comparable = [
+            row for row in (performance_rows or [])
+            if "timestamp" in row and "inuse_cache" in row and base_time is not None
+        ]
+        if comparable and aggregate_deltas:
+            event_times = sorted(aggregate_deltas)
+            totals = []
+            current = 0.0
+            for timestamp in event_times:
+                current = max(0.0, current + aggregate_deltas[timestamp])
+                totals.append(current)
+            observed = []
+            expected = []
+            cursor = -1
+            for row in comparable:
+                relative = row["timestamp"] / 1e6 - base_time
+                if relative < event_times[0] or relative > event_times[-1]:
+                    continue
+                while cursor + 1 < len(event_times) and event_times[cursor + 1] <= relative:
+                    cursor += 1
+                if cursor >= 0:
+                    expected.append(totals[cursor])
+                    observed.append(float(row["inuse_cache"]))
+            performance_samples = len(observed)
+            if observed:
+                relative_errors = sorted(
+                    abs(left - right) / max(abs(right), 1.0)
+                    for left, right in zip(expected, observed)
+                )
+                middle = len(relative_errors) // 2
+                median_relative_error = (
+                    relative_errors[middle] if len(relative_errors) % 2
+                    else (relative_errors[middle - 1] + relative_errors[middle]) / 2
+                )
+                peak_relative_error = abs(max(expected) - max(observed)) / max(max(observed), 1.0)
+                reconciliation_ok = median_relative_error <= 0.01 and peak_relative_error <= 0.02
+
+        quality = {
+            "eligible_residencies": eligible,
+            "projected_residencies": projected,
+            "right_censored": censored,
+            "coverage": coverage,
+            "performance_samples": performance_samples,
+            "median_relative_error": median_relative_error,
+            "peak_relative_error": peak_relative_error,
+        }
+        _write_csv(
+            self.csv_dir / "metric_worker_cache_occupancy_quality.csv",
+            quality_fields, [quality],
+        )
+        complete = bool(getattr(self.dp, "manager_end_observed", False))
+        status = "PASS" if coverage >= 0.995 and complete and reconciliation_ok else "PARTIAL"
+        caveats = ["TaskVine cache payload only; not physical disk utilization"]
+        if censored:
+            caveats.append(f"{censored} right-censored residencies")
+        if not comparable:
+            caveats.append("performance inuse_cache unavailable")
+        elif not reconciliation_ok:
+            caveats.append("performance inuse_cache reconciliation outside tolerance")
+            self.partial_reasons.append("metric_cache_occupancy_mismatch")
+        self._contract(
+            "worker-cache-occupancy", status,
+            "debug-cache-lifecycle+performance-reconciliation", coverage,
+            "bytes", "cache-update to cache-invalid/unlink residencies",
+            "sandbox,temp,logs,filesystem-overhead", "; ".join(caveats),
+        )
 
     def _write_empty_transaction_outputs(self):
         _write_csv(self.csv_dir / "metric_task_throughput.csv", ["time", "bucket_seconds", "successful", "failed", "success_rate_per_second", "failure_rate_per_second"], [])

@@ -359,7 +359,14 @@ class SnapshotStore:
                 files.append((f"csv-files/{name}", path))
             files.append(("csv-files/parse-manifest.json", manifest_path))
         else:
-            for path in sorted(csv_dir.glob("*.csv") if csv_dir.is_dir() else []):
+            fallback_outputs = []
+            if csv_dir.is_dir():
+                fallback_outputs = [
+                    candidate
+                    for pattern in ("*.csv", "*.parquet")
+                    for candidate in csv_dir.glob(pattern)
+                ]
+            for path in sorted(fallback_outputs):
                 if path.is_file():
                     files.append((f"csv-files/{path.name}", path))
         diagnostics = run_path / "vine-logs" / "parse-diagnostics.json"

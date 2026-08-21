@@ -9,40 +9,25 @@ from functools import lru_cache
 from pathlib import Path
 
 from src.vine_parse.metric_facts import METRIC_SEMANTICS_VERSION
+from src.vine_report.metric_registry import metric_spec
 
 
-METRICS = {
-    "task-throughput": {
-        "file": "metric_task_throughput.csv", "x": "time",
-        "series": (("Successful", "success_rate_per_second"), ("Failed", "failure_rate_per_second")),
-        "x_label": "Runtime", "y_label": "Attempts / second", "kind": "line",
-    },
-    "task-latency": {
-        "file": "metric_task_latency.csv", "kind": "cdf",
-        "series": (("Queue", "queue_seconds"), ("Execution", "execution_seconds"), ("Retrieval", "retrieval_seconds")),
-        "x_label": "Duration", "y_label": "Percentile",
-    },
-    "failure-timeline": {
-        "file": "metric_failure_timeline.csv", "kind": "grouped",
-        "x": "time", "group": "status", "value": "count",
-        "x_label": "Runtime", "y_label": "Failed attempts",
-    },
-    "worker-capacity": {
-        "file": "metric_worker_capacity.csv", "x": "time", "kind": "line",
-        "series": (("Total cores", "total_cores"), ("Committed cores", "committed_cores"), ("Running tasks", "tasks_running")),
-        "x_label": "Runtime", "y_label": "Count",
-    },
-    "worker-churn": {
-        "file": "metric_worker_churn.csv", "x": "time", "kind": "line",
-        "series": (("Active workers", "active"),),
-        "x_label": "Runtime", "y_label": "Workers",
-    },
-    "transfer-throughput": {
-        "file": "metric_transfer_throughput.csv", "x": "time", "kind": "line",
-        "series": (("Input", "input_bytes_per_second"), ("Output", "output_bytes_per_second")),
-        "x_label": "Runtime", "y_label": "Payload bytes / second",
-    },
-}
+def _definition(metric_id):
+    spec = metric_spec(metric_id)
+    if spec is None or spec.mode != "source":
+        return None
+    options = spec.options
+    definition = {
+        "file": spec.artifact,
+        "x": spec.x_field,
+        "kind": spec.renderer,
+        "series": spec.series_columns,
+        "x_label": options.get("x_label", spec.x_unit),
+        "y_label": options.get("y_label", spec.y_unit),
+    }
+    if spec.renderer == "grouped":
+        definition.update({"group": options["group"], "value": options["value"]})
+    return definition
 
 
 def _number(value):
@@ -85,7 +70,7 @@ def _cdf(values):
 
 @lru_cache(maxsize=128)
 def _metric_payload(csv_dir_string: str, metric_id: str):
-    definition = METRICS.get(metric_id)
+    definition = _definition(metric_id)
     if definition is None:
         return None
     csv_dir = Path(csv_dir_string)

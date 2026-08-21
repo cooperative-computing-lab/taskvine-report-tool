@@ -113,6 +113,7 @@ class DataParser:
         self.debug_current_parts = None
         self.debug_current_timestamp = None
         self.time_axis_adjustments = 0
+        self.manager_end_observed = None
         self._init_debug_handlers()
         self.sending_task_to_worker_entry = None
 
@@ -372,7 +373,9 @@ class DataParser:
         worker = self.workers[dest_worker_entry]
 
         file = self.ensure_file_info_entry(file_name, file_size_mb, timestamp)
-        new_transfer = UnindexedTransferEvent(file_name, dest_worker_entry, timestamp)
+        new_transfer = UnindexedTransferEvent(
+            file_name, dest_worker_entry, timestamp, size_mb=file_size_mb
+        )
         file.unindexed_transfers[dest_worker_entry].append(new_transfer)
 
         worker.add_active_file_or_transfer(file_name)
@@ -414,13 +417,19 @@ class DataParser:
         # the source can be a url or an ip:port
         source = parts[puturl_id + 1]
         if source.startswith('https://') or source.startswith('file://'):
-            file.indexed_transfers[transfer_id] = IndexedTransferEvent(file_name, dest_worker_entry, timestamp, transfer_id, source)
+            file.indexed_transfers[transfer_id] = IndexedTransferEvent(
+                file_name, dest_worker_entry, timestamp, transfer_id, source,
+                size_mb=size_in_mb,
+            )
         elif source.startswith('workerip://'):
             source_ip, source_transfer_port = WorkerInfo.extract_ip_port_from_string(source)
             source_worker_port = self.map_ip_and_transfer_port_to_worker_port[(source_ip, source_transfer_port)]
             source_worker_entry = self.get_current_worker_entry_by_ip_port(source_ip, source_worker_port)
             assert source_worker_entry is not None
-            file.indexed_transfers[transfer_id] = IndexedTransferEvent(file_name, dest_worker_entry, timestamp, transfer_id, source_worker_entry)
+            file.indexed_transfers[transfer_id] = IndexedTransferEvent(
+                file_name, dest_worker_entry, timestamp, transfer_id,
+                source_worker_entry, size_mb=size_in_mb,
+            )
         else:
             raise ValueError(f"unrecognized source: {source}, line: {self.debug_current_line}")
         
@@ -721,7 +730,7 @@ class DataParser:
             return
         worker = self.workers[worker_entry]
         
-        file.cache_update(worker, timestamp, transfer_id)
+        file.cache_update(worker, timestamp, transfer_id, size_in_mb)
 
     def _handle_debug_line_cache_invalid(self):
         parts = self.debug_current_parts
@@ -1166,7 +1175,8 @@ class DataParser:
         # some post-processing in case the manager does not exit normally or has not finished yet
         # if the manager has not finished yet, we do something to set up the None values to make the plotting tool work
         # 1. if the manager's time_end is None, we set it to the latest timestamp
-        if self.manager.time_end is None:
+        self.manager_end_observed = self.manager.time_end is not None
+        if not self.manager_end_observed:
             print(f"Manager didn't exit normally, setting manager time_end to the latest timestamp")
             self.manager.set_time_end(self.manager.current_max_time)
 
@@ -1219,7 +1229,10 @@ class DataParser:
         # append file_idx
         for idx, file in enumerate(self.files.values(), start=1):
             file.file_idx = idx
-            file.unlink_all(self.manager.time_end)
+            file.unlink_all(
+                self.manager.time_end,
+                reason="manager_end" if self.manager_end_observed else "synthetic_manager_end",
+            )
 
     def load_pkl_files(self):
         # manually load every thing like checkpoint_pkl_files, rathan than using self.pkl_files in a loop

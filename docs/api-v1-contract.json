@@ -13,6 +13,7 @@
   "endpoints": [
     {"method": "GET", "path": "/api/v1/health", "identity": "service"},
     {"method": "GET", "path": "/api/v1/diagnostics", "identity": "service"},
+    {"method": "GET", "path": "/api/v1/catalog", "identity": "service"},
     {"method": "GET", "path": "/api/v1/runs", "identity": "service"},
     {"method": "GET", "path": "/api/v1/compare?runs=<run_id>,<run_id>", "identity": "multi-run"},
     {"method": "GET", "path": "/api/v1/runs/<run_id>", "identity": "pinned"},

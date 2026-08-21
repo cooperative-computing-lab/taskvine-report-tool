@@ -10,6 +10,7 @@ from pathlib import Path
 
 from flask import Blueprint, current_app, g, jsonify, request
 import polars as pl
+from src.vine_report.chart_service import cache_occupancy_peak_bytes
 
 
 dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/api/dashboard")
@@ -119,21 +120,6 @@ def _series_stats(path: Path, column: str) -> dict:
 def _max_series_value(path: Path, column: str) -> float | None:
     values = _numeric_values(path, column)
     return max(values) if values else None
-
-
-def _peak_wide_total(path: Path, ignored_columns: int = 1) -> float | None:
-    if not path.is_file():
-        return None
-    # These matrices can contain thousands of sparse worker columns. Polars
-    # keeps the reduction fast; full schema inference is required because a
-    # worker column may remain empty for thousands of initial rows.
-    frame = pl.read_csv(path, infer_schema_length=None, ignore_errors=True)
-    if frame.width <= ignored_columns or frame.height == 0:
-        return None
-    value = frame.select(
-        pl.sum_horizontal(pl.exclude(frame.columns[:ignored_columns])).max()
-    ).item()
-    return float(value) if value is not None else None
 
 
 def _summary_stamp(csv_dir: Path) -> tuple:
@@ -422,9 +408,9 @@ def _cached_summary(csv_dir_string: str, stamp: tuple, run_id: str) -> dict:
         "created_mb": _max_series_value(
             csv_dir / "file_created_size.csv", "cumulative_size_mb"
         ),
-        "peak_storage_mb": _peak_wide_total(
-            csv_dir / "worker_storage_consumption.csv", ignored_columns=2
-        ),
+        "peak_storage_mb": (
+            lambda peak: peak / 2**20 if peak is not None else None
+        )(cache_occupancy_peak_bytes(csv_dir)),
     }
     summary["metric_contracts"] = validated["metric_contracts"] if validated is not None else {}
     summary["findings"] = _build_findings(summary)

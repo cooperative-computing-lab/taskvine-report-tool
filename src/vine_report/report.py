@@ -67,6 +67,7 @@ from src.vine_report.routes.api_v1 import api_v1_bp
 from src.vine_report.routes.logger import Logger
 from src.vine_report.run_store import CatalogLease, RunCatalog, RunStoreError, SnapshotStore
 from src.vine_report.runtime_metrics import RuntimeMetrics
+from src.vine_report.metric_registry import standard_metric_ids
 from src.utils import check_pip_updates
 from src import __version__
 
@@ -214,6 +215,8 @@ def create_app(
         and "<" not in rule.rule
         and "/" not in rule.rule.removeprefix("/api/")
     }
+    for metric_id in standard_metric_ids():
+        app.config["CHART_ENDPOINTS"].setdefault(metric_id, None)
     app.register_blueprint(api_v1_bp)
 
     @app.errorhandler(RunStoreError)
