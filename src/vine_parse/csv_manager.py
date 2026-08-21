@@ -131,7 +131,7 @@ class CSVManager:
             self.MIN_TIME, self.MAX_TIME = self.dp.manager.get_min_max_time()
             if self.MAX_TIME and self.MIN_TIME:
                 self.time_domain = [0, self.MAX_TIME - self.MIN_TIME]
-                df = pd.DataFrame({
+                df = pl.DataFrame({
                     'MIN_TIME': [self.MIN_TIME],
                     'MAX_TIME': [self.MAX_TIME]
                 })
@@ -576,7 +576,11 @@ class CSVManager:
                     activation = floor_decimal(float(transfer.time_stage_out - transfer.time_stage_in), 2)
                     rows.append((file.filename, worker_str, t_in, t_out, activation))
             if not rows:
-                df = pd.DataFrame(columns=['filename', 'replica_idx', 'source_worker', 'time_stage_in', 'time_stage_out', 'time_activation'])
+                df = pl.DataFrame(schema={
+                    'filename': pl.String, 'replica_idx': pl.Int64, 'source_worker': pl.String,
+                    'time_stage_in': pl.Float64, 'time_stage_out': pl.Float64,
+                    'time_activation': pl.Float64,
+                })
                 write_df_to_csv(df, self.csv_file_file_replica_activation_intervals, index=False)
                 return
             rows.sort(key=lambda r: (r[0], r[2]))
@@ -590,7 +594,10 @@ class CSVManager:
                     'time_stage_out': t_out,
                     'time_activation': activation
                 })                          
-            df = pd.DataFrame(indexed_rows, columns=['filename', 'replica_idx', 'source_worker', 'time_stage_in', 'time_stage_out', 'time_activation'])
+            df = pl.DataFrame(indexed_rows).select([
+                'filename', 'replica_idx', 'source_worker', 'time_stage_in',
+                'time_stage_out', 'time_activation',
+            ])
             write_df_to_csv(df, self.csv_file_file_replica_activation_intervals, index=False)
 
         _generate_file_replica_activation_intervals()
@@ -787,33 +794,30 @@ class CSVManager:
 
         x_max = floor_decimal(self.MAX_TIME - base_time, 2)
 
-        def _ensure_trailing_row(pdf):
-            if pdf is None or len(pdf) == 0:
-                return pdf
-            if float(pdf['time'].iloc[-1]) < float(x_max) - 1e-6:
-                last_row = pdf.iloc[-1].copy()
-                last_row['time'] = x_max
-                pdf = pd.concat([pdf, pd.DataFrame([last_row])], ignore_index=True)
-            return pdf
+        def _ensure_trailing_row(df):
+            if df is None or df.height == 0:
+                return df
+            if float(df['time'][-1]) < float(x_max) - 1e-6:
+                trailing = df.tail(1).with_columns(pl.lit(x_max).alias('time'))
+                df = pl.concat([df, trailing], how='vertical_relaxed')
+            return df
 
         # normal
         task_phases = _collect_phases(sorted_tasks)
         time_df = _build_concurrency_df(task_phases)
         if time_df is not None and time_df.height > 0:
-            pdf = time_df.to_pandas()
-            pdf = downsample_df(pdf, y_index=1, downsample_point_count=self.downsample_point_count)
-            pdf = _ensure_trailing_row(pdf)
-            write_df_to_csv(pdf, self.csv_file_task_concurrency, index=False)
+            time_df = downsample_df(time_df, y_index=1, downsample_point_count=self.downsample_point_count)
+            time_df = _ensure_trailing_row(time_df)
+            write_df_to_csv(time_df, self.csv_file_task_concurrency, index=False)
 
         # recovery only
         recovery_tasks = [t for t in sorted_tasks if t.is_recovery_task]
         recovery_phases = _collect_phases(recovery_tasks)
         time_df = _build_concurrency_df(recovery_phases)
         if time_df is not None and time_df.height > 0:
-            pdf = time_df.to_pandas()
-            pdf = downsample_df(pdf, y_index=1, downsample_point_count=self.downsample_point_count)
-            pdf = _ensure_trailing_row(pdf)
-            write_df_to_csv(pdf, self.csv_file_task_concurrency_recovery_only, index=False)
+            time_df = downsample_df(time_df, y_index=1, downsample_point_count=self.downsample_point_count)
+            time_df = _ensure_trailing_row(time_df)
+            write_df_to_csv(time_df, self.csv_file_task_concurrency_recovery_only, index=False)
  
     def generate_task_execution_details_metrics(self):
         base_time = self.MIN_TIME
@@ -840,12 +844,12 @@ class CSVManager:
                 'core_id': core_id,
                 'cores_requested': getattr(task, 'cores_requested', None),
                 'is_recovery_task': task.is_recovery_task,
-                'input_files': file_list_formatter(task.input_files) if task.input_files else '',
-                'output_files': file_list_formatter(task.output_files) if task.output_files else '',
+                'input_files': (file_list_formatter(task.input_files) or None) if task.input_files else None,
+                'output_files': (file_list_formatter(task.output_files) or None) if task.output_files else None,
                 'num_input_files': len(task.input_files) if task.input_files else 0,
                 'num_output_files': len(task.output_files) if task.output_files else 0,
                 'task_status': task.task_status,
-                'category': getattr(task, 'category', ''),
+                'category': getattr(task, 'category', None) or None,
                 'when_ready': round(task.when_ready - base_time, 2) if task.when_ready else None,
                 'when_running': round(task.when_running - base_time, 2) if task.when_running else None,
             }
@@ -864,7 +868,7 @@ class CSVManager:
                     'when_retrieved': round(task.when_retrieved - base_time, 2) if task.when_retrieved else None,
                     'when_done': round(task.when_done - base_time, 2) if task.when_done else None,
                     'record_type': 'successful_tasks',
-                    'unsuccessful_checkbox_name': '',
+                    'unsuccessful_checkbox_name': None,
                     'when_failure_happens': None,
                 })
             else:  # Unsuccessful task
@@ -912,33 +916,39 @@ class CSVManager:
                 time_disconnected.extend([self.MAX_TIME] * (len(worker.time_connected) - len(time_disconnected)))
 
             worker_data = {
-                'task_id': pd.NA,
-                'task_try_id': pd.NA,
+                'task_id': None,
+                'task_try_id': None,
                 'worker_entry': f"{worker.ip}:{worker.port}:{worker.connect_id}",
                 'worker_id': worker.id,
-                'core_id': pd.NA,
-                'is_recovery_task': pd.NA,
-                'input_files': pd.NA,
-                'output_files': pd.NA,
-                'num_input_files': pd.NA,
-                'num_output_files': pd.NA,
-                'task_status': pd.NA,
-                'category': pd.NA,
-                'cores_requested': pd.NA,
-                'when_ready': pd.NA,
-                'when_running': pd.NA,
-                'time_worker_start': pd.NA,
-                'time_worker_end': pd.NA,
-                'execution_time': pd.NA,
-                'when_waiting_retrieval': pd.NA,
-                'when_retrieved': pd.NA,
-                'when_failure_happens': pd.NA,
-                'when_done': pd.NA,
+                'core_id': None,
+                'is_recovery_task': None,
+                'input_files': None,
+                'output_files': None,
+                'num_input_files': None,
+                'num_output_files': None,
+                'task_status': None,
+                'category': None,
+                'cores_requested': None,
+                'when_ready': None,
+                'when_running': None,
+                'time_worker_start': None,
+                'time_worker_end': None,
+                'execution_time': None,
+                'when_waiting_retrieval': None,
+                'when_retrieved': None,
+                'when_failure_happens': None,
+                'when_done': None,
                 'record_type': 'worker',
-                'unsuccessful_checkbox_name': pd.NA,
+                'unsuccessful_checkbox_name': None,
                 'hash': worker.hash,
-                'time_connected': [round(max(t - base_time, 0), 2) for t in worker.time_connected],
-                'time_disconnected': [round(max(t - base_time, 0), 2) for t in time_disconnected],
+                # CSV has no nested type. Keep the established literal-list contract
+                # explicit so readers can safely recover it with ast.literal_eval.
+                'time_connected': str([
+                    round(max(t - base_time, 0), 2) for t in worker.time_connected
+                ]),
+                'time_disconnected': str([
+                    round(max(t - base_time, 0), 2) for t in time_disconnected
+                ]),
                 'cores': getattr(worker, 'cores', None),
                 'memory_mb': getattr(worker, 'memory_mb', None),
                 'disk_mb': getattr(worker, 'disk_mb', None),
@@ -958,15 +968,9 @@ class CSVManager:
         ]
 
         if rows:
-            df = pd.DataFrame(rows)
-
-            # Reorder columns and fill missing ones with None
-            for col in columns:
-                if col not in df.columns: 
-                    df[col] = None
-            df = df[columns]
+            df = rows_to_frame(rows, schema=columns)
         else:
-            df = pd.DataFrame(columns=columns)
+            df = pl.DataFrame(schema={column: pl.String for column in columns})
 
         write_df_to_csv(df, self.csv_file_task_execution_details, index=False)
 
@@ -1032,15 +1036,17 @@ class CSVManager:
                 if not events:
                     continue
 
-                df = pd.DataFrame(events, columns=['time', 'delta'])
-                df = df.groupby('time', as_index=False)['delta'].sum()
-                df['cumulative'] = df['delta'].cumsum().clip(lower=0)
+                df = (
+                    pl.DataFrame(events, schema=['time', 'delta'], orient='row')
+                    .group_by('time').agg(pl.col('delta').sum()).sort('time')
+                    .with_columns(pl.col('delta').cum_sum().clip(0).alias('cumulative'))
+                )
                 
-                if df['cumulative'].isna().all():
+                if df['cumulative'].null_count() == df.height:
                     continue
 
-                downsampled_df = downsample_df(df[['time', 'cumulative']], y_col='cumulative', downsample_point_count=self.downsample_point_count)
-                timeline = downsampled_df.values
+                downsampled_df = downsample_df(df.select(['time', 'cumulative']), y_col='cumulative', downsample_point_count=self.downsample_point_count)
+                timeline = downsampled_df.iter_rows()
 
                 wid = f"{worker_entry[0]}:{worker_entry[1]}:{worker_entry[2]}"
                 col_map = {t: v for t, v in timeline}
@@ -1076,10 +1082,14 @@ class CSVManager:
             for t in sorted_times:
                 row = {'time': floor_decimal(t, 2)}
                 for c in sorted(column_data.keys()):
-                    row[c] = column_data[c].get(t, float('nan'))
+                    row[c] = column_data[c].get(t)
                 rows.append(row)
 
-            write_df_to_csv(pl.DataFrame(rows), csv_file, index=False)
+            write_df_to_csv(
+                rows_to_frame(rows),
+                csv_file,
+                index=False,
+            )
 
         # Write CSV files
         
@@ -1097,21 +1107,22 @@ class CSVManager:
         )
         
         if events or initial_active > 0:
-            df = pd.DataFrame(events, columns=["time", "delta"])
-            df = df.groupby("time", as_index=False)["delta"].sum().sort_values("time")
-            
-            df.loc[-1] = [0.0, 0]
-            df = df.sort_index().reset_index(drop=True)
-            
-            df["active"] = df["delta"].cumsum() + initial_active
+            df = pl.DataFrame(events, schema=["time", "delta"], orient="row")
+            if df.height:
+                df = df.group_by("time").agg(pl.col("delta").sum()).sort("time")
+            df = pl.concat([
+                pl.DataFrame({"time": [0.0], "delta": [0]}), df,
+            ], how="vertical_relaxed").sort("time")
+            df = df.with_columns((pl.col("delta").cum_sum() + initial_active).alias("active"))
             
             max_time = floor_decimal(self.MAX_TIME - base_time, 2)
-            if df.iloc[-1]["time"] < max_time:
-                last_active = df.iloc[-1]["active"]
-                new_row = pd.DataFrame({"time": [max_time], "delta": [0], "active": [last_active]})
-                df = pd.concat([df, new_row], ignore_index=True)
+            if df["time"][-1] < max_time:
+                last_active = df["active"][-1]
+                df = pl.concat([
+                    df, pl.DataFrame({"time": [max_time], "delta": [0], "active": [last_active]}),
+                ], how="vertical_relaxed")
 
-            export_df = df[['time', 'active']].rename(columns={'time': 'time', 'active': 'Active Workers (count)'})
+            export_df = df.select(['time', 'active']).rename({'active': 'Active Workers (count)'})
             export_df = downsample_df(export_df, y_col='Active Workers (count)', downsample_point_count=self.downsample_point_count)
             write_df_to_csv(export_df, self.csv_file_worker_concurrency, index=False)
         
@@ -1226,7 +1237,7 @@ class CSVManager:
             recovery_count = recovery_count_map.get(task_id, 0)
             
             input_files_with_timing = []
-            for file_name in getattr(task, 'input_files', []):
+            for file_name in sorted(getattr(task, 'input_files', [])):
                 # Only include files that have producers (are in dependency graph)
                 if file_name in self.dp.files and self.dp.files[file_name].producers:
                     file_obj = self.dp.files[file_name]
@@ -1237,7 +1248,7 @@ class CSVManager:
                         input_files_with_timing.append(f"{file_name}:0.00")
 
             output_files_with_timing = []
-            for file_name in getattr(task, 'output_files', []):
+            for file_name in sorted(getattr(task, 'output_files', [])):
                 file = self.dp.files[file_name]
                 # skip files without any producer tasks
                 if len(file.producers) == 0:
@@ -1265,11 +1276,11 @@ class CSVManager:
                 
                 output_files_with_timing.append(f"{file_name}:{creation_time:.2f}")
             
-            input_files_str = '|'.join(input_files_with_timing) if input_files_with_timing else ''
-            output_files_str = '|'.join(output_files_with_timing) if output_files_with_timing else ''
+            input_files_str = '|'.join(input_files_with_timing) or None
+            output_files_str = '|'.join(output_files_with_timing) or None
             
             # Calculate task execution time
-            execution_time = np.nan
+            execution_time = None
             if task.task_status == 0 and task.time_worker_start and task.time_worker_end:
                 execution_time = max(0, task.time_worker_end - task.time_worker_start)
             
@@ -1286,10 +1297,10 @@ class CSVManager:
         if len(rows) == 0:
             return
 
-        df = pd.DataFrame(rows, columns=[
-            'subgraph_id', 'task_id', 'task_execution_time', 'failure_count', 'recovery_count', 'input_files', 'output_files'
-        ])
-        df = df.sort_values(['subgraph_id', 'task_id'])
+        df = pl.DataFrame(rows, schema=[
+            'subgraph_id', 'task_id', 'task_execution_time', 'failure_count',
+            'recovery_count', 'input_files', 'output_files',
+        ], orient='row').sort(['subgraph_id', 'task_id'])
         write_df_to_csv(df, self.csv_file_task_subgraphs, index=False)
 
     def generate_metadata(self):
@@ -1379,7 +1390,11 @@ class CSVManager:
         metadata = {}
         try:
             if os.path.exists(self.csv_file_metadata):
-                df = pl.read_csv(self.csv_file_metadata, dtypes={"key": pl.Utf8, "value": pl.Utf8}, null_values=None)
+                df = pl.read_csv(
+                    self.csv_file_metadata,
+                    schema_overrides={"key": pl.Utf8, "value": pl.Utf8},
+                    null_values=None,
+                )
                 keys = df["key"].to_list()
                 vals = df["value"].to_list()
                 for k, v in zip(keys, vals):

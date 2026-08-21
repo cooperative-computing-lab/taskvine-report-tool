@@ -1,5 +1,4 @@
 Flask
-pandas
 rich
 cloudpickle
 tqdm

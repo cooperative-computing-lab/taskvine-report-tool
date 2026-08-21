@@ -17,7 +17,7 @@ def get_task_concurrency():
                    if recovery_only 
                    else get_run_snapshot().csv_file_task_concurrency)
         
-        df = read_csv_to_fd(csv_file)
+        df = read_csv_frame(csv_file)
         phase_data = {}
         for phase in ['Waiting', 'Committing', 'Executing', 'Retrieving', 'Done']:
             phase_points = extract_points_from_df(df, 'time', phase)

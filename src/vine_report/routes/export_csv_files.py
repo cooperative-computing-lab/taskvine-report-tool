@@ -1,25 +1,20 @@
 from src.vine_report.request_context import get_run_snapshot
 import os
-from flask import Blueprint, current_app, jsonify, make_response
-from io import StringIO
-import pandas as pd
+from flask import Blueprint, jsonify, send_file
 
 def serve_existing_csv_file(csv_path, download_filename="data.csv"):
     if not os.path.exists(csv_path):
         return jsonify({'error': f'CSV file not found: {csv_path}'}), 404
 
-    df = pd.read_csv(csv_path)
-    if df.empty:
+    if os.path.getsize(csv_path) == 0:
         return jsonify({'error': 'CSV is empty'}), 404
-
-    buffer = StringIO()
-    df.to_csv(buffer, index=False)
-    buffer.seek(0)
-
-    response = make_response(buffer.getvalue())
-    response.headers['Content-Disposition'] = f'attachment; filename={download_filename}'
-    response.headers['Content-Type'] = 'text/csv'
-    return response
+    return send_file(
+        csv_path,
+        mimetype='text/csv',
+        as_attachment=True,
+        download_name=download_filename,
+        conditional=True,
+    )
 
 
 def register_csv_export_routes(app):

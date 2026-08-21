@@ -8,7 +8,7 @@ worker_concurrency_bp = Blueprint('worker_concurrency', __name__, url_prefix='/a
 @check_and_reload_data()
 def get_worker_concurrency():
     try:
-        df = read_csv_to_fd(get_run_snapshot().csv_file_worker_concurrency)
+        df = read_csv_frame(get_run_snapshot().csv_file_worker_concurrency)
         points = extract_points_from_df(df, 'time', 'Active Workers (count)')
         
         x_domain = get_current_time_domain()

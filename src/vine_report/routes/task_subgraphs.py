@@ -1,16 +1,13 @@
 from src.vine_report.request_context import get_run_snapshot
-from flask import Blueprint, jsonify, request, current_app
+from flask import Blueprint, jsonify, request, make_response
 import graphviz
 import os
 from pathlib import Path
-from io import StringIO
-import csv
-from flask import make_response
 import json
 import shutil
 from src.utils import *
 import re
-import pandas as pd
+import polars as pl
 import time
 
 task_subgraphs_bp = Blueprint('task_subgraphs', __name__, url_prefix='/api')
@@ -44,15 +41,20 @@ def sanitize_filename(filename):
     return filename
 
 def generate_legend(df_subgraphs, selected_subgraph_id=None):
-    unique_subgraphs = df_subgraphs['subgraph_id'].unique()
+    counts = (
+        df_subgraphs.group_by('subgraph_id')
+        .len(name='task_count')
+        .drop_nulls('subgraph_id')
+        .sort('subgraph_id')
+    )
     return [
         {
-            'id': str(int(sg_id)),
-            'label': f"Subgraph {int(sg_id)} ({len(df_subgraphs[df_subgraphs['subgraph_id'] == sg_id])} task{'s' if len(df_subgraphs[df_subgraphs['subgraph_id'] == sg_id]) != 1 else ''})",
+            'id': str(int(row['subgraph_id'])),
+            'label': f"Subgraph {int(row['subgraph_id'])} ({row['task_count']} task{'s' if row['task_count'] != 1 else ''})",
             'color': '',
-            'checked': bool(selected_subgraph_id and int(sg_id) == int(selected_subgraph_id))
+            'checked': bool(selected_subgraph_id and int(row['subgraph_id']) == int(selected_subgraph_id))
         }
-        for sg_id in sorted(unique_subgraphs)
+        for row in counts.iter_rows(named=True)
     ]
 
 def find_subgraph_by_filename(df_subgraphs, filename):
@@ -64,12 +66,12 @@ def find_subgraph_by_filename(df_subgraphs, filename):
         return None
     
     # search in both input_files and output_files columns
-    for _, row in df_subgraphs.iterrows():
+    for row in df_subgraphs.iter_rows(named=True):
         subgraph_id = row['subgraph_id']
         
         # check input files
         input_files_str = row.get('input_files', '')
-        if pd.notna(input_files_str) and str(input_files_str).strip():
+        if not is_missing_value(input_files_str) and str(input_files_str).strip():
             input_files = parse_files_with_timing(input_files_str)
             for file_name, _ in input_files:
                 if filename in file_name:  # substring match
@@ -77,7 +79,7 @@ def find_subgraph_by_filename(df_subgraphs, filename):
         
         # check output files
         output_files_str = row.get('output_files', '')
-        if pd.notna(output_files_str) and str(output_files_str).strip():
+        if not is_missing_value(output_files_str) and str(output_files_str).strip():
             output_files = parse_files_with_timing(output_files_str)
             for file_name, _ in output_files:
                 if filename in file_name:  # substring match
@@ -95,7 +97,7 @@ def find_subgraph_by_task_id(df_subgraphs, task_id):
         return None
     
     # search in task_id column - ensure both sides are int for comparison
-    for _, row in df_subgraphs.iterrows():
+    for row in df_subgraphs.iter_rows(named=True):
         try:
             row_task_id = int(row['task_id'])
             if row_task_id == task_id:
@@ -107,7 +109,7 @@ def find_subgraph_by_task_id(df_subgraphs, task_id):
 
 def parse_files_with_timing(files_str):
     files_with_timing = []
-    if pd.notna(files_str) and str(files_str).strip():
+    if not is_missing_value(files_str) and str(files_str).strip():
         for item in str(files_str).split('|'):
             if ':' in item:
                 file_name, timing = item.rsplit(':', 1)
@@ -128,14 +130,14 @@ def build_tasks_and_files(subgraph_tasks):
     tasks_dict = {}
     files_dict = {}
     
-    for _, task_row in subgraph_tasks.iterrows():
+    for task_row in subgraph_tasks.iter_rows(named=True):
         task_id = task_row['task_id']
         failure_count = int(task_row.get('failure_count', 0))
         recovery_count = int(task_row.get('recovery_count', 0))
         
         # get task execution time
         task_execution_time = task_row.get('task_execution_time', None)
-        if pd.notna(task_execution_time):
+        if not is_missing_value(task_execution_time):
             try:
                 task_execution_time = float(task_execution_time)
             except (ValueError, TypeError):
@@ -415,7 +417,7 @@ def render_svg(subgraph_tasks, svg_file_path, params_dict=None):
             raise Exception("Generated file is not valid SVG")
         
         # generate and save metadata after successful SVG generation
-        subgraph_id = subgraph_tasks.iloc[0]['subgraph_id'] if not subgraph_tasks.empty else 0
+        subgraph_id = subgraph_tasks['subgraph_id'][0] if not subgraph_tasks.is_empty() else 0
         metadata = generate_subgraph_metadata(subgraph_tasks, subgraph_id)
         write_metadata(metadata, metadata_file_path)
 
@@ -450,7 +452,7 @@ def get_task_subgraphs():
         if not csv_dir:
             return create_response(error='CSV directory not configured', status_code=500)
 
-        df_subgraphs = read_csv_to_fd(os.path.join(csv_dir, 'task_subgraphs.csv'))
+        df_subgraphs = read_csv_frame(os.path.join(csv_dir, 'task_subgraphs.csv'))
         
         # handle filename search when subgraph_id=0 and filename is provided
         if subgraph_id == 0 and filename:
@@ -484,8 +486,8 @@ def get_task_subgraphs():
         if subgraph_id == 0:
             return create_response(legend=generate_legend(df_subgraphs))
 
-        subgraph_tasks = df_subgraphs[df_subgraphs['subgraph_id'] == subgraph_id]
-        if subgraph_tasks.empty:
+        subgraph_tasks = df_subgraphs.filter(pl.col('subgraph_id') == subgraph_id)
+        if subgraph_tasks.is_empty():
             return create_response(
                 legend=generate_legend(df_subgraphs),
                 error='Subgraph not found'

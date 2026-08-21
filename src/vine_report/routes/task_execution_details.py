@@ -1,20 +1,10 @@
+from collections import defaultdict
+
+from flask import Blueprint, jsonify, current_app
+import polars as pl
+
 from src.vine_report.request_context import get_run_snapshot
 from src.utils import *
-
-import pandas as pd
-
-
-def _safe_int(row, key):
-    """Safely get int from row; handles missing column, NaN, and float."""
-    val = row.get(key, None) if hasattr(row, 'get') else None
-    if val is None or (hasattr(val, '__float__') and pd.isna(val)):
-        return None
-    try:
-        return int(float(val))
-    except (TypeError, ValueError):
-        return None
-from collections import defaultdict
-from flask import Blueprint, jsonify, current_app
 
 task_execution_details_bp = Blueprint(
     'task_execution_details', __name__, url_prefix='/api')
@@ -159,16 +149,18 @@ def downsample_tasks(tasks, key="execution_time", max_tasks=None):
 def get_task_execution_details():
     try:
         # Read data from CSV file
-        df = read_csv_to_fd(get_run_snapshot().csv_file_task_execution_details)
+        df = read_csv_frame(get_run_snapshot().csv_file_task_execution_details)
         
         successful_tasks = []
         unsuccessful_tasks = []
         workers = []
         
         # Process task data
-        task_rows = df[df['record_type'].isin(['successful_tasks', 'unsuccessful_tasks'])]
-        for _, row in task_rows.iterrows():
-            if pd.isna(row['task_id']):
+        task_rows = df.filter(
+            pl.col('record_type').is_in(['successful_tasks', 'unsuccessful_tasks'])
+        )
+        for row in task_rows.iter_rows(named=True):
+            if is_missing_value(row['task_id']):
                 continue
 
             base_task_data = {
@@ -177,71 +169,56 @@ def get_task_execution_details():
                 'worker_entry': str(row['worker_entry']),
                 'worker_id': int(row['worker_id']),
                 'core_id': int(row['core_id']),
-                'cores_requested': _safe_int(row, 'cores_requested'),
-                'is_recovery_task': bool(row['is_recovery_task']),
-                'input_files': str(row['input_files']) if pd.notna(row['input_files']) else '',
-                'output_files': str(row['output_files']) if pd.notna(row['output_files']) else '',
-                'num_input_files': int(row['num_input_files']) if pd.notna(row['num_input_files']) else 0,
-                'num_output_files': int(row['num_output_files']) if pd.notna(row['num_output_files']) else 0,
-                'task_status': int(row['task_status']) if pd.notna(row['task_status']) else None,
-                'category': str(row['category']) if pd.notna(row['category']) else '',
+                'cores_requested': task_execution_safe_int(row, 'cores_requested'),
+                'is_recovery_task': bool(row['is_recovery_task']) if not is_missing_value(row['is_recovery_task']) else False,
+                'input_files': str(row['input_files']) if not is_missing_value(row['input_files']) else '',
+                'output_files': str(row['output_files']) if not is_missing_value(row['output_files']) else '',
+                'num_input_files': task_execution_safe_int(row, 'num_input_files') or 0,
+                'num_output_files': task_execution_safe_int(row, 'num_output_files') or 0,
+                'task_status': task_execution_safe_int(row, 'task_status'),
+                'category': str(row['category']) if not is_missing_value(row['category']) else '',
             }
             
             if row['record_type'] == 'successful_tasks':
                 base_task_data.update({
-                    'when_ready': float(row['when_ready']) if pd.notna(row['when_ready']) else None,
-                    'when_running': float(row['when_running']) if pd.notna(row['when_running']) else None,
-                    'time_worker_start': float(row['time_worker_start']) if pd.notna(row['time_worker_start']) else None,
-                    'time_worker_end': float(row['time_worker_end']) if pd.notna(row['time_worker_end']) else None,
-                    'execution_time': float(row['execution_time']) if pd.notna(row['execution_time']) else None,
-                    'when_waiting_retrieval': float(row['when_waiting_retrieval']) if pd.notna(row['when_waiting_retrieval']) else None,
-                    'when_retrieved': float(row['when_retrieved']) if pd.notna(row['when_retrieved']) else None,
-                    'when_done': float(row['when_done']) if pd.notna(row['when_done']) else 'N/A'
+                    key: task_execution_safe_float(row, key)
+                    for key in (
+                        'when_ready', 'when_running', 'time_worker_start',
+                        'time_worker_end', 'execution_time',
+                        'when_waiting_retrieval', 'when_retrieved', 'when_done'
+                    )
                 })
                 successful_tasks.append(base_task_data)
             else:  # unsuccessful
                 base_task_data.update({
-                    'when_ready': float(row['when_ready']) if pd.notna(row['when_ready']) else None,
-                    'when_running': float(row['when_running']) if pd.notna(row['when_running']) else None,
-                    'when_failure_happens': float(row['when_failure_happens']) if pd.notna(row['when_failure_happens']) else None,
-                    'execution_time': float(row['execution_time']) if pd.notna(row['execution_time']) else None,
-                    'unsuccessful_checkbox_name': str(row['unsuccessful_checkbox_name']) if pd.notna(row['unsuccessful_checkbox_name']) else 'unknown',
-                    'when_done': float(row['when_done']) if pd.notna(row['when_done']) else 'N/A'
+                    **{
+                        key: task_execution_safe_float(row, key)
+                        for key in (
+                            'when_ready', 'when_running', 'when_failure_happens',
+                            'execution_time', 'when_done'
+                        )
+                    },
+                    'unsuccessful_checkbox_name': str(row['unsuccessful_checkbox_name'])
+                    if not is_missing_value(row['unsuccessful_checkbox_name']) else 'unknown',
                 })
                 unsuccessful_tasks.append(base_task_data)
         
         # Process worker data
-        worker_rows = df[df['record_type'] == 'worker']
-        for _, row in worker_rows.iterrows():
-            if pd.isna(row['worker_id']):
+        worker_rows = df.filter(pl.col('record_type') == 'worker')
+        for row in worker_rows.iter_rows(named=True):
+            if is_missing_value(row['worker_id']):
                 continue
-                
-            # Parse time_connected and time_disconnected arrays
-            time_connected = []
-            time_disconnected = []
-            
-            if pd.notna(row['time_connected']):
-                try:
-                    time_connected = eval(row['time_connected'])  # Convert string representation to list
-                except:
-                    time_connected = []
-                    
-            if pd.notna(row['time_disconnected']):
-                try:
-                    time_disconnected = eval(row['time_disconnected'])  # Convert string representation to list
-                except:
-                    time_disconnected = []
-                    
+
             workers.append({
-                'hash': str(row['hash']) if pd.notna(row['hash']) else '',
+                'hash': str(row['hash']) if not is_missing_value(row['hash']) else '',
                 'id': int(row['worker_id']),
                 'worker_entry': str(row['worker_entry']),
-                'time_connected': time_connected,
-                'time_disconnected': time_disconnected,
-                'cores': int(row['cores']) if pd.notna(row['cores']) else 0,
-                'memory_mb': int(row['memory_mb']) if pd.notna(row['memory_mb']) else 0,
-                'disk_mb': int(row['disk_mb']) if pd.notna(row['disk_mb']) else 0,
-                'gpus': int(row['gpus']) if pd.notna(row['gpus']) else 0
+                'time_connected': parse_worker_time_list(row['time_connected']),
+                'time_disconnected': parse_worker_time_list(row['time_disconnected']),
+                'cores': task_execution_safe_int(row, 'cores') or 0,
+                'memory_mb': task_execution_safe_int(row, 'memory_mb') or 0,
+                'disk_mb': task_execution_safe_int(row, 'disk_mb') or 0,
+                'gpus': task_execution_safe_int(row, 'gpus') or 0,
             })
 
         # Build y_domain from workers AND tasks (tasks may reference workers not in list, e.g. no hash)

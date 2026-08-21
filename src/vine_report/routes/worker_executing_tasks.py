@@ -8,7 +8,7 @@ worker_executing_tasks_bp = Blueprint('worker_executing_tasks', __name__, url_pr
 @check_and_reload_data()
 def get_worker_executing_tasks():
     try:
-        df = read_csv_to_fd(get_run_snapshot().csv_file_worker_executing_tasks)
+        df = read_csv_frame(get_run_snapshot().csv_file_worker_executing_tasks)
         data = extract_series_points_dict(df, 'time')
         
         x_domain = get_current_time_domain()

@@ -8,7 +8,7 @@ file_concurrent_replicas_bp = Blueprint('file_concurrent_replicas', __name__, ur
 @check_and_reload_data()
 def get_file_concurrent_replicas():
     try:
-        df = read_csv_to_fd(get_run_snapshot().csv_file_file_concurrent_replicas)
+        df = read_csv_frame(get_run_snapshot().csv_file_file_concurrent_replicas)
         points = extract_points_from_df(df, 'file_idx', 'max_simul_replicas')
 
         x_domain = extract_x_range_from_points(points)

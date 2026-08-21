@@ -2,9 +2,10 @@
 Plot implementations for vine_export sections (except task_execution_details).
 """
 
-import pandas as pd
+import numpy as np
+import polars as pl
 
-from src.utils import get_size_unit_and_scale, get_time_domain_from_csv
+from src.utils import file_size_column, get_size_unit_and_scale, get_time_domain_from_csv
 from src.vine_export.config import (
     DPI_DEFAULT,
     DEFAULT_LINEAR_TICK_COUNT,
@@ -26,15 +27,36 @@ from src.vine_export.config import (
 from src.vine_export.plot_common import make_figure, style_axes, set_linear_ticks, load_csv, save_plot
 
 
+def _numeric_values(df, column):
+    """Return a float NumPy array, coercing invalid Polars values to NaN."""
+    return (
+        df.get_column(column)
+        .cast(pl.Float64, strict=False)
+        .fill_null(float("nan"))
+        .to_numpy()
+    )
+
+
+def _truthy_values(df, column):
+    return (
+        df.get_column(column)
+        .cast(pl.String, strict=False)
+        .str.to_lowercase()
+        .is_in(["true", "1", "yes"])
+        .fill_null(False)
+        .to_numpy()
+    )
+
+
 def _valid_xy(df, x_col, y_col):
-    x = pd.to_numeric(df[x_col], errors="coerce")
-    y = pd.to_numeric(df[y_col], errors="coerce")
-    valid = x.notna() & y.notna()
+    x = _numeric_values(df, x_col)
+    y = _numeric_values(df, y_col)
+    valid = np.isfinite(x) & np.isfinite(y)
     return x[valid], y[valid]
 
 
 def _safe_domain(min_v, max_v, pad=0.0):
-    if pd.isna(min_v) or pd.isna(max_v):
+    if not np.isfinite(min_v) or not np.isfinite(max_v):
         return [0.0, 1.0]
     min_v = float(min_v)
     max_v = float(max_v)
@@ -104,8 +126,8 @@ def _plot_multi_series_time(
     df = load_csv(csv_files_dir, csv_name)
     if "time" not in df.columns:
         return None
-    x = pd.to_numeric(df["time"], errors="coerce")
-    valid_time = x.notna()
+    x = _numeric_values(df, "time")
+    valid_time = np.isfinite(x)
     if valid_time.sum() == 0:
         return None
 
@@ -117,10 +139,11 @@ def _plot_multi_series_time(
 
     ranked = []
     for col in series_cols:
-        y = pd.to_numeric(df[col], errors="coerce")
-        valid_count = int(y.notna().sum())
-        vmax = y.max(skipna=True)
-        if valid_count > 0 and pd.notna(vmax) and vmax > 0:
+        y = _numeric_values(df, col)
+        valid = np.isfinite(y)
+        valid_count = int(valid.sum())
+        vmax = y[valid].max() if valid_count else None
+        if valid_count > 0 and vmax > 0:
             ranked.append((col, valid_count, float(vmax)))
     if not ranked:
         return None
@@ -151,8 +174,8 @@ def _plot_multi_series_time(
     fig, ax = make_figure(plt, width=width, height=height)
     ymax = 0.0
     for col in selected_cols:
-        y = pd.to_numeric(df[col], errors="coerce")
-        valid = valid_time & y.notna()
+        y = _numeric_values(df, col)
+        valid = valid_time & np.isfinite(y)
         if valid.sum() == 0:
             continue
         ymax = max(ymax, float(y[valid].max()))
@@ -195,7 +218,7 @@ def plot_task_concurrency(csv_files_dir, png_files_dir, dpi=DPI_DEFAULT, width=N
     df = load_csv(csv_files_dir, "task_concurrency.csv")
     if "time" not in df.columns:
         return None
-    x = pd.to_numeric(df["time"], errors="coerce")
+    x = _numeric_values(df, "time")
     phases = [
         ("Waiting", COLOR_WAITING),
         ("Committing", COLOR_COMMITTING),
@@ -209,8 +232,8 @@ def plot_task_concurrency(csv_files_dir, png_files_dir, dpi=DPI_DEFAULT, width=N
     for col, color in phases:
         if col not in df.columns:
             continue
-        y = pd.to_numeric(df[col], errors="coerce")
-        valid = x.notna() & y.notna()
+        y = _numeric_values(df, col)
+        valid = np.isfinite(x) & np.isfinite(y)
         if valid.sum() == 0:
             continue
         ymax = max(ymax, float(y[valid].max()))
@@ -218,7 +241,7 @@ def plot_task_concurrency(csv_files_dir, png_files_dir, dpi=DPI_DEFAULT, width=N
 
     if ymax <= 0:
         ymax = 1.0
-    x_domain = _time_domain_or_fallback(csv_files_dir, x.dropna())
+    x_domain = _time_domain_or_fallback(csv_files_dir, x[np.isfinite(x)])
     y_domain = [0.0, ymax]
     ax.set_xlim(*x_domain)
     ax.set_ylim(*y_domain)
@@ -233,10 +256,10 @@ def plot_task_response_time(csv_files_dir, png_files_dir, dpi=DPI_DEFAULT, width
     import matplotlib.pyplot as plt
 
     df = load_csv(csv_files_dir, "task_response_time.csv")
-    x = pd.to_numeric(df["Global Index"], errors="coerce")
-    y = pd.to_numeric(df["Response Time"], errors="coerce")
-    dispatch = df["Was Dispatched"].astype(str).str.lower().isin(["true", "1", "yes"])
-    valid = x.notna() & y.notna()
+    x = _numeric_values(df, "Global Index")
+    y = _numeric_values(df, "Response Time")
+    dispatch = _truthy_values(df, "Was Dispatched")
+    valid = np.isfinite(x) & np.isfinite(y)
     if valid.sum() == 0:
         return None
 
@@ -260,10 +283,10 @@ def plot_task_execution_time(csv_files_dir, png_files_dir, dpi=DPI_DEFAULT, widt
     import matplotlib.pyplot as plt
 
     df = load_csv(csv_files_dir, "task_execution_time.csv")
-    x = pd.to_numeric(df["Global Index"], errors="coerce")
-    y = pd.to_numeric(df["Execution Time"], errors="coerce")
-    success = df["Ran to Completion"].astype(str).str.lower().isin(["true", "1", "yes"])
-    valid = x.notna() & y.notna()
+    x = _numeric_values(df, "Global Index")
+    y = _numeric_values(df, "Execution Time")
+    success = _truthy_values(df, "Ran to Completion")
+    valid = np.isfinite(x) & np.isfinite(y)
     if valid.sum() == 0:
         return None
 
@@ -399,13 +422,14 @@ def plot_file_sizes(csv_files_dir, png_files_dir, dpi=DPI_DEFAULT, width=None, h
     import matplotlib.pyplot as plt
 
     df = load_csv(csv_files_dir, "file_sizes.csv")
-    x = pd.to_numeric(df["file_idx"], errors="coerce")
-    y_mb = pd.to_numeric(df["file_size_mb"], errors="coerce")
-    valid = x.notna() & y_mb.notna()
+    size_col, unit = file_size_column(df)
+    if size_col is None:
+        return None
+    x = _numeric_values(df, "file_idx")
+    y = _numeric_values(df, size_col)
+    valid = np.isfinite(x) & np.isfinite(y)
     if valid.sum() == 0:
         return None
-    unit, scale = get_size_unit_and_scale(float(y_mb[valid].max()))
-    y = y_mb * scale
 
     fig, ax = make_figure(plt, width=width, height=height)
     ax.scatter(x[valid], y[valid], s=MARKER_SIZE, alpha=0.65, c=COLOR_EXECUTING, edgecolors="none")
@@ -470,14 +494,14 @@ def _plot_cumulative_size_line(
     df = load_csv(csv_files_dir, csv_name)
     if "time" not in df.columns:
         return None
-    x = pd.to_numeric(df["time"], errors="coerce")
+    x = _numeric_values(df, "time")
     if "cumulative_size_mb" in df.columns:
-        y_mb = pd.to_numeric(df["cumulative_size_mb"], errors="coerce")
+        y_mb = _numeric_values(df, "cumulative_size_mb")
     elif "delta_size_mb" in df.columns:
-        y_mb = pd.to_numeric(df["delta_size_mb"], errors="coerce").fillna(0).cumsum()
+        y_mb = np.nan_to_num(_numeric_values(df, "delta_size_mb"), nan=0.0).cumsum()
     else:
         return None
-    valid = x.notna() & y_mb.notna()
+    valid = np.isfinite(x) & np.isfinite(y_mb)
     if valid.sum() == 0:
         return None
 
@@ -520,4 +544,3 @@ def plot_file_created_size(csv_files_dir, png_files_dir, dpi=DPI_DEFAULT, width=
         width=width,
         height=height,
     )
-

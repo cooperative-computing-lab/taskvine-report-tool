@@ -8,7 +8,7 @@ task_completion_percentiles_bp = Blueprint('task_completion_percentiles', __name
 @check_and_reload_data()
 def get_task_completion_percentiles():
     try:
-        df = read_csv_to_fd(get_run_snapshot().csv_file_task_completion_percentiles)
+        df = read_csv_frame(get_run_snapshot().csv_file_task_completion_percentiles)
         percentile_time_points = extract_points_from_df(df, 'Percentile', 'Completion Time')
         points = [(completion_time, percentile) for percentile, completion_time in percentile_time_points]
         max_completion_time = max((point[0] for point in points), default=1.0)

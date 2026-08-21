@@ -10,7 +10,7 @@ task_response_time_bp = Blueprint(
 @check_and_reload_data()
 def get_task_response_time():
     try:
-        df = read_csv_to_fd(get_run_snapshot().csv_file_task_response_time)
+        df = read_csv_frame(get_run_snapshot().csv_file_task_response_time)
         points = extract_points_from_df(df, 'Global Index', 'Response Time', 'Task ID', 'Task Try ID', 'Was Dispatched')
         x_domain = extract_x_range_from_points(points, x_index=0)
         y_domain = extract_y_range_from_points(points, y_index=1)

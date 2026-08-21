@@ -14,7 +14,6 @@ from .sources import LegacyDebugSource
 
 import os
 import math
-import pandas as pd
 import polars as pl
 import re
 from pathlib import Path

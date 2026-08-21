@@ -55,7 +55,6 @@ setup(
     python_requires=">=3.10",
     install_requires=[
         "flask",
-        "pandas",
         "cloudpickle",
         "tqdm",
         "bitarray",

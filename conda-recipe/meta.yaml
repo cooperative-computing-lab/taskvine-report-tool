@@ -25,7 +25,6 @@ requirements:
     - python-graphviz
     - tqdm
     - bitarray
-    - pandas
     - cloudpickle
     - rich
     - flask
@@ -37,7 +36,6 @@ requirements:
   run:
     - python >=3.10
     - flask
-    - pandas
     - cloudpickle
     - rich
     - tqdm

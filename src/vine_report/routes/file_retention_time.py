@@ -8,7 +8,7 @@ file_retention_time_bp = Blueprint('file_retention_time', __name__, url_prefix='
 @check_and_reload_data()
 def get_file_retention_time():
     try:
-        df = read_csv_to_fd(get_run_snapshot().csv_file_retention_time)
+        df = read_csv_frame(get_run_snapshot().csv_file_retention_time)
         points = extract_points_from_df(df, 'file_idx', 'retention_time')
         x_domain = extract_x_range_from_points(points)
         y_domain = extract_y_range_from_points(points)

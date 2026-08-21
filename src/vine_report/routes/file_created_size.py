@@ -21,7 +21,7 @@ def _empty_file_created_size_payload():
 @check_and_reload_data()
 def get_file_created_size():
     try:
-        df = read_csv_to_fd(get_run_snapshot().csv_file_file_created_size)
+        df = read_csv_frame(get_run_snapshot().csv_file_file_created_size)
 
         if 'time' not in df.columns:
             get_run_snapshot().log_info(
@@ -33,15 +33,7 @@ def get_file_created_size():
             points, unit = extract_size_points_from_df(df, 'time', 'cumulative_size_mb')
         elif 'delta_size_mb' in df.columns:
             # Backward compatibility for datasets that only contain per-time delta values.
-            tmp = (
-                df[['time', 'delta_size_mb']]
-                .dropna()
-                .assign(time=lambda t: pd.to_numeric(t['time'], errors='coerce'))
-                .dropna()
-                .groupby('time', as_index=False)['delta_size_mb'].sum()
-                .sort_values('time')
-            )
-            tmp['cumulative_size_mb'] = tmp['delta_size_mb'].cumsum().clip(lower=0)
+            tmp = cumulative_size_frame(df)
             points, unit = extract_size_points_from_df(tmp, 'time', 'cumulative_size_mb')
         else:
             get_run_snapshot().log_info(

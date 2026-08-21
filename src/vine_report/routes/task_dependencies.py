@@ -7,7 +7,7 @@ task_dependencies_bp = Blueprint('task_dependencies', __name__, url_prefix='/api
 @task_dependencies_bp.route('/task-dependencies')
 def get_task_dependencies():
     try:
-        df = read_csv_to_fd(get_run_snapshot().csv_file_task_dependencies)
+        df = read_csv_frame(get_run_snapshot().csv_file_task_dependencies)
         points = extract_points_from_df(df, 'Global Index', 'Dependency Count')
         x_domain = extract_x_range_from_points(points)
         y_domain = extract_y_range_from_points(points)

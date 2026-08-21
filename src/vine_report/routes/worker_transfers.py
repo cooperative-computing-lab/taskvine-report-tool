@@ -7,7 +7,7 @@ worker_transfers_bp = Blueprint('worker_transfers', __name__, url_prefix='/api')
 def _get_worker_transfer_data(role):
     try:
         csv_attr = "csv_file_worker_incoming_transfers" if role == "incoming" else "csv_file_worker_outgoing_transfers"
-        df = read_csv_to_fd(get_run_snapshot().__getattribute__(csv_attr))
+        df = read_csv_frame(get_run_snapshot().__getattribute__(csv_attr))
 
         data = extract_series_points_dict(df, 'time')
 
