@@ -11,6 +11,7 @@ from .diagnostics import (
     installed_tool_version,
 )
 from .sources import LegacyDebugSource
+from .protocol import CandidateClassifier, HANDLER_MASKS
 
 import os
 import math
@@ -114,6 +115,7 @@ class DataParser:
         self.time_axis_adjustments = 0
         self.manager_end_observed = None
         self._init_debug_handlers()
+        self.debug_classifier = CandidateClassifier()
         self.sending_task_to_worker_entry = None
 
     def _init_debug_handlers(self):
@@ -221,6 +223,10 @@ class DataParser:
 
         ]
         self.debug_handler_profiling = defaultdict(lambda: {"hits": 0})
+        self._debug_handler_by_mask = {
+            HANDLER_MASKS[action.__name__]: action
+            for _, action in self.debug_handlers
+        }
 
     def get_current_worker_by_ip_port(self, worker_ip: str, worker_port: int):
         connect_id = self.current_worker_connect_id[(worker_ip, worker_port)]
@@ -945,30 +951,59 @@ class DataParser:
             key=lambda pair: -self.debug_handler_profiling.get(pair[1], {}).get("hits", 0)
         )
 
-    def parse_debug_line(self):
+    def parse_debug_line(self, candidate_mask=None):
         line = self.debug_current_line
         parts = self.debug_current_parts
         timestamp = self.debug_current_timestamp
         self.manager.set_current_max_time(timestamp)
 
+        if candidate_mask == 0 and not self.receiving_resources_from_worker:
+            return None
+
+        if candidate_mask is not None and candidate_mask.bit_count() == 1:
+            handler_fn = self._debug_handler_by_mask[candidate_mask]
+            if handler_fn.__name__ not in {"worker_resources", "send_task_to_worker"}:
+                return self._execute_debug_handler(handler_fn, line, parts)
+
         for cond_fn, handler_fn in self.debug_handlers:
-            try:
-                matches = cond_fn(line, parts, self)
-            except Exception as exc:
-                raise ValueError(
-                    "Failed while matching handler {}: {}".format(handler_fn.__name__, exc)
-                ) from exc
+            native_static_match = False
+            if candidate_mask is not None:
+                handler_name = handler_fn.__name__
+                is_stateful_resource_line = (
+                    handler_name == "worker_resources"
+                    and self.receiving_resources_from_worker
+                )
+                if not is_stateful_resource_line and not (
+                    candidate_mask & HANDLER_MASKS[handler_name]
+                ):
+                    continue
+                native_static_match = (
+                    handler_name not in {"worker_resources", "send_task_to_worker"}
+                    and bool(candidate_mask & HANDLER_MASKS[handler_name])
+                )
+            if native_static_match:
+                matches = True
+            else:
+                try:
+                    matches = cond_fn(line, parts, self)
+                except Exception as exc:
+                    raise ValueError(
+                        "Failed while matching handler {}: {}".format(handler_fn.__name__, exc)
+                    ) from exc
             if not matches:
                 continue
-            try:
-                handler_fn(line, parts, self)
-            except Exception as exc:
-                raise ValueError(
-                    "Failed in handler {}: {}".format(handler_fn.__name__, exc)
-                ) from exc
-            self.debug_handler_profiling[handler_fn]["hits"] += 1
-            return handler_fn.__name__
+            return self._execute_debug_handler(handler_fn, line, parts)
         return None
+
+    def _execute_debug_handler(self, handler_fn, line, parts):
+        try:
+            handler_fn(line, parts, self)
+        except Exception as exc:
+            raise ValueError(
+                "Failed in handler {}: {}".format(handler_fn.__name__, exc)
+            ) from exc
+        self.debug_handler_profiling[handler_fn]["hits"] += 1
+        return handler_fn.__name__
 
     def _clean_debug_file(self):
         result = subprocess.run(
@@ -1077,7 +1112,8 @@ class DataParser:
             resort_debug_handlers_interval = 10000
             progress_pending = 0
             source = LegacyDebugSource(debug_file_to_use)
-            for record in source.records():
+            classified_records = self.debug_classifier.classified_records(source.records())
+            for record, candidate_mask in classified_records:
                 progress_pending += 1
                 if progress_pending >= 1024:
                     progress.update(task_id, advance=progress_pending)
@@ -1099,7 +1135,7 @@ class DataParser:
                 self.diagnostics.record_timestamped()
                 self.diagnostics.record_metadata(self.debug_current_line)
                 try:
-                    handler = self.parse_debug_line()
+                    handler = self.parse_debug_line(candidate_mask)
                 except Exception as exc:
                     if progress_pending:
                         progress.update(task_id, advance=progress_pending)

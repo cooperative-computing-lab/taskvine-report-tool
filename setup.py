@@ -5,7 +5,7 @@ Setup script for TaskVine Report Tool
 Traditional setup.py configuration for reliable PyPI packaging.
 """
 
-from setuptools import setup
+from setuptools import Extension, setup
 import os
 import re
 
@@ -38,6 +38,14 @@ setup(
         "CCL Homepage": "https://ccl.cse.nd.edu/",
     },
     packages=["src", "src.vine_parse", "src.vine_parse.sources", "src.vine_report", "src.vine_report.routes", "src.vine_export"],
+    ext_modules=[
+        Extension(
+            "src.vine_parse._debug_native",
+            sources=["src/vine_parse/native/debug_native.c"],
+            optional=True,
+            extra_compile_args=["/O2"] if os.name == "nt" else ["-O3"],
+        )
+    ],
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
