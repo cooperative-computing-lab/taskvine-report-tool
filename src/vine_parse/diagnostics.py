@@ -7,6 +7,7 @@ import re
 import tempfile
 from collections import Counter
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -31,6 +32,10 @@ _NUMBER_RE = re.compile(r"(?<![A-Za-z])[-+]?\d+(?:\.\d+)?")
 _ADDRESS_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}:\d+\b")
 _PID_RE = re.compile(r"\[[0-9]+\]")
 _LONG_ID_RE = re.compile(r"\b[A-Fa-f0-9]{12,}\b")
+_URL_RE = re.compile(r"\b(?:https?|file|workerip)://\S+")
+_PATH_RE = re.compile(r"(?<!\w)/(?:[^\s,;]+)")
+_QUOTED_RE = re.compile(r"(['\"]).*?\1")
+_OBJECT_RE = re.compile(r"\{.*\}")
 
 
 def installed_tool_version() -> str:
@@ -103,13 +108,44 @@ def normalized_shape(line: str) -> str:
     value = _TIMESTAMP_RE.sub("<timestamp>", line)
     value = _PID_RE.sub("[<pid>]", value)
     value = _ADDRESS_RE.sub("<address>", value)
-    value = re.sub(r"\b(?:https?|file|workerip)://\S+", "<url>", value)
-    value = re.sub(r"(?<!\w)/(?:[^\s,;]+)", "<path>", value)
-    value = re.sub(r"(['\"]).*?\1", "<quoted>", value)
+    value = _URL_RE.sub("<url>", value)
+    value = _PATH_RE.sub("<path>", value)
+    value = _QUOTED_RE.sub("<quoted>", value)
     value = _LONG_ID_RE.sub("<id>", value)
     value = _NUMBER_RE.sub("<n>", value)
-    value = re.sub(r"\{.*\}", "<object>", value)
+    value = _OBJECT_RE.sub("<object>", value)
     return value[:320]
+
+
+class ShapeNormalizer:
+    """Per-parse memoizer that preserves ``normalized_shape`` semantics.
+
+    The first three substitutions form the cache key.  The cached function is
+    exactly the remaining six substitutions, so a cache hit can only reuse the
+    result of an identical intermediate string.
+    """
+
+    def __init__(self, maxsize: int = 8192):
+        @lru_cache(maxsize=maxsize)
+        def normalize_tail(value: str) -> str:
+            value = _URL_RE.sub("<url>", value)
+            value = _PATH_RE.sub("<path>", value)
+            value = _QUOTED_RE.sub("<quoted>", value)
+            value = _LONG_ID_RE.sub("<id>", value)
+            value = _NUMBER_RE.sub("<n>", value)
+            value = _OBJECT_RE.sub("<object>", value)
+            return value[:320]
+
+        self._normalize_tail = normalize_tail
+
+    def normalize(self, line: str) -> str:
+        value = _TIMESTAMP_RE.sub("<timestamp>", line)
+        value = _PID_RE.sub("[<pid>]", value)
+        value = _ADDRESS_RE.sub("<address>", value)
+        return self._normalize_tail(value)
+
+    def cache_info(self):
+        return self._normalize_tail.cache_info()
 
 
 def infer_timezone_offset(debug_path: Path, transactions_path: Path) -> Optional[int]:
@@ -191,6 +227,7 @@ class ParseDiagnostics:
         self._source_digest = hashlib.sha256()
         self._handler_counts = Counter()
         self._shapes = set()
+        self._shape_normalizer = ShapeNormalizer()
         self._partial_reasons = []
         self._error_samples = []
         self._cctools_versions = set()
@@ -247,10 +284,12 @@ class ParseDiagnostics:
         self.data["source"]["timestamped_lines"] += 1
 
     def record_metadata(self, line: str) -> None:
-        self._cctools_versions.update(_CCTOOLS_VERSION_RE.findall(line))
-        match = _TIMEZONE_RE.search(line)
-        if match:
-            self._timezone_offsets.add(match.group(1))
+        if "running CCTools version" in line:
+            self._cctools_versions.update(_CCTOOLS_VERSION_RE.findall(line))
+        if "manager timezone at startup:" in line:
+            match = _TIMEZONE_RE.search(line)
+            if match:
+                self._timezone_offsets.add(match.group(1))
 
     def set_timezone_evidence(self, method: str, offset_seconds: int) -> None:
         self.data["compatibility"]["timezone"] = {
@@ -261,7 +300,7 @@ class ParseDiagnostics:
     def record_handled(self, handler: str, line: str) -> None:
         self.data["source"]["handled_lines"] += 1
         self._handler_counts[handler] += 1
-        self._shapes.add("{}:{}".format(handler, normalized_shape(line)))
+        self._shapes.add("{}:{}".format(handler, self._shape_normalizer.normalize(line)))
 
     def record_unhandled(self, line_number: int, line: str) -> None:
         self.data["source"]["unhandled_lines"] += 1

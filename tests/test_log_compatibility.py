@@ -8,8 +8,10 @@ from unittest import mock
 from src.vine_parse.data_parser import DataParser
 from src.vine_parse.diagnostics import (
     LogCompatibilityError,
+    ShapeNormalizer,
     inspect_run,
     installed_tool_version,
+    normalized_shape,
     write_parse_manifest,
 )
 from src import __version__
@@ -42,6 +44,23 @@ class LogCompatibilityTest(unittest.TestCase):
 
     def test_runtime_source_version_is_manifest_authority(self):
         self.assertEqual(installed_tool_version(), __version__)
+
+    def test_shape_memoizer_is_exact_for_overlapping_patterns(self):
+        lines = [
+            TIMEZONE.rstrip(),
+            LISTENING.rstrip(),
+            "2026/08/19 12:00:02.00 vine_manager[100]vine: worker 10.2.3.4:9123 connected",
+            "2026/08/19 12:00:03.00 vine_manager[999]vine: worker 10.9.8.7:4567 connected",
+            "2026/08/19 12:00:02.00 vine_manager[100]vine: puturl workerip://10.2.3.4:9123/a/123 'x 42'",
+            "2026/08/19 12:00:02.00 vine_manager[100]vine: host cmswn2215 id abcdef123456 {\"n\": 7}",
+            "2026/08/19 12:00:03.00 vine_manager[999]vine: host cmswn2215 id abcdef123456 {\"n\": 8}",
+        ]
+        memoizer = ShapeNormalizer(maxsize=8)
+        self.assertEqual(
+            [memoizer.normalize(line) for line in lines],
+            [normalized_shape(line) for line in lines],
+        )
+        self.assertGreater(memoizer.cache_info().hits, 0)
 
     def test_debug_source_preserves_line_numbers_and_decode_failures(self):
         run = self.make_run("source", TIMEZONE)

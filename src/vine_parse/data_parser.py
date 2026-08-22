@@ -1075,9 +1075,13 @@ class DataParser:
         with create_progress_bar() as progress:
             task_id = progress.add_task(f"[green]Parsing debug ({debug_file_size_str})", total=total_lines)
             resort_debug_handlers_interval = 10000
+            progress_pending = 0
             source = LegacyDebugSource(debug_file_to_use)
             for record in source.records():
-                progress.update(task_id, advance=1)
+                progress_pending += 1
+                if progress_pending >= 1024:
+                    progress.update(task_id, advance=progress_pending)
+                    progress_pending = 0
                 self.diagnostics.record_raw(record.raw)
                 if (record.line_number - 1) % resort_debug_handlers_interval == 0:
                     self._resort_debug_handlers()
@@ -1097,6 +1101,9 @@ class DataParser:
                 try:
                     handler = self.parse_debug_line()
                 except Exception as exc:
+                    if progress_pending:
+                        progress.update(task_id, advance=progress_pending)
+                        progress_pending = 0
                     handler_name = "unknown"
                     match = re.search(r"handler ([^:]+)", str(exc))
                     if match:
@@ -1111,6 +1118,9 @@ class DataParser:
                     self.diagnostics.record_handled(handler, self.debug_current_line)
                 else:
                     self.diagnostics.record_unhandled(record.line_number, self.debug_current_line)
+
+            if progress_pending:
+                progress.update(task_id, advance=progress_pending)
 
         if self.debug_mode:
             print("\n=== Handler Profiling Summary ===")
