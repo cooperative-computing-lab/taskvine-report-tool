@@ -1,4 +1,4 @@
-import { BaseModule } from './base.js?v=5.5';
+import { BaseModule } from './base.js?v=5.6';
 
 const COLORS = ['#d96f24', '#747474', '#a9a9a5', '#4e4e4e', '#e6a06d', '#94948f'];
 

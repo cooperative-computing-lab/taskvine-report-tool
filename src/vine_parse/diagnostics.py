@@ -34,6 +34,14 @@ _LONG_ID_RE = re.compile(r"\b[A-Fa-f0-9]{12,}\b")
 
 
 def installed_tool_version() -> str:
+    # The running source is authoritative in editable checkouts. Distribution
+    # metadata may lag behind it until the next install or package build.
+    try:
+        from src import __version__
+        if __version__:
+            return str(__version__)
+    except (ImportError, AttributeError):
+        pass
     try:
         from importlib.metadata import version
     except ImportError:  # Python 3.7

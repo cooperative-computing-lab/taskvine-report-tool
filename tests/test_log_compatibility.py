@@ -9,8 +9,10 @@ from src.vine_parse.data_parser import DataParser
 from src.vine_parse.diagnostics import (
     LogCompatibilityError,
     inspect_run,
+    installed_tool_version,
     write_parse_manifest,
 )
+from src import __version__
 from src.vine_parse.parse import main
 from src.vine_parse.sources import LegacyDebugSource, LegacyTransactionSource
 
@@ -37,6 +39,9 @@ class LogCompatibilityTest(unittest.TestCase):
         logs.mkdir(parents=True)
         (logs / "debug").write_text(debug_text, encoding="utf-8")
         return run
+
+    def test_runtime_source_version_is_manifest_authority(self):
+        self.assertEqual(installed_tool_version(), __version__)
 
     def test_debug_source_preserves_line_numbers_and_decode_failures(self):
         run = self.make_run("source", TIMEZONE)

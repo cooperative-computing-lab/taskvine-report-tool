@@ -1,5 +1,5 @@
 import { Toolbox } from './toolbox.js?v=5.0';
-import { LineCursor } from './line_cursor.js?v=1.0';
+import { LineCursor } from './line_cursor.js?v=1.1';
 
 let jsPDF = null;
 let svg2pdf = null;

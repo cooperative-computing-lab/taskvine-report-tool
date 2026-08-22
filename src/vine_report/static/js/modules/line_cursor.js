@@ -16,6 +16,8 @@ function lowerBound(points, x) {
     return lo;
 }
 
+let pinnedCursor = null;
+
 export function normalizeLinePoints(rawPoints) {
     return (Array.isArray(rawPoints) ? rawPoints : [])
         .filter(finitePoint)
@@ -49,6 +51,20 @@ function safeFormat(formatter, value) {
     } catch (_error) {
         return String(value);
     }
+}
+
+function isActiveValue(value) {
+    return Math.abs(Number(value)) > 1e-12;
+}
+
+export function sortCursorValues(values) {
+    return [...values].sort((left, right) => {
+        const activeOrder = Number(isActiveValue(right.y)) - Number(isActiveValue(left.y));
+        if (activeOrder) return activeOrder;
+        const magnitudeOrder = Math.abs(right.y) - Math.abs(left.y);
+        if (magnitudeOrder) return magnitudeOrder;
+        return left.index - right.index;
+    });
 }
 
 export function formatCursorValue(value, unit, fallback = item => item) {
@@ -100,6 +116,8 @@ export class LineCursor {
         this.hitbox = null;
         this._animationFrame = null;
         this._pendingPointer = null;
+        this._lastRender = null;
+        this.pinned = false;
     }
 
     mount() {
@@ -125,9 +143,14 @@ export class LineCursor {
             .attr('height', Math.max(0, y1 - y0))
             .attr('fill', 'transparent')
             .attr('pointer-events', 'all')
+            .attr('tabindex', 0)
+            .attr('role', 'button')
+            .attr('aria-pressed', 'false')
             .attr('aria-label', 'Move across the plot to inspect every visible line')
             .on('pointermove', event => this._queueMove(event))
-            .on('pointerleave', () => this.hide());
+            .on('pointerleave', () => this.hide())
+            .on('click', event => this._togglePin(event))
+            .on('keydown', event => this._handleKey(event));
     }
 
     _valuesAt(x) {
@@ -141,6 +164,7 @@ export class LineCursor {
     }
 
     _queueMove(event) {
+        if (this.pinned || (pinnedCursor && pinnedCursor !== this)) return;
         const [pointerX] = d3.pointer(event, this.hitbox.node());
         this._pendingPointer = { pointerX, clientX: event.clientX, clientY: event.clientY };
         if (this._animationFrame != null) return;
@@ -148,15 +172,18 @@ export class LineCursor {
             this._animationFrame = null;
             const pointer = this._pendingPointer;
             this._pendingPointer = null;
-            if (pointer) this._move(pointer);
+            if (pointer && !this.pinned && (!pinnedCursor || pinnedCursor === this)) {
+                this._move(pointer);
+            }
         });
     }
 
     _move(event) {
         const { pointerX } = event;
         const x = this.xScale.invert(pointerX);
-        const values = this._valuesAt(x);
+        const values = sortCursorValues(this._valuesAt(x));
         if (!values.length) {
+            this._lastRender = null;
             this.hide();
             return;
         }
@@ -174,7 +201,61 @@ export class LineCursor {
             .attr('fill', '#fff')
             .attr('stroke', item => item.color || '#444');
 
+        this._lastRender = { x, values, event };
         this._renderTooltip(x, values, event);
+    }
+
+    _togglePin(event) {
+        if (this.pinned) {
+            this._setPinned(false, event);
+            return;
+        }
+        const [pointerX] = d3.pointer(event, this.hitbox.node());
+        this._move({ pointerX, clientX: event.clientX, clientY: event.clientY });
+        if (!this._lastRender) return;
+        this._setPinned(true, event);
+    }
+
+    _setPinned(pinned, event = null) {
+        if (pinned && pinnedCursor && pinnedCursor !== this) {
+            pinnedCursor._setPinned(false);
+            pinnedCursor.hide(true);
+        }
+        this.pinned = pinned;
+        if (pinned) pinnedCursor = this;
+        else if (pinnedCursor === this) pinnedCursor = null;
+        if (pinned && this._animationFrame != null) {
+            cancelAnimationFrame(this._animationFrame);
+            this._animationFrame = null;
+            this._pendingPointer = null;
+        }
+        this.hitbox?.attr('aria-pressed', String(pinned));
+        this.layer?.classed('is-pinned', pinned);
+        if (event && this._lastRender) {
+            this._renderTooltip(this._lastRender.x, this._lastRender.values, event);
+        }
+    }
+
+    _handleKey(event) {
+        if (event.key === 'Escape') {
+            this._setPinned(false);
+            this.hide(true);
+        } else if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            const [x0, x1] = d3.extent(this.xScale.range());
+            const bounds = this.hitbox.node().getBoundingClientRect();
+            const pointer = {
+                pointerX: (x0 + x1) / 2,
+                clientX: bounds.left + bounds.width / 2,
+                clientY: bounds.top + bounds.height / 2,
+            };
+            if (this.pinned) {
+                this._setPinned(false, pointer);
+            } else {
+                this._move(pointer);
+                if (this._lastRender) this._setPinned(true, pointer);
+            }
+        }
     }
 
     _renderTooltip(x, values, event) {
@@ -183,7 +264,15 @@ export class LineCursor {
 
         const heading = document.createElement('div');
         heading.className = 'line-cursor-x';
-        heading.textContent = `${this.xLabel}: ${formatCursorValue(x, this.xUnit, this.xFormatter)}`;
+        const coordinate = document.createElement('span');
+        coordinate.textContent = `${this.xLabel}: ${formatCursorValue(x, this.xUnit, this.xFormatter)}`;
+        const activeCount = values.filter(item => isActiveValue(item.y)).length;
+        const status = document.createElement('span');
+        status.className = 'line-cursor-status';
+        status.textContent = this.pinned
+            ? `Pinned · ${activeCount}/${values.length} active`
+            : `${activeCount}/${values.length} active · Click to pin`;
+        heading.append(coordinate, status);
         this.tooltip.appendChild(heading);
 
         const list = document.createElement('div');
@@ -191,7 +280,7 @@ export class LineCursor {
         list.style.setProperty('--line-cursor-columns', values.length > 12 ? '2' : '1');
         values.forEach(item => {
             const row = document.createElement('div');
-            row.className = 'line-cursor-row';
+            row.className = `line-cursor-row${isActiveValue(item.y) ? '' : ' is-zero'}`;
 
             const swatch = document.createElement('span');
             swatch.className = 'line-cursor-swatch';
@@ -207,6 +296,7 @@ export class LineCursor {
             list.appendChild(row);
         });
         this.tooltip.appendChild(list);
+        this.tooltip.classList.toggle('cursor-pinned', this.pinned);
         this.tooltip.style.visibility = 'visible';
 
         const gap = 14;
@@ -222,18 +312,21 @@ export class LineCursor {
         this.tooltip.style.top = `${top}px`;
     }
 
-    hide() {
+    hide(force = false) {
+        if (pinnedCursor && pinnedCursor !== this) return;
+        if (this.pinned && !force) return;
         if (this._animationFrame != null) cancelAnimationFrame(this._animationFrame);
         this._animationFrame = null;
         this._pendingPointer = null;
         this.layer?.style('display', 'none');
         if (!this.tooltip) return;
         this.tooltip.style.visibility = 'hidden';
-        this.tooltip.classList.remove('line-cursor-tooltip');
+        this.tooltip.classList.remove('line-cursor-tooltip', 'cursor-pinned');
     }
 
     destroy() {
-        this.hide();
+        this._setPinned(false);
+        this.hide(true);
         this.layer?.remove();
         this.hitbox?.remove();
     }

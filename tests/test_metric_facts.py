@@ -60,6 +60,14 @@ class MetricFactsTest(unittest.TestCase):
         with (self.run / "csv-files" / "metric_transfer_throughput.csv").open(newline="") as handle:
             transfer = list(csv.DictReader(handle))
         self.assertEqual(sum(float(row["input_bytes"]) for row in transfer), 100)
+        self.assertEqual([float(row["time"]) for row in transfer], [0.0, 1.0])
+        with (self.run / "csv-files" / "metric_failure_timeline.csv").open(newline="") as handle:
+            failures = list(csv.DictReader(handle))
+        self.assertEqual([float(row["time"]) for row in failures], [0.0, 1.0])
+        self.assertEqual([int(row["count"]) for row in failures], [0, 1])
+        with (self.run / "csv-files" / "metric_worker_churn.csv").open(newline="") as handle:
+            churn = list(csv.DictReader(handle))
+        self.assertEqual((float(churn[0]["time"]), float(churn[-1]["time"])), (0.0, 2.0))
 
     def test_incomplete_run_fails_closed(self):
         (self.run / "vine-logs" / "transactions").write_text(

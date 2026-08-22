@@ -25,8 +25,12 @@ only provide series data, formatting, visibility, and either linear or step
 interpolation semantics; do not add separate per-path hover implementations.
 
 The cursor reports every visible series whose domain contains the current x
-coordinate. It is animation-frame throttled, and its lifecycle follows the base
-module so redraws and view changes cannot leave stale overlays behind.
+coordinate. Active values sort ahead of zero values without hiding evidence,
+and the tooltip reports the active/total count. A click pins the inspection for
+comparison or screenshots; a second click or `Escape` releases it. The hitbox is
+keyboard accessible. Interaction is animation-frame throttled, and its lifecycle
+follows the base module so redraws and view changes cannot leave stale overlays
+behind.
 
 Paths are clipped by one shared SVG plot clip rather than by rewriting their
 points. This preserves step geometry at viewport boundaries. The optional CDF

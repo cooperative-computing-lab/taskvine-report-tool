@@ -360,11 +360,18 @@ button { color: inherit; }
 #vine-tooltip { position: fixed; z-index: 130; padding: 10px 12px; visibility: hidden; border: 1px solid #222; border-radius: var(--radius-sm); background: rgba(25,25,25,.97); color: #fafafa; box-shadow: var(--shadow-lg); font-size: var(--text-sm); font-weight: 500; line-height: 1.5; pointer-events: none; }
 .line-cursor-guide { stroke: #777; stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
 .line-cursor-marker { stroke-width: 2; vector-effect: non-scaling-stroke; }
-.line-cursor-hitbox { cursor: crosshair; }
+.line-cursor-layer.is-pinned .line-cursor-guide { stroke: #d96f24; stroke-width: 1.5; }
+.line-cursor-layer.is-pinned .line-cursor-marker { fill: #fff7f1; }
+.line-cursor-hitbox { cursor: crosshair; outline: none; }
+.line-cursor-hitbox:focus-visible { stroke: #fff; stroke-width: 1.5; stroke-dasharray: 4 3; }
 #vine-tooltip.line-cursor-tooltip { min-width: 230px; max-width: min(560px, calc(100vw - 20px)); padding: 0; overflow: hidden; border-color: #111; border-radius: 6px; background: rgba(24,24,24,.97); }
-.line-cursor-x { padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,.16); color: #fff; font-size: var(--text-xs); font-weight: 750; letter-spacing: .015em; }
+.line-cursor-x { padding: 9px 12px; display: flex; align-items: baseline; justify-content: space-between; gap: 18px; border-bottom: 1px solid rgba(255,255,255,.16); color: #fff; font-size: var(--text-xs); font-weight: 750; letter-spacing: .015em; }
+.line-cursor-status { color: #aaa; font-size: 10px; font-weight: 600; white-space: nowrap; }
+#vine-tooltip.cursor-pinned { border-color: #d96f24; box-shadow: 0 10px 30px rgba(0,0,0,.35), 0 0 0 1px rgba(217,111,36,.3); }
+#vine-tooltip.cursor-pinned .line-cursor-status { color: #f0a16b; }
 .line-cursor-values { display: grid; grid-template-columns: repeat(var(--line-cursor-columns, 1), minmax(210px, 1fr)); padding: 6px; }
 .line-cursor-row { min-width: 0; padding: 5px 6px; display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.line-cursor-row.is-zero { opacity: .48; }
 .line-cursor-swatch { width: 7px; height: 7px; border-radius: 99px; }
 .line-cursor-label { overflow: hidden; color: #d8d8d4; text-overflow: ellipsis; white-space: nowrap; }
 .line-cursor-value { color: #fff; font-variant-numeric: tabular-nums; font-weight: 700; }

@@ -125,6 +125,7 @@ test('line grids inspect every visible series at the cursor x position', async (
   await expect(tooltip).toHaveClass(/line-cursor-tooltip/);
   await expect(tooltip).toBeVisible();
   await expect(tooltip.locator('.line-cursor-x')).toContainText('Runtime');
+  await expect(tooltip.locator('.line-cursor-status')).toContainText('active · Click to pin');
   await expect(tooltip.locator('.line-cursor-row')).toHaveCount(3);
   await expect(card.locator('.line-cursor-marker')).toHaveCount(3);
   await expect(card.locator('.line-cursor-layer')).toBeVisible();
@@ -134,8 +135,56 @@ test('line grids inspect every visible series at the cursor x position', async (
   await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.45);
   await expect(tooltip.locator('.line-cursor-row')).toHaveCount(2);
 
+  await page.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.45);
+  await expect(tooltip).toHaveClass(/cursor-pinned/);
+  await expect(tooltip.locator('.line-cursor-status')).toContainText('Pinned');
+  const pinnedCoordinate = await tooltip.locator('.line-cursor-x').textContent();
+  const competingHitbox = page.locator('[data-module="worker-executing-tasks"] .line-cursor-hitbox');
+  await expect(competingHitbox).toBeVisible();
+  await competingHitbox.hover({ position: { x: 30, y: 30 } });
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip).toHaveClass(/cursor-pinned/);
+  await expect(tooltip.locator('.line-cursor-x')).toHaveText(pinnedCoordinate);
+  await expect(hitbox).toHaveAttribute('aria-pressed', 'true');
+  await hitbox.press('Escape');
+  await expect(tooltip).toBeHidden();
+
   await page.mouse.move(box.x - 10, box.y - 10);
   await expect(tooltip).toBeHidden();
+});
+
+test('line cursor prioritizes active series and stays fast at scale', async ({ page }) => {
+  await page.goto('/?run=run-a');
+  await expectRun(page, 'run-a');
+  const result = await page.evaluate(async () => {
+    const { LineCursor, sortCursorValues } = await import('/static/js/modules/line_cursor.js?v=scale-test');
+    const sorted = sortCursorValues([
+      { id: 'zero-a', index: 0, y: 0 },
+      { id: 'small', index: 1, y: 2 },
+      { id: 'large', index: 2, y: -7 },
+      { id: 'zero-b', index: 3, y: 0 },
+    ]).map(item => item.id);
+    const series = Array.from({ length: 120 }, (_, seriesIndex) => ({
+      id: `series-${seriesIndex}`,
+      points: Array.from({ length: 2000 }, (_, pointIndex) => [pointIndex, (seriesIndex + pointIndex) % 9]),
+    }));
+    const cursor = new LineCursor({
+      svg: d3.select(document.createElementNS('http://www.w3.org/2000/svg', 'svg')),
+      xScale: d3.scaleLinear().domain([0, 1999]).range([0, 1000]),
+      yScale: d3.scaleLinear().domain([0, 8]).range([500, 0]),
+      series,
+      tooltip: document.createElement('div'),
+    });
+    const start = performance.now();
+    let sampled = 0;
+    for (let index = 0; index < 500; index += 1) {
+      sampled += cursor._valuesAt((index * 37) % 1999).length;
+    }
+    return { sorted, sampled, durationMs: performance.now() - start };
+  });
+  expect(result.sorted).toEqual(['large', 'small', 'zero-a', 'zero-b']);
+  expect(result.sampled).toBe(60_000);
+  expect(result.durationMs).toBeLessThan(1500);
 });
 
 test('Display CDF renders and restores a generic scatter metric', async ({ page }) => {

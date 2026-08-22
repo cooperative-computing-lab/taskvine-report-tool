@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026.8.2 - 2026-08-22
+
+### Added
+
+- Plot-wide line inspection that reports every visible series at the cursor's
+  x coordinate, with active-first ordering and explicit active/total counts.
+- Click-to-pin and keyboard-accessible line cursors; `Escape` releases a pinned
+  cursor.
+- Shared temporal policies for state and bucket series, plus scale regression
+  coverage for 120 series with 240,000 source points.
+
+### Changed
+
+- All time-linked line metrics use the manager runtime as their canonical
+  domain. Debug-origin data is aligned once at the service boundary.
+- State series explicitly cover both runtime boundaries, while rate and count
+  series materialize empty buckets as zero.
+- Step paths use SVG clipping so viewport boundaries preserve step geometry.
+- Generic scatter metrics can enter and leave Display CDF mode using the same
+  shared cursor interaction.
+
+### Compatibility
+
+- Sparse artifacts from older parser versions are normalized by the API.
+- Reparse with 2026.8.2 writes dense bucket facts and explicit lifecycle
+  boundaries where those are part of the artifact contract.
+
 ## 2026.8.1 - 2026-08-20
 
 ### Added
