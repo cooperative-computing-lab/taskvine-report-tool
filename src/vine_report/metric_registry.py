@@ -21,6 +21,8 @@ class MetricSpec:
     y_unit: str = "count"
     curve: str = "linear"
     time_linked: bool = False
+    time_origin: str = "debug"
+    temporal_policy: str | None = None
     visible: bool = True
     source: str = "debug"
     inclusion: str = "observed records"
@@ -45,6 +47,8 @@ class MetricSpec:
 
 
 def _m(id, title, description, group, renderer, artifact, **kwargs):
+    if kwargs.get("mode") == "source":
+        kwargs.setdefault("time_origin", "manager")
     return MetricSpec(id, title, description, group, renderer, artifact, **kwargs)
 
 
@@ -57,6 +61,7 @@ _SPECS = [
        "Shows how quickly application task attempts finish. Compare successful and failed rates to identify slowdowns or bursts of failure.",
        "tasks", "line", "metric_task_throughput.csv", mode="source", x_unit="seconds",
        y_unit="attempts_per_second", curve="step", time_linked=True,
+       temporal_policy="bucket_zero",
        source="transactions+debug-classification",
        series_columns=(("Successful", "success_rate_per_second"), ("Failed", "failure_rate_per_second")),
        options={"x_label": "Runtime", "y_label": "Attempts / second"}),
@@ -70,11 +75,12 @@ _SPECS = [
        "Groups failed application attempts by outcome over the run, making failure clusters and recurring causes easier to spot.",
        "tasks", "grouped", "metric_failure_timeline.csv", mode="source", x_unit="seconds", y_unit="count",
        curve="step", time_linked=True, source="transactions+debug-classification",
+       temporal_policy="bucket_zero",
        options={"group": "status", "value": "count", "x_label": "Runtime", "y_label": "Failed attempts"}),
     _m("task-concurrency", "Task Concurrency",
        "Tracks how many tasks occupy each lifecycle state as the workflow progresses.",
        "tasks", "line", "task_concurrency.csv", mode="columns", x_unit="seconds", y_unit="count",
-       curve="step", time_linked=True, visible=False,
+       curve="step", time_linked=True, temporal_policy="state", visible=False,
        series_columns=(("Waiting", "Waiting"), ("Committing", "Committing"), ("Executing", "Executing"),
                        ("Retrieving", "Retrieving"), ("Done", "Done"))),
     _m("task-response-time", "Task Response Time",
@@ -96,7 +102,7 @@ _SPECS = [
     _m("task-completion-percentiles", "Task Completion Percentiles",
        "Shows when successive percentages of tasks completed relative to the beginning of the run.",
        "tasks", "line_points", "task_completion_percentiles.csv", x_field="Completion Time", y_field="Percentile",
-       x_unit="seconds", y_unit="percent", visible=False),
+       x_unit="seconds", y_unit="percent", time_linked=True, temporal_policy="state", visible=False),
     _m("task-dependencies", "Task Dependencies",
        "Shows how many upstream producer tasks each task depends on through its input files.",
        "tasks", "scatter", "task_dependencies.csv", x_field="Global Index", y_field="Dependency Count",
@@ -111,23 +117,25 @@ _SPECS = [
     _m("worker-concurrency", "Worker Concurrency",
        "Tracks the number of connected workers over time, revealing scale-up, scale-down, and availability gaps.",
        "workers", "line", "worker_concurrency.csv", y_field="Active Workers (count)", x_unit="seconds",
-       y_unit="count", curve="step", time_linked=True),
+       y_unit="count", curve="step", time_linked=True, temporal_policy="state"),
     _m("worker-capacity", "Worker Capacity",
        "Compares available cores, committed cores, and running tasks over time. Committed cores represent scheduler occupancy, not CPU utilization.",
        "workers", "line", "metric_worker_capacity.csv", mode="source", x_unit="seconds", y_unit="count",
        curve="step", time_linked=True, source="performance",
+       temporal_policy="state",
        series_columns=(("Total cores", "total_cores"), ("Committed cores", "committed_cores"),
                        ("Running tasks", "tasks_running")),
        options={"x_label": "Runtime", "y_label": "Count"}),
     _m("worker-churn", "Worker Churn",
        "Tracks active workers as connections open and close, making unstable worker populations visible.",
        "workers", "line", "metric_worker_churn.csv", mode="source", x_unit="seconds", y_unit="count",
-       curve="step", time_linked=True, source="transactions", series_columns=(("Active workers", "active"),),
+       curve="step", time_linked=True, temporal_policy="state", source="transactions", series_columns=(("Active workers", "active"),),
        options={"x_label": "Runtime", "y_label": "Workers"}),
     _m("worker-storage-consumption", "Worker Cache Occupancy",
        "Shows TaskVine-managed cache payload retained on workers. It does not represent total physical disk utilization.",
        "workers", "line", "metric_worker_cache_occupancy.csv", mode="cache_occupancy", x_unit="seconds",
        y_unit="bytes", curve="step", time_linked=True,
+       temporal_policy="state",
        source="debug-cache-lifecycle+performance-reconciliation",
        inclusion="cache-update to cache-invalid/unlink residencies",
        exclusions="sandbox,temp,logs,filesystem-overhead",
@@ -135,12 +143,12 @@ _SPECS = [
     _m("worker-executing-tasks", "Executing Tasks by Worker",
        "Shows how many tasks each worker executes over time, revealing load balance and idle capacity.",
        "workers", "line", "worker_executing_tasks.csv", mode="wide", x_unit="seconds", y_unit="count",
-       curve="step", time_linked=True, excluded_columns=("workflow_completion_percentage",),
+       curve="step", time_linked=True, temporal_policy="state", excluded_columns=("workflow_completion_percentage",),
        options={"default_series_limit": 24}),
     _m("worker-waiting-retrieval-tasks", "Waiting Retrieval by Worker",
        "Shows completed tasks waiting for output retrieval on each worker.",
        "workers", "line", "worker_waiting_retrieval_tasks.csv", mode="wide", x_unit="seconds", y_unit="count",
-       curve="step", time_linked=True, visible=False, excluded_columns=("workflow_completion_percentage",),
+       curve="step", time_linked=True, temporal_policy="state", visible=False, excluded_columns=("workflow_completion_percentage",),
        options={"default_series_limit": 24}),
     _m("worker-lifetime", "Worker Lifetime",
        "Compares how long workers remained connected to the manager during the run.",
@@ -149,17 +157,18 @@ _SPECS = [
     _m("worker-incoming-transfers", "Incoming Transfers",
        "Shows concurrent transfers arriving at each worker, helping identify receivers under sustained transfer pressure.",
        "transfers", "line", "worker_incoming_transfers.csv", mode="wide", x_unit="seconds", y_unit="count",
-       curve="step", time_linked=True, excluded_columns=("workflow_completion_percentage",),
+       curve="step", time_linked=True, temporal_policy="state", excluded_columns=("workflow_completion_percentage",),
        options={"default_series_limit": 24}),
     _m("worker-outgoing-transfers", "Outgoing Transfers",
        "Shows concurrent transfers leaving each worker, helping identify heavily used data sources.",
        "transfers", "line", "worker_outgoing_transfers.csv", mode="wide", x_unit="seconds", y_unit="count",
-       curve="step", time_linked=True, excluded_columns=("workflow_completion_percentage",),
+       curve="step", time_linked=True, temporal_policy="state", excluded_columns=("workflow_completion_percentage",),
        options={"default_series_limit": 24}),
     _m("transfer-throughput", "Transfer Throughput",
        "Shows completed input and output payload bytes per second. This is payload throughput, not physical network utilization.",
        "transfers", "line", "metric_transfer_throughput.csv", mode="source", x_unit="seconds",
        y_unit="bytes_per_second", curve="step", time_linked=True, source="transactions",
+       temporal_policy="bucket_zero",
        series_columns=(("Input", "input_bytes_per_second"), ("Output", "output_bytes_per_second")),
        options={"x_label": "Runtime", "y_label": "Payload bytes / second"}),
     _m("file-sizes", "File Sizes",
@@ -177,11 +186,11 @@ _SPECS = [
     _m("file-transferred-size", "Cumulative Data Transferred",
        "Tracks the cumulative volume of file data transferred as the workflow progresses.",
        "files", "line", "file_transferred_size.csv", y_field="cumulative_size_mb", x_unit="seconds",
-       y_unit="bytes", curve="step", time_linked=True, value_scale=2**20),
+       y_unit="bytes", curve="step", time_linked=True, temporal_policy="state", value_scale=2**20),
     _m("file-created-size", "Cumulative Data Created",
        "Tracks the cumulative size of files first observed or produced during the run.",
        "files", "line", "file_created_size.csv", y_field="cumulative_size_mb", x_unit="seconds",
-       y_unit="bytes", curve="step", time_linked=True, value_scale=2**20),
+       y_unit="bytes", curve="step", time_linked=True, temporal_policy="state", value_scale=2**20),
 ]
 
 METRIC_SPECS = {spec.id: spec for spec in _SPECS}

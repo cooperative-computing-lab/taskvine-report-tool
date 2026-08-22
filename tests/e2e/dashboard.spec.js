@@ -124,7 +124,7 @@ test('line grids inspect every visible series at the cursor x position', async (
   const tooltip = page.locator('#vine-tooltip');
   await expect(tooltip).toHaveClass(/line-cursor-tooltip/);
   await expect(tooltip).toBeVisible();
-  await expect(tooltip.locator('.line-cursor-x')).toContainText('Time');
+  await expect(tooltip.locator('.line-cursor-x')).toContainText('Runtime');
   await expect(tooltip.locator('.line-cursor-row')).toHaveCount(3);
   await expect(card.locator('.line-cursor-marker')).toHaveCount(3);
   await expect(card.locator('.line-cursor-layer')).toBeVisible();
@@ -136,6 +136,28 @@ test('line grids inspect every visible series at the cursor x position', async (
 
   await page.mouse.move(box.x - 10, box.y - 10);
   await expect(tooltip).toBeHidden();
+});
+
+test('Display CDF renders and restores a generic scatter metric', async ({ page }) => {
+  await page.goto('/?run=run-a');
+  await expectRun(page, 'run-a');
+  await page.locator('.nav-item[data-view="files"]').click();
+
+  const card = page.locator('[data-module="file-sizes"]');
+  await expect(card.locator('circle.file-sizes-series-0-point').first()).toBeVisible();
+  await card.locator('.toolbox-toggle-button').click();
+  await card.getByRole('button', { name: 'Display CDF', exact: true }).click();
+
+  const cdf = card.locator('path.cdf-path');
+  await expect(cdf).toBeVisible();
+  await expect(cdf).toHaveAttribute('d', /L/);
+  await expect(card.locator('circle.cdf-point')).toHaveCount(100);
+  await expect(card.locator('.line-cursor-hitbox')).toBeVisible();
+
+  await card.locator('.toolbox-toggle-button').click();
+  await card.getByRole('button', { name: 'Undisplay CDF', exact: true }).click();
+  await expect(card.locator('circle.file-sizes-series-0-point').first()).toBeVisible();
+  await expect(card.locator('path.cdf-path')).toHaveCount(0);
 });
 
 test('every visible chart section has a readable explanation', async ({ page }) => {

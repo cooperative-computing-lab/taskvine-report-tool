@@ -1,4 +1,4 @@
-import { BaseModule } from './base.js?v=5.4';
+import { BaseModule } from './base.js?v=5.5';
 
 const COLORS = ['#d96f24', '#747474', '#a9a9a5', '#4e4e4e', '#e6a06d', '#94948f'];
 
@@ -38,7 +38,7 @@ export class SourceMetricModule extends BaseModule {
         const series = (payload.series || []).filter(item => Array.isArray(item.points) && item.points.length);
         const allPoints = series.flatMap(item => item.points);
         if (!allPoints.length) return { error: 'No validated observations are available for this metric.' };
-        const xDomain = finiteExtent(allPoints.map(point => point[0]));
+        const xDomain = finiteExtent(payload.axes?.x?.domain || allPoints.map(point => point[0]));
         const yDomain = finiteExtent(allPoints.map(point => point[1]));
         if (payload.kind === 'cdf') {
             yDomain[1] = 1;

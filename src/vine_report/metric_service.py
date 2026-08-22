@@ -10,6 +10,7 @@ from pathlib import Path
 
 from src.vine_parse.metric_facts import METRIC_SEMANTICS_VERSION
 from src.vine_report.metric_registry import metric_spec
+from src.vine_report.temporal_series import normalize_temporal_points, time_context
 
 
 def _definition(metric_id):
@@ -74,6 +75,7 @@ def _metric_payload(csv_dir_string: str, metric_id: str):
     if definition is None:
         return None
     csv_dir = Path(csv_dir_string)
+    spec = metric_spec(metric_id)
     contract = _contracts(csv_dir).get(metric_id)
     if contract is None:
         contract = {
@@ -141,6 +143,24 @@ def _metric_payload(csv_dir_string: str, metric_id: str):
                 if x is not None and y is not None:
                     points.append([x, y])
             payload["series"].append({"name": label, "points": _bounded(points)})
+    context = time_context(csv_dir_string)
+    if spec.time_linked:
+        bucket_width = next(
+            (_number(row.get("bucket_seconds")) for row in rows if _number(row.get("bucket_seconds")) is not None),
+            None,
+        )
+        for series in payload["series"]:
+            series["points"] = normalize_temporal_points(
+                series["points"], context,
+                origin=spec.time_origin,
+                policy=spec.temporal_policy,
+                bucket_width=bucket_width,
+            )
+        if context.domain is not None:
+            payload["axes"] = {
+                "x": {"unit": spec.x_unit, "domain": list(context.domain), "label": definition["x_label"]},
+                "y": {"unit": spec.y_unit, "label": definition["y_label"]},
+            }
     payload["available"] = any(series["points"] for series in payload["series"])
     return payload
 

@@ -146,6 +146,38 @@ class ChartServiceTest(unittest.TestCase):
         self.assertEqual({item["id"] for item in selected["series"]}, set(workers[:2]))
         self.assertNotIn("omitted_series", selected["metadata"])
 
+    def test_sparse_lifecycle_series_cover_canonical_domain(self):
+        self.write(
+            "metadata.csv", ["key", "value"],
+            [["manager_start_time", 1000], ["manager_end_time", 1100], ["manager_duration", 100]],
+        )
+        self.write("time_domain.csv", ["MIN_TIME", "MAX_TIME"], [[0, 90]])
+        self.write(
+            "worker_executing_tasks.csv",
+            ["time", "worker-a", "worker-b"],
+            [[10, 0, ""], [20, 1, ""], [30, 0, 0], [40, "", 2], [50, "", 0]],
+        )
+        payload = chart_payload(
+            self.snapshot(), "worker-executing-tasks", normalize_query(MultiDict()),
+        )
+        self.assertEqual(payload["axes"]["x"]["domain"], [0.0, 100.0])
+        for series in payload["series"]:
+            self.assertEqual(series["points"][0], [0.0, 0.0])
+            self.assertEqual(series["points"][-1], [100.0, 0.0])
+
+        windowed = chart_payload(
+            self.snapshot(), "worker-executing-tasks",
+            normalize_query(MultiDict([("start", "15"), ("end", "45")])),
+        )
+        self.assertEqual(windowed["axes"]["x"]["domain"], [15.0, 45.0])
+        self.assertTrue(all(item["points"][0][0] == 15 for item in windowed["series"]))
+        self.assertTrue(all(item["points"][-1][0] == 45 for item in windowed["series"]))
+
+    def test_standard_time_linked_lines_declare_temporal_semantics(self):
+        for spec in METRIC_SPECS.values():
+            if spec.time_linked and spec.mode != "custom":
+                self.assertIn(spec.temporal_policy, {"state", "bucket_zero"}, spec.id)
+
 
 if __name__ == "__main__":
     unittest.main()

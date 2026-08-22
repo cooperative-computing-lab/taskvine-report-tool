@@ -459,11 +459,11 @@ class CSVManager:
                     'cumulative': [],
                 })
             x_max = self.MAX_TIME - self.MIN_TIME
-            if all_times and max(all_times) < float(x_max) - 1e-6:
-                for key in col_data:
-                    last_t = max(col_data[key].keys())
-                    col_data[key][float(x_max)] = col_data[key][last_t]
-                    all_times.add(float(x_max))
+            for key in col_data:
+                col_data[key].setdefault(0.0, 0.0)
+                last_time = max(col_data[key])
+                col_data[key][float(x_max)] = col_data[key][last_time]
+            all_times.update((0.0, float(x_max)))
             sorted_times = sorted(all_times)
             out_df = pl.DataFrame({'time': sorted_times})
             for key in sorted(col_data):
@@ -1071,11 +1071,11 @@ class CSVManager:
                 return
 
             x_max = floor_decimal(self.MAX_TIME - base_time, 2)
-            if time_set and max(time_set) < float(x_max) - 1e-6:
-                for c in column_data:
-                    last_t = max(column_data[c].keys())
-                    column_data[c][float(x_max)] = column_data[c][last_t]
-                    time_set.add(float(x_max))
+            for values in column_data.values():
+                values.setdefault(0.0, 0.0)
+                last_time = max(values)
+                values[float(x_max)] = values[last_time]
+            time_set.update((0.0, float(x_max)))
 
             sorted_times = sorted(time_set)
             rows = []

@@ -357,7 +357,9 @@ class DashboardAPITest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json["run_id"], "run-a")
         self.assertTrue(response.json["data"]["available"])
-        self.assertEqual(response.json["data"]["series"][0]["points"], [[0.0, 2.0], [1.0, 1.0]])
+        points = response.json["data"]["series"][0]["points"]
+        self.assertEqual(points[:3], [[0.0, 2.0], [1.0, 1.0], [2.0, 0.0]])
+        self.assertEqual(points[-1], [20.0, 0.0])
 
         unavailable = self.client.get(
             f"/api/v1/runs/run-a/revisions/{revision}/metrics/task-latency"

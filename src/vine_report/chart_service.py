@@ -14,6 +14,7 @@ from pathlib import Path
 import polars as pl
 
 from .metric_registry import MetricSpec, metric_spec
+from .temporal_series import normalize_temporal_points, time_context
 
 
 class ChartQueryError(ValueError):
@@ -159,7 +160,18 @@ def _window(points, start, end, state=False):
         result.append(point)
     if state and baseline is not None and start is not None:
         result.insert(0, [start, baseline[1], *baseline[2:]])
+    if state and end is not None and result and result[-1][0] < end:
+        result.append([end, result[-1][1], *result[-1][2:]])
     return result
+
+
+def _temporal_points(points, csv_dir: Path, spec: MetricSpec):
+    return normalize_temporal_points(
+        points,
+        time_context(str(csv_dir)),
+        origin=spec.time_origin,
+        policy=spec.temporal_policy,
+    )
 
 
 def _read(path: Path) -> pl.DataFrame:
@@ -202,6 +214,7 @@ def _build_standard(csv_dir: Path, spec: MetricSpec, query: dict):
             )
         for column in columns:
             points = [[float(x), float(y)] for x, y in frame.select([spec.x_field, column]).drop_nulls().iter_rows()]
+            points = _temporal_points(points, csv_dir, spec)
             points = _window(points, query["start"], query["end"], state)
             input_points += len(points)
             points = _sample_points(points, query["max_points"], state)
@@ -216,6 +229,7 @@ def _build_standard(csv_dir: Path, spec: MetricSpec, query: dict):
             if column not in frame.columns or (selected and column not in selected):
                 continue
             points = [[float(x), float(y)] for x, y in frame.select([spec.x_field, column]).drop_nulls().iter_rows()]
+            points = _temporal_points(points, csv_dir, spec)
             points = _window(points, query["start"], query["end"], state)
             input_points += len(points)
             points = _sample_points(points, query["max_points"], state)
@@ -247,6 +261,7 @@ def _build_standard(csv_dir: Path, spec: MetricSpec, query: dict):
                 lookup[str(x)] = str(row[spec.lookup_field])
         points.sort(key=lambda point: point[0])
         if spec.time_linked:
+            points = _temporal_points(points, csv_dir, spec)
             points = _window(points, query["start"], query["end"], state)
         if spec.mode == "grouped_points":
             grouped = defaultdict(list)
@@ -348,6 +363,7 @@ def _build_cache_occupancy(csv_dir: Path, query: dict):
             .with_columns(pl.col("delta_bytes").cum_sum().clip(0).alias("value"))
         )
         points = [[float(x), float(y)] for x, y in states.select(["time", "value"]).iter_rows()]
+        points = _temporal_points(points, csv_dir, cache_spec)
         points = _window(points, query["start"], query["end"], True)
         input_points += len(points)
         points = _sample_points(points, query["max_points"], True)
@@ -381,11 +397,18 @@ def _cached_payload(csv_dir_string: str, metric_id: str, query_items: tuple) -> 
             **contract, "status": "PARTIAL",
             "caveat": "Legacy cache projection; re-run vine_parse for residency evidence and reconciliation.",
         }
+    context = time_context(str(csv_dir))
+    x_domain = _extent(series, 0)
+    if spec.time_linked and context.domain is not None:
+        x_domain = [
+            query.get("start") if query.get("start") is not None else context.domain[0],
+            query.get("end") if query.get("end") is not None else context.domain[1],
+        ]
     return {
         "metric_id": metric_id, "available": bool(series), "contract": contract,
         "renderer": spec.renderer, "curve": spec.curve,
         "axes": {
-            "x": {"unit": spec.x_unit, "domain": _extent(series, 0)},
+            "x": {"unit": spec.x_unit, "domain": x_domain},
             "y": {"unit": spec.y_unit, "domain": _extent(series, 1)},
         },
         "series": series, "query": query,

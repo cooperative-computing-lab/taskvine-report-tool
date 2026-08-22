@@ -61,14 +61,15 @@ def _write_csv(path: Path, fields: list[str], rows: list[dict]) -> None:
 def _bucket_rows(events, start_epoch, end_epoch, value_keys, max_points=400):
     duration = max(0.0, end_epoch - start_epoch)
     width = max(1.0, math.ceil(duration / max_points))
+    bucket_count = max(1, math.ceil(duration / width))
     buckets = defaultdict(lambda: defaultdict(float))
     for timestamp, values in events:
         offset = max(0.0, timestamp - start_epoch)
-        index = int(offset // width)
+        index = min(bucket_count - 1, int(offset // width))
         for key, value in values.items():
             buckets[index][key] += value
     rows = []
-    for index in sorted(buckets):
+    for index in range(bucket_count):
         row = {"time": round(index * width, 6), "bucket_seconds": width}
         for key in value_keys:
             row[key] = buckets[index].get(key, 0.0)
@@ -524,12 +525,15 @@ class MetricFactBuilder:
 
         failure_buckets = defaultdict(Counter)
         width = max(1.0, math.ceil(max(0.0, end_epoch - start_epoch) / 400))
+        failure_bucket_count = max(1, math.ceil(max(0.0, end_epoch - start_epoch) / width))
         for timestamp, status in failure_events:
-            failure_buckets[int(max(0, timestamp - start_epoch) // width)][status] += 1
+            index = min(failure_bucket_count - 1, int(max(0, timestamp - start_epoch) // width))
+            failure_buckets[index][status] += 1
+        failure_statuses = sorted({status for counts in failure_buckets.values() for status in counts})
         failure_rows = [
-            {"time": index * width, "status": status, "count": count}
-            for index in sorted(failure_buckets)
-            for status, count in sorted(failure_buckets[index].items())
+            {"time": index * width, "status": status, "count": failure_buckets[index][status]}
+            for index in range(failure_bucket_count)
+            for status in failure_statuses
         ]
         _write_csv(self.csv_dir / "metric_failure_timeline.csv", ["time", "status", "count"], failure_rows)
 
@@ -541,6 +545,14 @@ class MetricFactBuilder:
                 "time": max(0.0, timestamp - start_epoch),
                 "connected": int(delta > 0), "disconnected": int(delta < 0),
                 "active": active, "reason": reason,
+            })
+        if not churn_rows or churn_rows[0]["time"] > 0:
+            churn_rows.insert(0, {"time": 0.0, "connected": 0, "disconnected": 0, "active": 0, "reason": "BASELINE"})
+        duration = max(0.0, end_epoch - start_epoch)
+        if churn_rows[-1]["time"] < duration:
+            churn_rows.append({
+                "time": duration, "connected": 0, "disconnected": 0,
+                "active": churn_rows[-1]["active"], "reason": "MANAGER_END",
             })
         _write_csv(self.csv_dir / "metric_worker_churn.csv", ["time", "connected", "disconnected", "active", "reason"], churn_rows)
 

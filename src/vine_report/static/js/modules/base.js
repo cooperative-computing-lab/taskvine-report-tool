@@ -118,6 +118,7 @@ export class BaseModule {
         this._hasScatterPlot = false;
         this._cdfMode = false;
         this._lineCursor = null;
+        this._plotClipId = null;
     }
 
     switchFolder(folder, revision = null, generation = 0) {
@@ -1038,6 +1039,13 @@ export class BaseModule {
             .attr('preserveAspectRatio', 'xMidYMid meet')
             .append('g')
             .attr('transform', `translate(${margin.left}, ${margin.top})`);
+        this._plotClipId = `${this.id.replace(/[^a-zA-Z0-9_-]/g, '-')}-plot-clip-${this._renderSequence}`;
+        this.svg.append('defs')
+            .append('clipPath')
+            .attr('id', this._plotClipId)
+            .append('rect')
+            .attr('width', svgWidth)
+            .attr('height', svgHeight);
         
         /* plot the axes */
         if (this.topScaleType) {
@@ -1071,11 +1079,6 @@ export class BaseModule {
     }
 
     plotPath(points, options = {}) {
-        const [xmin, xmax] = this.bottomDomain ?? [0, Infinity];
-        const [ymin, ymax] = this.leftDomain ?? [0, Infinity];
-
-        const filteredPoints = this._clipLineToRect(points, xmin, xmax, ymin, ymax);
-
         const {
             stroke = '#2077B4',
             strokeWidth = 1.5,
@@ -1096,7 +1099,7 @@ export class BaseModule {
             .curve(curveType);
 
         const pathElement = this.svg.append('path')
-            .datum(filteredPoints)
+            .datum(points)
             .attr('fill', 'none')
             .attr('stroke', stroke)
             .attr('stroke-width', strokeWidth)
@@ -1104,7 +1107,8 @@ export class BaseModule {
             .attr('data-original-stroke', stroke)
             .attr('data-original-stroke-width', strokeWidth)
             .attr('class', `${className} ${className}-${id}`)
-            .attr('id', id);
+            .attr('id', id)
+            .attr('clip-path', this._plotClipId ? `url(#${this._plotClipId})` : null);
 
         if (!disableHover) {
             pathElement
@@ -1551,45 +1555,6 @@ export class BaseModule {
 
     initLegend() {}
 
-    /**
-     * Clip line points to rect [xmin,xmax] x [ymin,ymax], adding interpolated boundary
-     * points when segments cross any edge so the line extends to the visible edges.
-     */
-    _clipLineToRect(points, xmin, xmax, ymin, ymax) {
-        if (!points || points.length < 2) return points || [];
-        if (xmin == null || xmax == null || ymin == null || ymax == null) return points;
-        const result = [];
-        const inside = (x, y) => x >= xmin && x <= xmax && y >= ymin && y <= ymax;
-        const valid = (p) => Array.isArray(p) && p.length >= 2 && typeof p[0] === 'number' &&
-            typeof p[1] === 'number' && !Number.isNaN(p[0]) && !Number.isNaN(p[1]) && p[1] !== null;
-        for (let i = 0; i < points.length; i++) {
-            const p = points[i];
-            if (valid(p) && inside(p[0], p[1])) result.push([p[0], p[1]]);
-        }
-        for (let i = 0; i < points.length - 1; i++) {
-            const [x1, y1] = points[i];
-            const [x2, y2] = points[i + 1];
-            if (!valid(points[i]) || !valid(points[i + 1])) continue;
-            const dx = x2 - x1, dy = y2 - y1;
-            const addAtT = (t) => {
-                if (t > 1e-9 && t < 1 - 1e-9) {
-                    const x = x1 + t * dx, y = y1 + t * dy;
-                    if (x >= xmin && x <= xmax && y >= ymin && y <= ymax) result.push([x, y]);
-                }
-            };
-            if (Math.abs(dx) > 1e-12) {
-                addAtT((xmin - x1) / dx);
-                addAtT((xmax - x1) / dx);
-            }
-            if (Math.abs(dy) > 1e-12) {
-                addAtT((ymin - y1) / dy);
-                addAtT((ymax - y1) / dy);
-            }
-        }
-        const sorted = result.sort((a, b) => a[0] - b[0]);
-        return sorted.filter((p, i) => i === 0 || Math.abs(p[0] - sorted[i - 1][0]) > 1e-9 || Math.abs(p[1] - sorted[i - 1][1]) > 1e-9);
-    }
-
     _filterPoints(points) {
         const [xmin, xmax] = this.bottomDomain ?? [null, null];
         const [ymin, ymax] = this.leftDomain ?? [null, null];
@@ -1696,8 +1661,9 @@ export class BaseModule {
     }
 
     _getPointsForCdf() {
-        const pts = this.data?.['points'] ?? this.data?.points;
-        return Array.isArray(pts) ? pts : [];
+        if (Array.isArray(this.data?.points)) return this.data.points;
+        if (!Array.isArray(this.data?.series)) return [];
+        return this.data.series.flatMap(series => Array.isArray(series.points) ? series.points : []);
     }
 
     _transformToCdfPoints(points, numPercentiles = 100) {
@@ -1758,6 +1724,18 @@ export class BaseModule {
             color: 'steelblue',
             className: 'cdf-point',
             tooltipFormatter: d => `Value: ${origYFormatter(d[0])}<br>CDF: ${(d[1] * 100).toFixed(0)}%`,
+        });
+        this.installLineCursor([{
+            id: `${this.id}-cdf`,
+            name: 'CDF',
+            color: 'steelblue',
+            points: cdfPts,
+        }], {
+            interpolation: 'linear',
+            xFormatter: origYFormatter,
+            yFormatter: d => `${(d * 100).toFixed(0)}%`,
+            xLabel: this.data?.axes?.y?.label || 'Value',
+            xUnit: this.data?.axes?.y?.unit,
         });
     }
 

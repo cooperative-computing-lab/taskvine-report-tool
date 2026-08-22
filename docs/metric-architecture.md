@@ -28,6 +28,26 @@ The cursor reports every visible series whose domain contains the current x
 coordinate. It is animation-frame throttled, and its lifecycle follows the base
 module so redraws and view changes cannot leave stale overlays behind.
 
+Paths are clipped by one shared SVG plot clip rather than by rewriting their
+points. This preserves step geometry at viewport boundaries. The optional CDF
+view consumes the same standard series envelope and installs the same cursor, so
+generic scatter metrics do not need metric-specific CDF code.
+
+## Temporal series contract
+
+`temporal_series.py` owns the time alignment and boundary rules declared by each
+`MetricSpec`. Runtime zero and the manager duration form the canonical domain;
+epoch-based debug data is shifted onto that clock once at the service boundary.
+
+- `state` series get an explicit zero baseline before their first observation
+  and hold their last observed state through manager end.
+- `bucket_zero` series materialize every bucket, including intervals with no
+  events, and extend the final bucket through manager end.
+
+New parser artifacts emit these boundaries directly. The API applies the same
+normalizer to older sparse artifacts, keeping compatibility behavior in one
+place rather than teaching each renderer about missing intervals.
+
 Legacy `/api/*` and `/api/v1/.../charts/*` routes remain compatibility adapters.
 New frontend code should use `/api/v1/.../metrics/<metric_id>`.
 
@@ -35,6 +55,7 @@ New frontend code should use `/api/v1/.../metrics/<metric_id>`.
 
 - Base storage units are bytes. Unit conversion belongs to display formatting.
 - State-series sampling preserves endpoints and global extrema.
+- Every standard time-linked line metric declares one temporal policy.
 - Server-side default series limits must disclose available, selected, omitted,
   and selection-policy metadata. An explicit `series` query is never limited.
 - Missing artifacts or unsupported parameters fail closed; they are not replaced
