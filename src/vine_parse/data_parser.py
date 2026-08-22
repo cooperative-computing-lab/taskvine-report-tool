@@ -1,5 +1,13 @@
-import platform
+import math
+import os
+import re
 import subprocess
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
+from functools import lru_cache
+from pathlib import Path
+
+import cloudpickle
 from .worker_info import WorkerInfo
 from .task_info import TaskInfo
 from .file_info import FileInfo, IndexedTransferEvent, UnindexedTransferEvent
@@ -11,20 +19,7 @@ from .diagnostics import (
     installed_tool_version,
 )
 from .sources import LegacyDebugSource
-from .protocol import CandidateClassifier, HANDLER_MASKS
-
-import os
-import math
-import polars as pl
-import re
-from pathlib import Path
-from functools import lru_cache
-from datetime import datetime
-import numpy as np
-from collections import defaultdict
-import cloudpickle
-from datetime import timezone, timedelta
-import platform
+from .protocol import CandidateClassifier, HANDLER_MASKS, HANDLER_RULES
 from src.utils import *
 
 
@@ -32,9 +27,21 @@ from src.utils import *
 # if taskvine protocol version is changed, this file needs to be updated accordingly
 VALID_VINE_PROTOCOL_VERSION = 13
 TIME_AXIS_ALIGNMENT_TOLERANCE_SECONDS = 1
+STATEFUL_DEBUG_HANDLERS = frozenset({"worker_resources", "send_task_to_worker"})
+DEBUG_ACTION_ALIASES = {
+    "recovery_task": "_handle_debug_line_submitted_recovery_task",
+    "transfer_port": "_handle_debug_line_get_worker_transfer_port",
+    "exhausted_resources": "_handle_debug_line_exhausted_resources_on_worker",
+    "listening": "_handle_debug_line_listening_on_port",
+    "manager_end": "_handle_debug_line_manager_end",
+    "remove_instances": "_handle_debug_line_ignored",
+    "added_dependency": "_handle_debug_line_ignored",
+}
+CHECKPOINT_FIELDS = ("workers", "files", "tasks", "manager", "subgraphs")
+
 
 def count_lines(file_name):
-    if platform.system() in ["Linux", "Darwin"]:  # Linux or macOS
+    if os.name == "posix":
         try:
             return int(subprocess.check_output(["wc", "-l", file_name]).split()[0])
         except subprocess.CalledProcessError:
@@ -68,15 +75,14 @@ class DataParser:
         ensure_dir(self.pkl_files_dir, replace=False)
 
         self.debug = os.path.join(self.vine_logs_dir, 'debug')
-        for file_path in [self.debug]:
-            if not os.path.exists(file_path):
-                raise ValueError(f"file {file_path} does not exist")
+        if not os.path.exists(self.debug):
+            raise ValueError(f"file {self.debug} does not exist")
 
         # these are the main files for data analysis
-        self.pkl_file_names = ['workers.pkl', 'files.pkl', 'tasks.pkl', 'manager.pkl', 'subgraphs.pkl']
-        self.pkl_files = []
-        for pkl_file_name in self.pkl_file_names:
-            self.pkl_files.append(os.path.join(self.pkl_files_dir, pkl_file_name))
+        self.pkl_file_names = [f"{name}.pkl" for name in CHECKPOINT_FIELDS]
+        self.pkl_files = [
+            os.path.join(self.pkl_files_dir, name) for name in self.pkl_file_names
+        ]
 
         # metadata pkl file
         self.pkl_file_metadata = os.path.join(self.pkl_files_dir, 'metadata.pkl')
@@ -119,114 +125,25 @@ class DataParser:
         self.sending_task_to_worker_entry = None
 
     def _init_debug_handlers(self):
-        def H(name, cond, action):
-            action.__name__ = name
-            return (cond, action)
-
         self.debug_handlers = [
-
-            H("busy_on",
-            lambda l, p, ctx: "busy on" in l,
-            lambda l, p, ctx: ctx._handle_debug_line_busy_on()),
-
-            H("puturl",
-            lambda l, p, ctx: "puturl" in p or "puturl_now" in p,
-            lambda l, p, ctx: ctx._handle_debug_line_puturl()),
-
-            H("cache_update",
-            lambda l, p, ctx: "cache-update" in p,
-            lambda l, p, ctx: ctx._handle_debug_line_cache_update()),
-
-            H("task_state_change",
-            lambda l, p, ctx: "state change:" in l,
-            lambda l, p, ctx: ctx._handle_debug_line_task_state_change()),
-
-            H("unlink",
-            lambda l, p, ctx: "unlink" in p,
-            lambda l, p, ctx: ctx._handle_debug_line_unlink()),
-
-            H("worker_removed",
-            lambda l, p, ctx: "removed" in p and "worker" in p,
-            lambda l, p, ctx: ctx._handle_debug_line_worker_removed()),
-
-            H("complete",
-            lambda l, p, ctx: "complete" in p,
-            lambda l, p, ctx: ctx._handle_debug_line_complete()),
-
-            H("worker_received",
-            lambda l, p, ctx: "received" in p,
-            lambda l, p, ctx: ctx._handle_debug_line_worker_received()),
-
-            H("receive_worker_info",
-            lambda l, p, ctx: " info " in l,
-            lambda l, p, ctx: ctx._handle_debug_line_receive_worker_info()),
-
-            H("cache_invalid",
-            lambda l, p, ctx: "cache-invalid" in p,
-            lambda l, p, ctx: ctx._handle_debug_line_cache_invalid()),
-
-            H("worker_resources",
-            lambda l, p, ctx: "resources" in p or ctx.receiving_resources_from_worker,
-            lambda l, p, ctx: ctx._handle_debug_line_worker_resources()),
-
-            H("stdout",
-            lambda l, p, ctx: "stdout" in p,
-            lambda l, p, ctx: ctx._handle_debug_line_stdout()),
-
-            H("recovery_task",
-            lambda l, p, ctx: "Submitted recovery task" in l,
-            lambda l, p, ctx: ctx._handle_debug_line_submitted_recovery_task()),
-
-            H("put_file",
-            lambda l, p, ctx: "put" in p,
-            lambda l, p, ctx: ctx._handle_debug_line_put_file()),
-
-            H("failed_to_send_task",
-            lambda l, p, ctx: "Failed to send task" in l,
-            lambda l, p, ctx: ctx._handle_debug_line_failed_to_send_task()),
-
-            H("transfer_port",
-            lambda l, p, ctx: "transfer-port" in p,
-            lambda l, p, ctx: ctx._handle_debug_line_get_worker_transfer_port()),
-
-            H("exhausted_resources",
-            lambda l, p, ctx: "exhausted" in p and "resources" in p,
-            lambda l, p, ctx: ctx._handle_debug_line_exhausted_resources_on_worker()),
-
-            H("listening",
-            lambda l, p, ctx: "listening on port" in l,
-            lambda l, p, ctx: ctx._handle_debug_line_listening_on_port()),
-
-            H("worker_connected",
-            lambda l, p, ctx: "worker" in p and "connected" in p,
-            lambda l, p, ctx: ctx._handle_debug_line_worker_connected()),
-
-            H("manager_end",
-            lambda l, p, ctx: "manager end" in l,
-            lambda l, p, ctx: ctx.manager.set_time_end(ctx.debug_current_timestamp)),
-
-            H("remove_instances",
-            lambda l, p, ctx: "Removing instances of worker" in l,
-            lambda l, p, ctx: None),
-
-            H("kill_task",
-            lambda l, p, ctx: " kill " in l,
-            lambda l, p, ctx: ctx._handle_debug_line_kill_task()),
-
-            H("added_dependency",
-            lambda l, p, ctx: "added dependency" in l,
-            lambda l, p, ctx: None),
-
-            H("send_task_to_worker",
-            lambda l, p, ctx: "tx to" in l and ("task" in p or ctx.sending_task),
-            lambda l, p, ctx: ctx._handle_debug_line_send_task_to_worker()),
-
+            (name, matches, self._debug_action(name))
+            for name, matches in HANDLER_RULES
         ]
         self.debug_handler_profiling = defaultdict(lambda: {"hits": 0})
         self._debug_handler_by_mask = {
-            HANDLER_MASKS[action.__name__]: action
-            for _, action in self.debug_handlers
+            HANDLER_MASKS[name]: (name, action)
+            for name, _, action in self.debug_handlers
         }
+
+    def _debug_action(self, name):
+        method_name = DEBUG_ACTION_ALIASES.get(name, f"_handle_debug_line_{name}")
+        return getattr(self, method_name)
+
+    def _handle_debug_line_manager_end(self):
+        self.manager.set_time_end(self.debug_current_timestamp)
+
+    def _handle_debug_line_ignored(self):
+        pass
 
     def get_current_worker_by_ip_port(self, worker_ip: str, worker_port: int):
         connect_id = self.current_worker_connect_id[(worker_ip, worker_port)]
@@ -948,7 +865,7 @@ class DataParser:
     def _resort_debug_handlers(self):
         # sort handlers in-place by descending hit count
         self.debug_handlers.sort(
-            key=lambda pair: -self.debug_handler_profiling.get(pair[1], {}).get("hits", 0)
+            key=lambda handler: -self.debug_handler_profiling.get(handler[0], {}).get("hits", 0)
         )
 
     def parse_debug_line(self, candidate_mask=None):
@@ -961,14 +878,13 @@ class DataParser:
             return None
 
         if candidate_mask is not None and candidate_mask.bit_count() == 1:
-            handler_fn = self._debug_handler_by_mask[candidate_mask]
-            if handler_fn.__name__ not in {"worker_resources", "send_task_to_worker"}:
-                return self._execute_debug_handler(handler_fn, line, parts)
+            handler_name, action = self._debug_handler_by_mask[candidate_mask]
+            if handler_name not in STATEFUL_DEBUG_HANDLERS:
+                return self._execute_debug_handler(handler_name, action)
 
-        for cond_fn, handler_fn in self.debug_handlers:
+        for handler_name, matches, action in self.debug_handlers:
             native_static_match = False
             if candidate_mask is not None:
-                handler_name = handler_fn.__name__
                 is_stateful_resource_line = (
                     handler_name == "worker_resources"
                     and self.receiving_resources_from_worker
@@ -978,32 +894,34 @@ class DataParser:
                 ):
                     continue
                 native_static_match = (
-                    handler_name not in {"worker_resources", "send_task_to_worker"}
+                    handler_name not in STATEFUL_DEBUG_HANDLERS
                     and bool(candidate_mask & HANDLER_MASKS[handler_name])
                 )
-            if native_static_match:
-                matches = True
-            else:
+            if not native_static_match:
                 try:
-                    matches = cond_fn(line, parts, self)
+                    matched = matches(line, parts)
+                    if handler_name == "worker_resources":
+                        matched = matched or bool(self.receiving_resources_from_worker)
+                    elif handler_name == "send_task_to_worker":
+                        matched = matched and ("task" in parts or bool(self.sending_task))
                 except Exception as exc:
                     raise ValueError(
-                        "Failed while matching handler {}: {}".format(handler_fn.__name__, exc)
+                        "Failed while matching handler {}: {}".format(handler_name, exc)
                     ) from exc
-            if not matches:
-                continue
-            return self._execute_debug_handler(handler_fn, line, parts)
+                if not matched:
+                    continue
+            return self._execute_debug_handler(handler_name, action)
         return None
 
-    def _execute_debug_handler(self, handler_fn, line, parts):
+    def _execute_debug_handler(self, handler_name, action):
         try:
-            handler_fn(line, parts, self)
+            action()
         except Exception as exc:
             raise ValueError(
-                "Failed in handler {}: {}".format(handler_fn.__name__, exc)
+                "Failed in handler {}: {}".format(handler_name, exc)
             ) from exc
-        self.debug_handler_profiling[handler_fn]["hits"] += 1
-        return handler_fn.__name__
+        self.debug_handler_profiling[handler_name]["hits"] += 1
+        return handler_name
 
     def _clean_debug_file(self):
         result = subprocess.run(
@@ -1163,9 +1081,8 @@ class DataParser:
             self._resort_debug_handlers()
             print(f"{'Handler':<20} {'Hits':>10}")
             print("-" * 30)
-            for cond_fn, handler_fn in self.debug_handlers:
-                name = getattr(handler_fn, "__name__", repr(handler_fn))
-                stats = self.debug_handler_profiling.get(handler_fn, {})
+            for name, _, _ in self.debug_handlers:
+                stats = self.debug_handler_profiling.get(name, {})
                 hits = stats.get("hits", 0)
                 print(f"{name:<20} {hits:>10}")
 
@@ -1189,32 +1106,14 @@ class DataParser:
 
     def checkpoint_pkl_files(self):
         with create_progress_bar() as progress:
-            pbar = progress.add_task(f"[green]Checkpointing pkl files", total=5)
-
-            progress.update(pbar, description=f"[green]Checkpointing workers.pkl")
-            with open(os.path.join(self.pkl_files_dir, 'workers.pkl'), 'wb') as f:
-                cloudpickle.dump(self.workers, f)
-            progress.advance(pbar)
-
-            progress.update(pbar, description=f"[green]Checkpointing files.pkl")
-            with open(os.path.join(self.pkl_files_dir, 'files.pkl'), 'wb') as f:
-                cloudpickle.dump(self.files, f)
-            progress.advance(pbar)
-
-            progress.update(pbar, description=f"[green]Checkpointing tasks.pkl")
-            with open(os.path.join(self.pkl_files_dir, 'tasks.pkl'), 'wb') as f:
-                cloudpickle.dump(self.tasks, f)
-            progress.advance(pbar)
-            
-            progress.update(pbar, description=f"[green]Checkpointing manager.pkl")
-            with open(os.path.join(self.pkl_files_dir, 'manager.pkl'), 'wb') as f:
-                cloudpickle.dump(self.manager, f)
-            progress.advance(pbar)
-
-            progress.update(pbar, description=f"[green]Checkpointing subgraphs.pkl")
-            with open(os.path.join(self.pkl_files_dir, 'subgraphs.pkl'), 'wb') as f:
-                cloudpickle.dump(self.subgraphs, f)
-            progress.advance(pbar)
+            pbar = progress.add_task(
+                "[green]Checkpointing pkl files", total=len(CHECKPOINT_FIELDS)
+            )
+            for field, path in zip(CHECKPOINT_FIELDS, self.pkl_files):
+                progress.update(pbar, description=f"[green]Checkpointing {field}.pkl")
+                with open(path, "wb") as file:
+                    cloudpickle.dump(getattr(self, field), file)
+                progress.advance(pbar)
 
     def postprocess_debug(self):
         # some post-processing in case the manager does not exit normally or has not finished yet
@@ -1280,31 +1179,12 @@ class DataParser:
             )
 
     def load_pkl_files(self):
-        # manually load every thing like checkpoint_pkl_files, rathan than using self.pkl_files in a loop
         with create_progress_bar() as progress:
-            pbar = progress.add_task(f"[green]Loading pkl files", total=5)
-
-            progress.update(pbar, description=f"[green]Loading workers.pkl")
-            with open(os.path.join(self.pkl_files_dir, 'workers.pkl'), 'rb') as f:
-                self.workers = cloudpickle.load(f)
-            progress.advance(pbar)
-            
-            progress.update(pbar, description=f"[green]Loading files.pkl")
-            with open(os.path.join(self.pkl_files_dir, 'files.pkl'), 'rb') as f:
-                self.files = cloudpickle.load(f)
-            progress.advance(pbar)
-            
-            progress.update(pbar, description=f"[green]Loading tasks.pkl")
-            with open(os.path.join(self.pkl_files_dir, 'tasks.pkl'), 'rb') as f:
-                self.tasks = cloudpickle.load(f)
-            progress.advance(pbar)
-            
-            progress.update(pbar, description=f"[green]Loading manager.pkl")
-            with open(os.path.join(self.pkl_files_dir, 'manager.pkl'), 'rb') as f:
-                self.manager = cloudpickle.load(f)
-            progress.advance(pbar)
-
-            progress.update(pbar, description=f"[green]Loading subgraphs.pkl")
-            with open(os.path.join(self.pkl_files_dir, 'subgraphs.pkl'), 'rb') as f:
-                self.subgraphs = cloudpickle.load(f)
-            progress.advance(pbar)
+            pbar = progress.add_task(
+                "[green]Loading pkl files", total=len(CHECKPOINT_FIELDS)
+            )
+            for field, path in zip(CHECKPOINT_FIELDS, self.pkl_files):
+                progress.update(pbar, description=f"[green]Loading {field}.pkl")
+                with open(path, "rb") as file:
+                    setattr(self, field, cloudpickle.load(file))
+                progress.advance(pbar)

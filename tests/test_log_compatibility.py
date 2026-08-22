@@ -142,6 +142,24 @@ class LogCompatibilityTest(unittest.TestCase):
         self.assertEqual(len(diagnostics["source"]["sha256"]), 64)
         self.assertEqual(len(diagnostics["source"]["format_fingerprint_sha256"]), 64)
 
+    def test_checkpoint_round_trip_uses_the_shared_field_contract(self):
+        run = self.make_run("checkpoint", TIMEZONE + LISTENING + MANAGER_END)
+        parser = DataParser(str(run))
+        parser.tasks = {"task": 1}
+        parser.workers = {"worker": 2}
+        parser.files = {"file": 3}
+        parser.subgraphs = {"subgraph": 4}
+        parser.manager.port = 9123
+        parser.checkpoint_pkl_files()
+
+        restored = DataParser(str(run))
+        restored.load_pkl_files()
+        self.assertEqual(restored.tasks, parser.tasks)
+        self.assertEqual(restored.workers, parser.workers)
+        self.assertEqual(restored.files, parser.files)
+        self.assertEqual(restored.subgraphs, parser.subgraphs)
+        self.assertEqual(restored.manager.port, parser.manager.port)
+
     def test_protocol_drift_raises_typed_error_and_persists_failure(self):
         malformed = (
             "2026/08/19 12:00:02.00 vine_manager[100]vine: "

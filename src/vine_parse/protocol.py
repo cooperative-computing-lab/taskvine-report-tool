@@ -5,32 +5,33 @@ from itertools import islice
 from typing import Sequence
 
 
-HANDLER_NAMES = (
-    "busy_on",
-    "puturl",
-    "cache_update",
-    "task_state_change",
-    "unlink",
-    "worker_removed",
-    "complete",
-    "worker_received",
-    "receive_worker_info",
-    "cache_invalid",
-    "worker_resources",
-    "stdout",
-    "recovery_task",
-    "put_file",
-    "failed_to_send_task",
-    "transfer_port",
-    "exhausted_resources",
-    "listening",
-    "worker_connected",
-    "manager_end",
-    "remove_instances",
-    "kill_task",
-    "added_dependency",
-    "send_task_to_worker",
+HANDLER_RULES = (
+    ("busy_on", lambda line, parts: "busy on" in line),
+    ("puturl", lambda line, parts: "puturl" in parts or "puturl_now" in parts),
+    ("cache_update", lambda line, parts: "cache-update" in parts),
+    ("task_state_change", lambda line, parts: "state change:" in line),
+    ("unlink", lambda line, parts: "unlink" in parts),
+    ("worker_removed", lambda line, parts: "removed" in parts and "worker" in parts),
+    ("complete", lambda line, parts: "complete" in parts),
+    ("worker_received", lambda line, parts: "received" in parts),
+    ("receive_worker_info", lambda line, parts: " info " in line),
+    ("cache_invalid", lambda line, parts: "cache-invalid" in parts),
+    ("worker_resources", lambda line, parts: "resources" in parts),
+    ("stdout", lambda line, parts: "stdout" in parts),
+    ("recovery_task", lambda line, parts: "Submitted recovery task" in line),
+    ("put_file", lambda line, parts: "put" in parts),
+    ("failed_to_send_task", lambda line, parts: "Failed to send task" in line),
+    ("transfer_port", lambda line, parts: "transfer-port" in parts),
+    ("exhausted_resources", lambda line, parts: "exhausted" in parts and "resources" in parts),
+    ("listening", lambda line, parts: "listening on port" in line),
+    ("worker_connected", lambda line, parts: "worker" in parts and "connected" in parts),
+    ("manager_end", lambda line, parts: "manager end" in line),
+    ("remove_instances", lambda line, parts: "Removing instances of worker" in line),
+    ("kill_task", lambda line, parts: " kill " in line),
+    ("added_dependency", lambda line, parts: "added dependency" in line),
+    ("send_task_to_worker", lambda line, parts: "tx to" in line),
 )
+HANDLER_NAMES = tuple(name for name, _ in HANDLER_RULES)
 HANDLER_MASKS = {name: 1 << index for index, name in enumerate(HANDLER_NAMES)}
 ALL_HANDLER_MASK = (1 << len(HANDLER_NAMES)) - 1
 RULESET_VERSION = 1
@@ -39,39 +40,11 @@ RULESET_VERSION = 1
 def reference_candidate_mask(line: str, parts: list[str]) -> int:
     """Return a stateless superset of handlers that may accept a line."""
     tokens = set(parts)
-    mask = 0
-
-    def mark(name, matches):
-        nonlocal mask
-        if matches:
-            mask |= HANDLER_MASKS[name]
-
-    mark("busy_on", "busy on" in line)
-    mark("puturl", "puturl" in tokens or "puturl_now" in tokens)
-    mark("cache_update", "cache-update" in tokens)
-    mark("task_state_change", "state change:" in line)
-    mark("unlink", "unlink" in tokens)
-    mark("worker_removed", "removed" in tokens and "worker" in tokens)
-    mark("complete", "complete" in tokens)
-    mark("worker_received", "received" in tokens)
-    mark("receive_worker_info", " info " in line)
-    mark("cache_invalid", "cache-invalid" in tokens)
-    mark("worker_resources", "resources" in tokens)
-    mark("stdout", "stdout" in tokens)
-    mark("recovery_task", "Submitted recovery task" in line)
-    mark("put_file", "put" in tokens)
-    mark("failed_to_send_task", "Failed to send task" in line)
-    mark("transfer_port", "transfer-port" in tokens)
-    mark("exhausted_resources", "exhausted" in tokens and "resources" in tokens)
-    mark("listening", "listening on port" in line)
-    mark("worker_connected", "worker" in tokens and "connected" in tokens)
-    mark("manager_end", "manager end" in line)
-    mark("remove_instances", "Removing instances of worker" in line)
-    mark("kill_task", " kill " in line)
-    mark("added_dependency", "added dependency" in line)
-    # The stateful half of this condition is evaluated by DataParser.
-    mark("send_task_to_worker", "tx to" in line)
-    return mask
+    return sum(
+        HANDLER_MASKS[name]
+        for name, matches in HANDLER_RULES
+        if matches(line, tokens)
+    )
 
 
 class CandidateClassifier:
