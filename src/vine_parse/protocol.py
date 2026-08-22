@@ -1,6 +1,7 @@
 """Stateless protocol classification shared by native and Python paths."""
 
 import os
+import re
 from itertools import islice
 from typing import Sequence
 
@@ -34,6 +35,26 @@ HANDLER_RULES = (
 HANDLER_NAMES = tuple(name for name, _ in HANDLER_RULES)
 HANDLER_MASKS = {name: 1 << index for index, name in enumerate(HANDLER_NAMES)}
 ALL_HANDLER_MASK = (1 << len(HANDLER_NAMES)) - 1
+PROTOCOL_DIAGNOSTIC_RULES = (
+    (("task_state_change",), r"state change:"),
+    (("complete",), r"\bcomplete\b"),
+    (("cache_update", "cache_invalid"), r"cache-(?:update|invalid)"),
+    (("puturl",), r"\bputurl(?:_now)?\b"),
+    (("worker_connected", "worker_removed"), r"\bworker\b.*\b(?:connected|removed)\b"),
+    (("recovery_task",), r"Submitted recovery task"),
+    (("transfer_port",), r"transfer-port"),
+    (("busy_on",), r"busy on"),
+    (("send_task_to_worker",), r"tx to.*\btask\b"),
+    (("manager_end",), r"manager end"),
+)
+PROTOCOL_CANDIDATE_NAMES = frozenset(
+    name for names, _ in PROTOCOL_DIAGNOSTIC_RULES for name in names
+)
+PROTOCOL_CANDIDATE_MASK = sum(HANDLER_MASKS[name] for name in PROTOCOL_CANDIDATE_NAMES)
+PROTOCOL_CANDIDATE_RE = re.compile(
+    "|".join(pattern for _, pattern in PROTOCOL_DIAGNOSTIC_RULES),
+    re.IGNORECASE,
+)
 RULESET_VERSION = 1
 
 

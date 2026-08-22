@@ -15,6 +15,7 @@ from src.vine_parse.diagnostics import (
     write_parse_manifest,
 )
 from src import __version__
+from src.utils import check_pip_updates
 from src.vine_parse.parse import main
 from src.vine_parse.sources import LegacyDebugSource, LegacyTransactionSource
 
@@ -54,6 +55,7 @@ class LogCompatibilityTest(unittest.TestCase):
             "2026/08/19 12:00:02.00 vine_manager[100]vine: puturl workerip://10.2.3.4:9123/a/123 'x 42'",
             "2026/08/19 12:00:02.00 vine_manager[100]vine: host cmswn2215 id abcdef123456 {\"n\": 7}",
             "2026/08/19 12:00:03.00 vine_manager[999]vine: host cmswn2215 id abcdef123456 {\"n\": 8}",
+            "ordinary text without a URL, path, quote, address, or object",
         ]
         memoizer = ShapeNormalizer(maxsize=8)
         self.assertEqual(
@@ -61,6 +63,28 @@ class LogCompatibilityTest(unittest.TestCase):
             [normalized_shape(line) for line in lines],
         )
         self.assertGreater(memoizer.cache_info().hits, 0)
+
+    def test_unhandled_native_negative_skips_protocol_regex_semantics(self):
+        run = self.make_run("unhandled", TIMEZONE)
+        diagnostics = DataParser(str(run)).diagnostics
+        diagnostics.record_unhandled(1, "manager end", may_be_protocol=False)
+        diagnostics.record_unhandled(2, "manager end", may_be_protocol=True)
+        self.assertEqual(diagnostics.data["source"]["unhandled_lines"], 2)
+        self.assertEqual(
+            diagnostics.data["source"]["protocol_candidate_unhandled_lines"], 1
+        )
+
+    def test_update_check_is_opt_in_and_nonblocking_by_default(self):
+        with mock.patch.dict("os.environ", {}, clear=True):
+            with mock.patch("src.utils.subprocess.run") as run:
+                check_pip_updates()
+        run.assert_not_called()
+
+        with mock.patch.dict("os.environ", {"TASKVINE_CHECK_UPDATES": "1"}):
+            with mock.patch("src.utils.subprocess.run") as run:
+                run.return_value.returncode = 1
+                check_pip_updates()
+        run.assert_called_once()
 
     def test_debug_source_preserves_line_numbers_and_decode_failures(self):
         run = self.make_run("source", TIMEZONE)

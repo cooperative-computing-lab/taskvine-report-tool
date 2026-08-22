@@ -1,4 +1,3 @@
-import math
 import os
 import re
 import subprocess
@@ -19,8 +18,19 @@ from .diagnostics import (
     installed_tool_version,
 )
 from .sources import LegacyDebugSource
-from .protocol import CandidateClassifier, HANDLER_MASKS, HANDLER_RULES
-from src.utils import *
+from .protocol import (
+    CandidateClassifier,
+    HANDLER_MASKS,
+    HANDLER_RULES,
+    PROTOCOL_CANDIDATE_MASK,
+)
+from src.runtime_utils import (
+    count_elements_after,
+    create_progress_bar,
+    ensure_dir,
+    floor_decimal,
+    get_size_unit_and_scale,
+)
 
 
 # check VINE_PROTOCOL_VERSION in taskvine codebase to see if it matches this version
@@ -38,6 +48,9 @@ DEBUG_ACTION_ALIASES = {
     "added_dependency": "_handle_debug_line_ignored",
 }
 CHECKPOINT_FIELDS = ("workers", "files", "tasks", "manager", "subgraphs")
+TASK_STATE_TRANSITION_RE = re.compile(
+    r"state change:\s+([A-Z_]+)\s+\(\d+\)\s+to\s+([A-Z_]+)\s+\(\d+\)"
+)
 
 
 def count_lines(file_name):
@@ -410,10 +423,7 @@ class DataParser:
             pass
 
     def _parse_task_state_transition(self, line):
-        match = re.search(
-            r"state change:\s+([A-Z_]+)\s+\(\d+\)\s+to\s+([A-Z_]+)\s+\(\d+\)",
-            line
-        )
+        match = TASK_STATE_TRANSITION_RE.search(line)
         if not match:
             raise ValueError(f"unrecognized state change: {line}")
         return match.group(1), match.group(2)
@@ -1043,7 +1053,7 @@ class DataParser:
                     self.diagnostics.record_decode_error(record.line_number, record.decode_error)
                     continue
                 self.debug_current_line = record.text
-                self.debug_current_parts = self.debug_current_line.strip().split(" ")
+                self.debug_current_parts = self.debug_current_line.split(" ")
                 try:
                     datestring = self.debug_current_parts[0] + " " + self.debug_current_parts[1]
                     self.debug_current_timestamp = floor_decimal(self.datestring_to_timestamp(datestring), 2)
@@ -1071,7 +1081,14 @@ class DataParser:
                 if handler:
                     self.diagnostics.record_handled(handler, self.debug_current_line)
                 else:
-                    self.diagnostics.record_unhandled(record.line_number, self.debug_current_line)
+                    may_be_protocol = candidate_mask is None or bool(
+                        candidate_mask & PROTOCOL_CANDIDATE_MASK
+                    )
+                    self.diagnostics.record_unhandled(
+                        record.line_number,
+                        self.debug_current_line,
+                        may_be_protocol=may_be_protocol,
+                    )
 
             if progress_pending:
                 progress.update(task_id, advance=progress_pending)
@@ -1121,7 +1138,7 @@ class DataParser:
         # 1. if the manager's time_end is None, we set it to the latest timestamp
         self.manager_end_observed = self.manager.time_end is not None
         if not self.manager_end_observed:
-            print(f"Manager didn't exit normally, setting manager time_end to the latest timestamp")
+            print("Manager didn't exit normally, setting manager time_end to the latest timestamp")
             self.manager.set_time_end(self.manager.current_max_time)
 
         # post-processing for tasks

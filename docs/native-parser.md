@@ -13,6 +13,8 @@ not mutate tasks, workers, files, or parser context.
    conditions in line order.
 4. A missing extension returns `None` masks and executes the reference handler
    loop without changing behavior.
+5. A native mask that excludes every diagnostic protocol family safely skips
+   the broader unhandled-line regex; fallback mode retains the original scan.
 
 The C rules are a conservative prefilter.  `worker_resources` remains
 state-dependent in Python, and `send_task_to_worker` is intentionally
@@ -32,6 +34,8 @@ task context.
   retain the Python parser.
 - `TASKVINE_DISABLE_NATIVE_PARSER=1` is an operational kill switch that forces
   the reference path without uninstalling the extension.
+- Package update checks are opt-in through `TASKVINE_CHECK_UPDATES=1`; parsing
+  never performs an unrequested synchronous network check by default.
 
 Run the repeatable benchmark with:
 

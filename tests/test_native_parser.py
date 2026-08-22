@@ -5,6 +5,8 @@ from src.vine_parse.protocol import (
     CandidateClassifier,
     HANDLER_MASKS,
     HANDLER_NAMES,
+    PROTOCOL_CANDIDATE_MASK,
+    PROTOCOL_CANDIDATE_RE,
     reference_candidate_mask,
 )
 
@@ -89,6 +91,27 @@ class NativeParserTest(unittest.TestCase):
     def test_native_path_has_an_operational_kill_switch(self):
         with mock.patch.dict("os.environ", {"TASKVINE_DISABLE_NATIVE_PARSER": "1"}):
             self.assertFalse(CandidateClassifier().available)
+
+    def test_protocol_candidate_mask_covers_every_diagnostic_family(self):
+        lines = (
+            "state change: READY (1) to RUNNING (2)",
+            "complete 0 0",
+            "cache-update file",
+            "cache-invalid file",
+            "puturl_now workerip://host/file",
+            "worker 10.0.0.1:1 connected",
+            "worker 10.0.0.1:1 removed",
+            "Submitted recovery task 7",
+            "transfer-port 9123",
+            "busy on worker",
+            "tx to worker task 7",
+            "manager end",
+        )
+        for line in lines:
+            with self.subTest(line=line):
+                mask = reference_candidate_mask(line, line.split(" "))
+                self.assertIsNotNone(PROTOCOL_CANDIDATE_RE.search(line))
+                self.assertTrue(mask & PROTOCOL_CANDIDATE_MASK)
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Dict, Optional
 
+from .protocol import PROTOCOL_CANDIDATE_RE
 from .sources import LegacyTransactionSource
 
 
@@ -22,12 +23,6 @@ MANIFEST_FILENAME = "parse-manifest.json"
 _TIMESTAMP_RE = re.compile(r"^\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?")
 _TIMEZONE_RE = re.compile(r"manager timezone at startup:.*\btz_offset=([+-]\d{4})\b")
 _CCTOOLS_VERSION_RE = re.compile(r"\brunning CCTools version\s+([^\s]+)")
-_PROTOCOL_CANDIDATE_RE = re.compile(
-    r"state change:|\bcomplete\b|cache-(?:update|invalid)|\bputurl(?:_now)?\b|"
-    r"\bworker\b.*\b(?:connected|removed)\b|Submitted recovery task|"
-    r"transfer-port|busy on|tx to.*\btask\b|manager end",
-    re.IGNORECASE,
-)
 _NUMBER_RE = re.compile(r"(?<![A-Za-z])[-+]?\d+(?:\.\d+)?")
 _ADDRESS_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}:\d+\b")
 _PID_RE = re.compile(r"\[[0-9]+\]")
@@ -128,12 +123,16 @@ class ShapeNormalizer:
     def __init__(self, maxsize: int = 8192):
         @lru_cache(maxsize=maxsize)
         def normalize_tail(value: str) -> str:
-            value = _URL_RE.sub("<url>", value)
-            value = _PATH_RE.sub("<path>", value)
-            value = _QUOTED_RE.sub("<quoted>", value)
+            if "://" in value:
+                value = _URL_RE.sub("<url>", value)
+            if "/" in value:
+                value = _PATH_RE.sub("<path>", value)
+            if "'" in value or '"' in value:
+                value = _QUOTED_RE.sub("<quoted>", value)
             value = _LONG_ID_RE.sub("<id>", value)
             value = _NUMBER_RE.sub("<n>", value)
-            value = _OBJECT_RE.sub("<object>", value)
+            if "{" in value:
+                value = _OBJECT_RE.sub("<object>", value)
             return value[:320]
 
         self._normalize_tail = normalize_tail
@@ -141,7 +140,8 @@ class ShapeNormalizer:
     def normalize(self, line: str) -> str:
         value = _TIMESTAMP_RE.sub("<timestamp>", line)
         value = _PID_RE.sub("[<pid>]", value)
-        value = _ADDRESS_RE.sub("<address>", value)
+        if "." in value:
+            value = _ADDRESS_RE.sub("<address>", value)
         return self._normalize_tail(value)
 
     def cache_info(self):
@@ -302,9 +302,14 @@ class ParseDiagnostics:
         self._handler_counts[handler] += 1
         self._shapes.add("{}:{}".format(handler, self._shape_normalizer.normalize(line)))
 
-    def record_unhandled(self, line_number: int, line: str) -> None:
+    def record_unhandled(
+        self,
+        line_number: int,
+        line: str,
+        may_be_protocol: bool = True,
+    ) -> None:
         self.data["source"]["unhandled_lines"] += 1
-        if _PROTOCOL_CANDIDATE_RE.search(line):
+        if may_be_protocol and PROTOCOL_CANDIDATE_RE.search(line):
             self.data["source"]["protocol_candidate_unhandled_lines"] += 1
             if len(self._error_samples) < 20:
                 self._error_samples.append(
