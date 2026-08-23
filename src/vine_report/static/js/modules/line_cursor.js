@@ -1,4 +1,5 @@
 import { formatDuration } from './time_format.js?v=1.0';
+import { pinTooltip, tooltipPinnedByOther, unpinTooltip } from './tooltip_pin.js?v=1.0';
 
 function finitePoint(point) {
     return Array.isArray(point)
@@ -17,8 +18,6 @@ function lowerBound(points, x) {
     }
     return lo;
 }
-
-let pinnedCursor = null;
 
 export function normalizeLinePoints(rawPoints) {
     return (Array.isArray(rawPoints) ? rawPoints : [])
@@ -155,7 +154,7 @@ export class LineCursor {
     }
 
     _queueMove(event) {
-        if (this.pinned || (pinnedCursor && pinnedCursor !== this)) return;
+        if (this.pinned || tooltipPinnedByOther(this)) return;
         const [pointerX] = d3.pointer(event, this.hitbox.node());
         this._pendingPointer = { pointerX, clientX: event.clientX, clientY: event.clientY };
         if (this._animationFrame != null) return;
@@ -163,7 +162,7 @@ export class LineCursor {
             this._animationFrame = null;
             const pointer = this._pendingPointer;
             this._pendingPointer = null;
-            if (pointer && !this.pinned && (!pinnedCursor || pinnedCursor === this)) {
+            if (pointer && !this.pinned && !tooltipPinnedByOther(this)) {
                 this._move(pointer);
             }
         });
@@ -201,20 +200,20 @@ export class LineCursor {
             this._setPinned(false, event);
             return;
         }
+        pinTooltip(this);
         const [pointerX] = d3.pointer(event, this.hitbox.node());
         this._move({ pointerX, clientX: event.clientX, clientY: event.clientY });
-        if (!this._lastRender) return;
+        if (!this._lastRender) {
+            unpinTooltip(this);
+            return;
+        }
         this._setPinned(true, event);
     }
 
     _setPinned(pinned, event = null) {
-        if (pinned && pinnedCursor && pinnedCursor !== this) {
-            pinnedCursor._setPinned(false);
-            pinnedCursor.hide(true);
-        }
         this.pinned = pinned;
-        if (pinned) pinnedCursor = this;
-        else if (pinnedCursor === this) pinnedCursor = null;
+        if (pinned) pinTooltip(this);
+        else unpinTooltip(this);
         if (pinned && this._animationFrame != null) {
             cancelAnimationFrame(this._animationFrame);
             this._animationFrame = null;
@@ -304,7 +303,7 @@ export class LineCursor {
     }
 
     hide(force = false) {
-        if (pinnedCursor && pinnedCursor !== this) return;
+        if (tooltipPinnedByOther(this)) return;
         if (this.pinned && !force) return;
         if (this._animationFrame != null) cancelAnimationFrame(this._animationFrame);
         this._animationFrame = null;
@@ -320,5 +319,10 @@ export class LineCursor {
         this.hide(true);
         this.layer?.remove();
         this.hitbox?.remove();
+    }
+
+    releasePinnedTooltip() {
+        this._setPinned(false);
+        this.hide(true);
     }
 }

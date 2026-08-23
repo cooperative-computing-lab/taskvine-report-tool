@@ -77,7 +77,7 @@ class MetricFactsTest(unittest.TestCase):
         self.assertEqual(sum(int(float(row["first_attempts"])) for row in retries), 2)
         self.assertEqual(sum(int(float(row["retries"])) for row in retries), 0)
 
-    def test_incomplete_run_fails_closed(self):
+    def test_incomplete_attempt_remains_partial_for_missing_endpoints(self):
         (self.run / "vine-logs" / "transactions").write_text(
             "1000000 7 MANAGER 7 START 0\n"
             "1200000 7 TASK 1 READY alpha FIRST_RESOURCES 1 {}\n",
@@ -88,15 +88,36 @@ class MetricFactsTest(unittest.TestCase):
         self.assertIn("metric_manager_end_missing", evidence["partial_reasons"])
         self.assertEqual(evidence["contracts"]["task-throughput"]["status"], "PARTIAL")
         self.assertIn(
-            "Manager END is missing",
+            "terminal evidence",
             evidence["contracts"]["task-throughput"]["status_reason"],
         )
-        self.assertEqual(
+        self.assertIn(
+            "values cover observations through the latest source record",
             evidence["contracts"]["failure-timeline"]["caveat"],
-            "Statuses are TaskVine terminal outcomes.",
         )
         self.assertEqual(evidence["contracts"]["workflow-pressure"]["status"], "PASS")
         self.assertEqual(evidence["contracts"]["retry-pressure"]["status"], "PASS")
+
+    def test_complete_observations_pass_without_manager_end(self):
+        (self.run / "vine-logs" / "transactions").write_text(
+            "1000000 7 MANAGER 7 START 0\n"
+            "1200000 7 TASK 1 READY alpha FIRST_RESOURCES 1 {}\n"
+            "1300000 7 TASK 1 RUNNING worker-a FIRST_RESOURCES {}\n"
+            "1800000 7 TASK 1 WAITING_RETRIEVAL worker-a\n"
+            "1900000 7 TASK 1 RETRIEVED WORKER_DISCONNECTED {} {}\n"
+            "1950000 7 WORKER worker-a TRANSFER INPUT file-a 100 1000 1949000\n",
+            encoding="utf-8",
+        )
+        task = SimpleNamespace(is_recovery_task=False, is_library_task=False)
+        evidence = generate_metric_facts(str(self.run), SimpleNamespace(tasks={(1, 1): task}))
+
+        self.assertIn("metric_manager_end_missing", evidence["partial_reasons"])
+        for metric in ("task-throughput", "task-latency", "failure-timeline", "transfer-throughput"):
+            with self.subTest(metric=metric):
+                contract = evidence["contracts"][metric]
+                self.assertEqual(contract["status"], "PASS", contract)
+                self.assertEqual(contract["status_reason"], "")
+                self.assertIn("latest source record", contract["caveat"])
 
     def test_retry_identity_starts_after_internal_attempts_are_filtered(self):
         (self.run / "vine-logs" / "transactions").write_text(

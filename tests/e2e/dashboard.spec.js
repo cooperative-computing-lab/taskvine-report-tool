@@ -205,6 +205,44 @@ test('line grids inspect every visible series at the cursor x position', async (
   await expect(tooltip).toBeHidden();
 });
 
+test('points and bars pin one shared tooltip and charts expose zoom controls', async ({ page }) => {
+  await page.goto('/?run=run-a');
+  await expectRun(page, 'run-a');
+  await page.locator('.nav-item[data-view="files"]').click();
+
+  const scatter = page.locator('[data-module="file-sizes"]');
+  const point = scatter.locator('circle.file-sizes-series-0-point').first();
+  const tooltip = page.locator('#vine-tooltip');
+  await point.click();
+  await expect(point).toHaveAttribute('aria-pressed', 'true');
+  await expect(tooltip).toHaveClass(/cursor-pinned/);
+  await expect(tooltip.locator('.mark-tooltip-status')).toContainText('Pinned');
+  const pinnedPointText = await tooltip.textContent();
+  await scatter.locator('circle.file-sizes-series-0-point').nth(1).hover();
+  await expect(tooltip).toHaveText(pinnedPointText);
+
+  const zoom = scatter.locator('.chart-zoom-controls');
+  await expect(zoom).toContainText('Ctrl/⌘ + scroll');
+  await expect(zoom.getByRole('button', { name: 'Reset zoom' })).toHaveText('100%');
+  await zoom.getByRole('button', { name: 'Zoom in' }).click();
+  await expect(zoom.getByRole('button', { name: 'Reset zoom' })).toHaveText('120%');
+  await zoom.getByRole('button', { name: 'Reset zoom' }).click();
+  await expect(zoom.getByRole('button', { name: 'Reset zoom' })).toHaveText('100%');
+
+  await page.locator('.nav-item[data-view="tasks"]').click();
+  const timeline = page.locator('[data-module="task-execution-details"]');
+  const bar = timeline.locator('rect.task-type-successful-executing-on-worker').first();
+  await expect(bar).toBeVisible();
+  await bar.click();
+  await expect(point).toHaveAttribute('aria-pressed', 'false');
+  await expect(bar).toHaveAttribute('aria-pressed', 'true');
+  await expect(tooltip).toHaveClass(/cursor-pinned/);
+  await expect(tooltip).toContainText('Task ID');
+  await page.keyboard.press('Escape');
+  await expect(tooltip).toBeHidden();
+  await expect(bar).toHaveAttribute('aria-pressed', 'false');
+});
+
 test('line cursor prioritizes active series and stays fast at scale', async ({ page }) => {
   await page.goto('/?run=run-a');
   await expectRun(page, 'run-a');

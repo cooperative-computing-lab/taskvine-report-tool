@@ -1,6 +1,7 @@
 import { Toolbox } from './toolbox.js?v=5.0';
-import { LineCursor } from './line_cursor.js?v=1.2';
+import { LineCursor } from './line_cursor.js?v=1.3';
 import { durationAxisSpec } from './time_format.js?v=1.0';
+import { hasPinnedTooltip, pinTooltip, unpinTooltip } from './tooltip_pin.js?v=1.0';
 
 let jsPDF = null;
 let svg2pdf = null;
@@ -33,6 +34,7 @@ function _setupHoverSafetyNet() {
     if (_hoverSafetyNetBound) return;
     _hoverSafetyNetBound = true;
     document.addEventListener('mousemove', (event) => {
+        if (hasPinnedTooltip()) return;
         const tooltip = document.getElementById('vine-tooltip');
         if (!tooltip || tooltip.style.visibility !== 'visible') return;
         const el = document.elementFromPoint(event.clientX, event.clientY);
@@ -119,6 +121,7 @@ export class BaseModule {
         this._hasScatterPlot = false;
         this._cdfMode = false;
         this._lineCursor = null;
+        this._pinnedMark = null;
         this._plotClipId = null;
     }
 
@@ -193,6 +196,7 @@ export class BaseModule {
     }
 
     _resetHoverState() {
+        if (hasPinnedTooltip()) return;
         this._lineCursor?.hide();
         const tooltip = document.getElementById('vine-tooltip');
         if (tooltip) tooltip.style.visibility = 'hidden';
@@ -597,6 +601,7 @@ export class BaseModule {
     }
 
     clearSVG() {
+        this.releasePinnedTooltip();
         this._lineCursor?.destroy();
         this._lineCursor = null;
         /* remove the node from the DOM */
@@ -807,6 +812,7 @@ export class BaseModule {
     
     _setupZoomAndScroll() {
         this._initZoomTrackingAfterRender();
+        this._ensureZoomControls();
         
         /* do not bind the handler multiple times */
         if (this._zoomHandlerInitialized) return;
@@ -816,46 +822,76 @@ export class BaseModule {
         this.svgNode.removeAttribute('height');
     
         this.svgContainer.addEventListener('wheel', (event) => {
-            if (event.ctrlKey) {
+            if (event.ctrlKey || event.metaKey) {
                 event.preventDefault();
-    
-                const zoomFactor = event.deltaY < 0 ? 1.05 : 0.95;
-                let newWidth = this.currentWidth * zoomFactor;
-                let newHeight = this.currentHeight * zoomFactor;
-
-                if (zoomFactor < 1 && (this.currentWidth <= this.originalWidth || this.currentHeight <= this.originalHeight)) {
-                    return;
-                }
-                
-                if (newWidth <= this.originalWidth || newHeight <= this.originalHeight) {
-                    newWidth = this.originalWidth;
-                    newHeight = this.originalHeight;
-                }                
-    
                 const rect = this.svgNode.getBoundingClientRect();
-                const mouseX = event.clientX - rect.left;
-                const mouseY = event.clientY - rect.top;
-                const scaleX = mouseX / rect.width;
-                const scaleY = mouseY / rect.height;
-    
-                this.svgNode.style.width = `${Math.round(newWidth)}px`;
-                this.svgNode.style.height = `${Math.round(newHeight)}px`;
-    
-                const newRect = this.svgNode.getBoundingClientRect();
-                const targetX = scaleX * newRect.width;
-                const targetY = scaleY * newRect.height;
-    
-                const offsetX = targetX - mouseX;
-                const offsetY = targetY - mouseY;
-    
-                this.svgContainer.scrollLeft += offsetX;
-                this.svgContainer.scrollTop += offsetY;
-    
-                this.currentWidth = newRect.width;
-                this.currentHeight = newRect.height;
-                  
+                this._applyZoom(event.deltaY < 0 ? 1.08 : 0.92, {
+                    x: event.clientX - rect.left,
+                    y: event.clientY - rect.top,
+                });
             }
         });
+    }
+
+    _applyZoom(factor, anchor = null) {
+        if (!this.svgNode || !this.originalWidth || !this.originalHeight) return;
+        const rect = this.svgNode.getBoundingClientRect();
+        const point = anchor || { x: rect.width / 2, y: rect.height / 2 };
+        const scaleX = rect.width ? point.x / rect.width : 0.5;
+        const scaleY = rect.height ? point.y / rect.height : 0.5;
+        const width = Math.min(this.originalWidth * 8, Math.max(this.originalWidth, this.currentWidth * factor));
+        const height = Math.min(this.originalHeight * 8, Math.max(this.originalHeight, this.currentHeight * factor));
+        if (width === this.currentWidth && height === this.currentHeight) return;
+
+        this.svgNode.style.width = `${Math.round(width)}px`;
+        this.svgNode.style.height = `${Math.round(height)}px`;
+        const next = this.svgNode.getBoundingClientRect();
+        this.svgContainer.scrollLeft += scaleX * next.width - point.x;
+        this.svgContainer.scrollTop += scaleY * next.height - point.y;
+        this.currentWidth = next.width;
+        this.currentHeight = next.height;
+        this._updateZoomControls();
+    }
+
+    _resetZoom() {
+        if (!this.svgNode) return;
+        this.svgNode.style.width = `${this.originalWidth}px`;
+        this.svgNode.style.height = `${this.originalHeight}px`;
+        this.svgContainer.scrollTo({ left: 0, top: 0 });
+        this.currentWidth = this.originalWidth;
+        this.currentHeight = this.originalHeight;
+        this._updateZoomControls();
+    }
+
+    _ensureZoomControls() {
+        let controls = this.svgContainer.querySelector('.chart-zoom-controls');
+        if (!controls) {
+            controls = document.createElement('div');
+            controls.className = 'chart-zoom-controls';
+            controls.innerHTML = `
+                <span class="chart-zoom-hint">Ctrl/⌘ + scroll</span>
+                <button type="button" data-zoom="out" aria-label="Zoom out">−</button>
+                <button type="button" data-zoom="reset" aria-label="Reset zoom">100%</button>
+                <button type="button" data-zoom="in" aria-label="Zoom in">+</button>`;
+            controls.addEventListener('click', event => {
+                const action = event.target.closest('button')?.dataset.zoom;
+                if (action === 'in') this._applyZoom(1.2);
+                else if (action === 'out') this._applyZoom(1 / 1.2);
+                else if (action === 'reset') this._resetZoom();
+            });
+            this.svgContainer.appendChild(controls);
+        }
+        this._zoomControls = controls;
+        this._updateZoomControls();
+    }
+
+    _updateZoomControls() {
+        if (!this._zoomControls || !this.originalWidth) return;
+        const percent = Math.round(100 * this.currentWidth / this.originalWidth);
+        const reset = this._zoomControls.querySelector('[data-zoom="reset"]');
+        const out = this._zoomControls.querySelector('[data-zoom="out"]');
+        if (reset) reset.textContent = `${percent}%`;
+        if (out) out.disabled = percent <= 100;
     }
     
     
@@ -1177,9 +1213,99 @@ export class BaseModule {
         this._lineCursor.mount();
     }
 
-    plotHorizontalRect(x_start, x_width, y_start, y_height, fill, opacity, tooltipInnerHTML, className = '') {
+    _positionMarkTooltip(event) {
         const tooltip = document.getElementById('vine-tooltip');
-    
+        if (!tooltip) return;
+        const gap = 12;
+        const bounds = tooltip.getBoundingClientRect();
+        let left = event.clientX + gap;
+        if (left + bounds.width > window.innerWidth - 10) left = event.clientX - bounds.width - gap;
+        const top = Math.max(10, Math.min(event.clientY + gap, window.innerHeight - bounds.height - 10));
+        tooltip.style.left = `${Math.max(10, left)}px`;
+        tooltip.style.top = `${top}px`;
+    }
+
+    _showMarkTooltip(event, html, pinned = false) {
+        const tooltip = document.getElementById('vine-tooltip');
+        if (!tooltip || html == null) return;
+        tooltip.classList.remove('line-cursor-tooltip');
+        tooltip.classList.toggle('cursor-pinned', pinned);
+        tooltip.innerHTML = `${html}<div class="mark-tooltip-status">${pinned ? 'Pinned · Press Esc to release' : 'Click to pin'}</div>`;
+        tooltip.style.visibility = 'visible';
+        this._positionMarkTooltip(event);
+    }
+
+    _bindPinnableMark(selection, { tooltipHTML, highlight, restore, label }) {
+        const tooltip = document.getElementById('vine-tooltip');
+        const show = (event, datum, pinned = false) => {
+            highlight(event.currentTarget);
+            this._showMarkTooltip(event, tooltipHTML(datum), pinned);
+        };
+        selection
+            .attr('tabindex', 0)
+            .attr('role', 'button')
+            .attr('aria-pressed', 'false')
+            .attr('aria-label', label)
+            .on('mouseover', (event, datum) => {
+                if (hasPinnedTooltip()) return;
+                show(event, datum);
+            })
+            .on('mousemove', event => {
+                if (!hasPinnedTooltip()) this._positionMarkTooltip(event);
+            })
+            .on('mouseout', event => {
+                if (hasPinnedTooltip()) return;
+                restore(event.currentTarget);
+                if (tooltip) tooltip.style.visibility = 'hidden';
+            })
+            .on('click', (event, datum) => {
+                event.stopPropagation();
+                event.currentTarget.focus();
+                if (this._pinnedMark?.node === event.currentTarget) {
+                    this.releasePinnedTooltip();
+                    return;
+                }
+                if (this._pinnedMark) {
+                    this._pinnedMark.restore(this._pinnedMark.node);
+                    d3.select(this._pinnedMark.node)
+                        .attr('aria-pressed', 'false')
+                        .classed('is-pinned', false);
+                }
+                pinTooltip(this);
+                this._pinnedMark = { node: event.currentTarget, restore };
+                d3.select(event.currentTarget).attr('aria-pressed', 'true').classed('is-pinned', true);
+                show(event, datum, true);
+            })
+            .on('keydown', (event, datum) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    event.currentTarget.dispatchEvent(new MouseEvent('click', {
+                        bubbles: true,
+                        clientX: event.currentTarget.getBoundingClientRect().left,
+                        clientY: event.currentTarget.getBoundingClientRect().top,
+                    }));
+                } else if (event.key === 'Escape') {
+                    this.releasePinnedTooltip();
+                }
+            });
+        return selection;
+    }
+
+    releasePinnedTooltip() {
+        if (!this._pinnedMark) return;
+        const { node, restore } = this._pinnedMark;
+        this._pinnedMark = null;
+        restore(node);
+        d3.select(node).attr('aria-pressed', 'false').classed('is-pinned', false);
+        unpinTooltip(this);
+        const tooltip = document.getElementById('vine-tooltip');
+        if (tooltip) {
+            tooltip.style.visibility = 'hidden';
+            tooltip.classList.remove('cursor-pinned');
+        }
+    }
+
+    plotHorizontalRect(x_start, x_width, y_start, y_height, fill, opacity, tooltipInnerHTML, className = '') {
         const [xmin, xmax] = this.bottomDomain ?? [null, null];
         const [ymin, ymax] = this.leftDomain ?? [null, null];
     
@@ -1203,7 +1329,7 @@ export class BaseModule {
 
         if (y === undefined || Number.isNaN(y) || width <= 0 || height <= 0) return;
     
-        this.svg.append('rect')
+        const rect = this.svg.append('rect')
             .attr('x', x)
             .attr('y', y)
             .attr('width', width)
@@ -1212,26 +1338,16 @@ export class BaseModule {
             .attr('opacity', opacity)
             .attr('data-original-fill', fill)
             .attr('data-original-opacity', opacity)
-            .attr('class', className)
-            .on('mouseover', (event) => {
-                d3.select(event.currentTarget)
-                    .attr('fill', this.highlightColor);
-                tooltip.innerHTML = tooltipInnerHTML;
-                tooltip.style.visibility = 'visible';
-                tooltip.style.top = (event.pageY + 10) + 'px';
-                tooltip.style.left = (event.pageX + 10) + 'px';
-            })
-            .on('mouseout', (event) => {
-                d3.select(event.currentTarget)
-                    .attr('fill', fill)
-                    .attr('opacity', opacity);
-                tooltip.style.visibility = 'hidden';
-            });
+            .attr('class', className);
+        this._bindPinnableMark(rect, {
+            tooltipHTML: () => tooltipInnerHTML,
+            highlight: node => d3.select(node).attr('fill', this.highlightColor),
+            restore: node => d3.select(node).attr('fill', fill).attr('opacity', opacity),
+            label: 'Task bar; click to pin details',
+        });
     }
 
     plotVerticalRect(xStart, xWidth, yHeight, fill = 'steelblue', opacity = 1, tooltipInnerHTML = null, className = '') {
-        const tooltip = document.getElementById('vine-tooltip');
-    
         const [ymin, ymax] = this.leftDomain ?? [null, null];
         if (ymin === null || ymax === null) {
             console.error('Domain values (ymin, ymax) not set, skipping rectangle plot');
@@ -1252,7 +1368,7 @@ export class BaseModule {
             height = this.leftScale(yHeight) - this.leftScale(ymin);
         }
 
-        this.svg.append('rect')
+        const rect = this.svg.append('rect')
             .attr('x', x)
             .attr('y', y)
             .attr('width', width)
@@ -1261,21 +1377,13 @@ export class BaseModule {
             .attr('opacity', opacity)
             .attr('data-original-fill', fill)
             .attr('data-original-opacity', opacity)
-            .attr('class', className)
-            .on('mouseover', (event) => {
-                d3.select(event.currentTarget)
-                    .attr('fill', this.highlightColor);
-                tooltip.innerHTML = tooltipInnerHTML;
-                tooltip.style.visibility = 'visible';
-                tooltip.style.top = (event.pageY + 10) + 'px';
-                tooltip.style.left = (event.pageX + 10) + 'px';
-            })
-            .on('mouseout', (event) => {
-                d3.select(event.currentTarget)
-                    .attr('fill', fill)
-                    .attr('opacity', opacity);
-                tooltip.style.visibility = 'hidden';
-            });
+            .attr('class', className);
+        this._bindPinnableMark(rect, {
+            tooltipHTML: () => tooltipInnerHTML,
+            highlight: node => d3.select(node).attr('fill', this.highlightColor),
+            restore: node => d3.select(node).attr('fill', fill).attr('opacity', opacity),
+            label: 'Bar; click to pin details',
+        });
     }
     
     /* calculate the margin for each axis */
@@ -1592,8 +1700,6 @@ export class BaseModule {
             className = 'data-point'
         } = options;
     
-        const tooltip = document.getElementById('vine-tooltip');
-    
         /** get xmin and xmax */
         const [xmin, xmax] = this.bottomDomain ?? [null, null];
         const [ymin, ymax] = this.leftDomain ?? [null, null];
@@ -1606,7 +1712,7 @@ export class BaseModule {
 
         const filteredPoints = this._filterPoints(points);
     
-        this.svg.selectAll(`circle.${className}`)
+        const circles = this.svg.selectAll(`circle.${className}`)
             .data(filteredPoints)
             .enter()
             .append('circle')
@@ -1616,30 +1722,15 @@ export class BaseModule {
             .attr('r', radius)
             .attr('fill', color)
             .attr('data-original-fill', color)
-            .attr('data-original-r', radius)
-            .on('mouseover', (event, d) => {
-                d3.select(event.currentTarget)
-                    .attr('fill', this.highlightColor)
-                    .attr('r', radius * 4);
-    
-                if (tooltipFormatter) {
-                    tooltip.innerHTML = tooltipFormatter(d);
-                    tooltip.style.visibility = 'visible';
-                    tooltip.style.top = (event.pageY + 10) + 'px';
-                    tooltip.style.left = (event.pageX + 10) + 'px';
-                }
-            })
-            .on('mousemove', (event) => {
-                tooltip.style.top = (event.pageY + 10) + 'px';
-                tooltip.style.left = (event.pageX + 10) + 'px';
-            })
-            .on('mouseout', (event) => {
-                d3.select(event.currentTarget)
-                    .attr('fill', color)
-                    .attr('r', radius);
-    
-                tooltip.style.visibility = 'hidden';
+            .attr('data-original-r', radius);
+        if (tooltipFormatter) {
+            this._bindPinnableMark(circles, {
+                tooltipHTML: tooltipFormatter,
+                highlight: node => d3.select(node).attr('fill', this.highlightColor).attr('r', radius * 4),
+                restore: node => d3.select(node).attr('fill', color).attr('r', radius),
+                label: 'Data point; click to pin details',
             });
+        }
     }
     
     _queryAllLegendCheckboxes() {

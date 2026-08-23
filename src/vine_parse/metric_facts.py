@@ -566,16 +566,16 @@ class MetricFactBuilder:
         end_epoch = ends[-1] if ends else max(all_timestamps)
         run_complete = bool(ends)
         transaction_status = "PASS" if not malformed_payloads and not self.provenance["transactions"]["malformed_records"] else "PARTIAL"
-        source_status = transaction_status if run_complete else "PARTIAL"
+        source_status = transaction_status
         transaction_reasons = []
         if transaction_status != "PASS":
             transaction_reasons.append("Malformed transaction evidence prevents complete validation.")
-        terminal_source_reasons = list(transaction_reasons)
         if not run_complete:
             self.partial_reasons.append("metric_manager_end_missing")
-            terminal_source_reasons.append(
-                "Manager END is missing; terminal completeness cannot be verified."
-            )
+        observed_scope_caveat = (
+            "Run has no MANAGER END; values cover observations through the latest source record."
+            if not run_complete else ""
+        )
 
         app_attempts = []
         terminal_events = []
@@ -680,7 +680,7 @@ class MetricFactBuilder:
             f"Only {classification_coverage:.1%} of task attempts have debug classification evidence."
             if classification_coverage < 0.995 else ""
         )
-        source_reasons = terminal_source_reasons + ([classification_reason] if classification_reason else [])
+        source_reasons = transaction_reasons + ([classification_reason] if classification_reason else [])
         terminal_coverage = terminal_application / total_attempts if total_attempts else 0
         latency_denominator = max(1, total_attempts)
         status = source_status if terminal_coverage >= 0.995 else "PARTIAL"
@@ -722,11 +722,15 @@ class MetricFactBuilder:
             classification_coverage, "attempts/s", "application READY observations",
             "library,recovery", retry_caveat, "; ".join(operational_reasons),
         )
+        throughput_caveat = "; ".join(filter(None, (
+            "Terminal event is RETRIEVED; no synthetic completions.",
+            observed_scope_caveat,
+        )))
         self._contract(
             "task-throughput", status, "transactions+debug-classification",
             min(terminal_coverage, classification_coverage), "attempts/s",
             "application attempts only", "library,recovery,incomplete",
-            "Terminal event is RETRIEVED; no synthetic completions.",
+            throughput_caveat,
             "; ".join(terminal_reasons),
         )
         latency_coverage = min(complete_queue, complete_execution) / latency_denominator
@@ -735,19 +739,25 @@ class MetricFactBuilder:
             latency_reasons.append(
                 f"Only {latency_coverage:.1%} of application attempts have complete queue and execution endpoints."
             )
+        latency_caveat = "; ".join(filter(None, (
+            "Each latency field has independent coverage.", observed_scope_caveat,
+        )))
         self._contract(
             "task-latency", source_status if latency_coverage >= 0.995 else "PARTIAL",
             "transactions+debug-classification",
             min(latency_coverage, classification_coverage), "seconds",
             "application attempts only", "missing phase endpoints",
-            "Each latency field has independent coverage.",
+            latency_caveat,
             "; ".join(latency_reasons),
         )
+        failure_caveat = "; ".join(filter(None, (
+            "Statuses are TaskVine terminal outcomes.", observed_scope_caveat,
+        )))
         self._contract(
             "failure-timeline", status, "transactions+debug-classification",
             min(terminal_coverage, classification_coverage), "attempts",
             "unsuccessful application attempts", "library,recovery,incomplete",
-            "Statuses are TaskVine terminal outcomes.",
+            failure_caveat,
             "; ".join(terminal_reasons),
         )
         self._contract(
@@ -756,12 +766,14 @@ class MetricFactBuilder:
             "Disconnect reasons are source values; open sessions require no synthetic disconnect.",
             "; ".join(transaction_reasons),
         )
+        transfer_caveat = "; ".join(filter(None, (
+            "Payload throughput is not physical link utilization.", observed_scope_caveat,
+        )))
         self._contract(
             "transfer-throughput", source_status, "transactions",
             1.0 if transfer_events else 0.0, "bytes/s",
             "completed INPUT and OUTPUT payloads", "avoided/cache-hit transfers",
-            "Payload throughput is not physical link utilization.",
-            "; ".join(terminal_source_reasons),
+            transfer_caveat, "; ".join(transaction_reasons),
         )
         self._transaction_totals = {"input_bytes": total_input, "output_bytes": total_output, "worker_connections": sum(delta > 0 for _, _, delta, _ in worker_events)}
         return start_epoch

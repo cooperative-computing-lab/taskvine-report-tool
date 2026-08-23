@@ -50,17 +50,17 @@ The current gates require:
 
 1. no malformed required records;
 2. at least 99.5% terminal and task-classification coverage for terminal task metrics;
-3. a real manager end for terminal task and transfer metrics;
+3. complete per-attempt endpoints for task latency and terminal metrics;
 4. at least 99.5% usable performance samples for worker capacity;
 5. transfer input/output byte sums within 1% of performance counters;
 6. exact worker-connection conservation when the performance total is present;
 7. aggregation before presentation downsampling, preserving endpoints and extrema.
 
-Synthetic debug end times are never promoted to source terminal events. An
-incomplete run may still expose independently valid observed-state, retry,
-worker-event, and capacity metrics. Its application completion and transfer
-charts remain unavailable, and open workflow states are explicitly
-right-censored at the last source observation.
+Synthetic debug end times are never promoted to source terminal events. Metrics
+whose observed events or samples are independently complete remain plot-ready
+without `MANAGER END` and explicitly describe their observed-so-far scope.
+Open attempts or incomplete phase endpoints still lower the affected contract;
+open workflow states are right-censored at the last source observation.
 
 ## API
 
@@ -84,7 +84,7 @@ verification and immutable revision publication.
 - API tests prove revision identity and absence of plot points for failed
   contracts.
 - A complete real run must pass all advertised source metric contracts.
-- A truncated real run must hide terminal task and transfer series while
-  preserving independently valid live metrics.
+- A truncated real run must preserve independently valid observed-so-far
+  metrics while hiding only series whose own evidence is incomplete.
 - Existing request isolation, concurrency, packaging, and browser tests remain
   green.
