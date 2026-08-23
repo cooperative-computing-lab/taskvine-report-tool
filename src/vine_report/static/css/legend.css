@@ -1,18 +1,15 @@
 
 .legend-flex-container {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-start;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
     align-items: flex-start;
-    gap: 16px;
+    gap: 12px 24px;
     width: 100%;
     margin: 0 0 10px 0;
-    overflow: visible;
 }
 
 .legend-group {
-    flex: 0 1 auto;
-    min-width: 140px;
+    min-width: 0;
     max-width: 100%;
     margin: 0;
     display: flex;
@@ -129,18 +126,19 @@
 
 .legend-row {
     width: 100%;
-    margin-bottom: 5px;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px 14px;
+    margin-bottom: 6px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
+    grid-auto-rows: minmax(30px, auto);
+    align-items: stretch;
+    gap: 6px 24px;
 }
 
 .legend-row .legend-item {
     min-width: 0;
     max-width: 100%;
     margin: 0;
-    padding: 2px 0;
+    padding: 5px 6px;
 }
 
 .legend-checkbox {
@@ -159,8 +157,8 @@
     color: #333;
     font-size: 12px;
     min-width: 0;
-    max-width: 260px;
-    flex: 0 1 auto;
+    max-width: 100%;
+    flex: 1 1 auto;
     padding-right: 2px;
 }
 

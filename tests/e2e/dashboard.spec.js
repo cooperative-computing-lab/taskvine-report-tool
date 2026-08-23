@@ -458,7 +458,7 @@ test('every visible chart section has a readable explanation', async ({ page }) 
   }
 });
 
-test('legends wrap compactly without horizontal scrolling', async ({ page }) => {
+test('legends use a spaced responsive grid without horizontal scrolling', async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 900 });
   await page.goto('/?run=run-a');
   await expectRun(page, 'run-a');
@@ -472,10 +472,18 @@ test('legends wrap compactly without horizontal scrolling', async ({ page }) => 
       .filter(container => container.querySelector('.legend-item'))
       .map(container => ({
         horizontalOverflow: container.scrollWidth - container.clientWidth,
-        rowsWrap: [...container.querySelectorAll('.legend-row')]
-          .every(row => getComputedStyle(row).display === 'flex' && getComputedStyle(row).flexWrap === 'wrap'),
+        verticalOverflowEnabled: getComputedStyle(container.closest('.section-row.top')).overflowY === 'auto',
+        layoutsUseGrid: [...container.querySelectorAll('.legend-row, .legend-flex-container')]
+          .every(layout => {
+            const style = getComputedStyle(layout);
+            return style.display === 'grid'
+              && parseFloat(style.columnGap) >= 20
+              && parseFloat(style.rowGap) >= 6;
+          }),
       })));
-    expect(layout.every(item => item.horizontalOverflow <= 1 && item.rowsWrap)).toBe(true);
+    expect(layout.every(item => item.horizontalOverflow <= 1
+      && item.verticalOverflowEnabled
+      && item.layoutsUseGrid)).toBe(true);
   }
 });
 
