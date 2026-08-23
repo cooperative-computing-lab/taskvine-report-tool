@@ -122,6 +122,8 @@ export class BaseModule {
         this._cdfMode = false;
         this._lineCursor = null;
         this._pinnedMark = null;
+        this._markInteractions = new WeakMap();
+        this._markEventsBound = false;
         this._plotClipId = null;
     }
 
@@ -191,6 +193,7 @@ export class BaseModule {
             return;
         }
         this.toolbox = new Toolbox({ id: `${this.id}-toolbox` });
+        this._bindMarkDelegation();
         _hoverInstances.add(this);
         _setupHoverSafetyNet();
     }
@@ -1237,59 +1240,80 @@ export class BaseModule {
     }
 
     _bindPinnableMark(selection, { tooltipHTML, highlight, restore, label }) {
-        const tooltip = document.getElementById('vine-tooltip');
-        const show = (event, datum, pinned = false) => {
-            highlight(event.currentTarget);
-            this._showMarkTooltip(event, tooltipHTML(datum), pinned);
-        };
         selection
             .attr('tabindex', 0)
             .attr('role', 'button')
             .attr('aria-pressed', 'false')
             .attr('aria-label', label)
-            .on('mouseover', (event, datum) => {
-                if (hasPinnedTooltip()) return;
-                show(event, datum);
-            })
-            .on('mousemove', event => {
-                if (!hasPinnedTooltip()) this._positionMarkTooltip(event);
-            })
-            .on('mouseout', event => {
-                if (hasPinnedTooltip()) return;
-                restore(event.currentTarget);
-                if (tooltip) tooltip.style.visibility = 'hidden';
-            })
-            .on('click', (event, datum) => {
-                event.stopPropagation();
-                event.currentTarget.focus();
-                if (this._pinnedMark?.node === event.currentTarget) {
-                    this.releasePinnedTooltip();
-                    return;
-                }
-                if (this._pinnedMark) {
-                    this._pinnedMark.restore(this._pinnedMark.node);
-                    d3.select(this._pinnedMark.node)
-                        .attr('aria-pressed', 'false')
-                        .classed('is-pinned', false);
-                }
-                pinTooltip(this);
-                this._pinnedMark = { node: event.currentTarget, restore };
-                d3.select(event.currentTarget).attr('aria-pressed', 'true').classed('is-pinned', true);
-                show(event, datum, true);
-            })
-            .on('keydown', (event, datum) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    event.currentTarget.dispatchEvent(new MouseEvent('click', {
-                        bubbles: true,
-                        clientX: event.currentTarget.getBoundingClientRect().left,
-                        clientY: event.currentTarget.getBoundingClientRect().top,
-                    }));
-                } else if (event.key === 'Escape') {
-                    this.releasePinnedTooltip();
-                }
+            .attr('data-vine-mark', '')
+            .each((datum, index, nodes) => {
+                this._markInteractions.set(nodes[index], { tooltipHTML, highlight, restore });
             });
         return selection;
+    }
+
+    _bindMarkDelegation() {
+        if (this._markEventsBound || !this.svgNode) return;
+        this._markEventsBound = true;
+        const markAt = event => {
+            const node = event.target.closest?.('[data-vine-mark]');
+            if (!node || !this.svgNode.contains(node)) return null;
+            const interaction = this._markInteractions.get(node);
+            return interaction ? { node, interaction } : null;
+        };
+        const show = (event, node, interaction, pinned = false) => {
+            interaction.highlight(node);
+            this._showMarkTooltip(event, interaction.tooltipHTML(node.__data__), pinned);
+        };
+        const toggle = (event, node, interaction, position = event) => {
+            event.stopPropagation();
+            node.focus();
+            if (this._pinnedMark?.node === node) {
+                this.releasePinnedTooltip();
+                return;
+            }
+            if (this._pinnedMark) {
+                this._pinnedMark.restore(this._pinnedMark.node);
+                d3.select(this._pinnedMark.node).attr('aria-pressed', 'false').classed('is-pinned', false);
+            }
+            pinTooltip(this);
+            this._pinnedMark = { node, restore: interaction.restore };
+            d3.select(node).attr('aria-pressed', 'true').classed('is-pinned', true);
+            show(position, node, interaction, true);
+        };
+
+        this.svgNode.addEventListener('pointerover', event => {
+            const mark = markAt(event);
+            if (mark && !hasPinnedTooltip()) show(event, mark.node, mark.interaction);
+        });
+        this.svgNode.addEventListener('pointermove', event => {
+            if (markAt(event) && !hasPinnedTooltip()) this._positionMarkTooltip(event);
+        });
+        this.svgNode.addEventListener('pointerout', event => {
+            const mark = markAt(event);
+            if (!mark || hasPinnedTooltip()) return;
+            mark.interaction.restore(mark.node);
+            const tooltip = document.getElementById('vine-tooltip');
+            if (tooltip) tooltip.style.visibility = 'hidden';
+        });
+        this.svgNode.addEventListener('click', event => {
+            const mark = markAt(event);
+            if (mark) toggle(event, mark.node, mark.interaction);
+        });
+        this.svgNode.addEventListener('keydown', event => {
+            const mark = markAt(event);
+            if (!mark) return;
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                const bounds = mark.node.getBoundingClientRect();
+                toggle(event, mark.node, mark.interaction, {
+                    clientX: bounds.left + bounds.width / 2,
+                    clientY: bounds.top + bounds.height / 2,
+                });
+            } else if (event.key === 'Escape') {
+                this.releasePinnedTooltip();
+            }
+        });
     }
 
     releasePinnedTooltip() {

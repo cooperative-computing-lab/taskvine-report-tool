@@ -55,6 +55,23 @@ test('late run responses are discarded and reload state is stable', async ({ pag
   expect(browserErrors).toEqual([]);
 });
 
+test('a group load is single-flight while run activation is still finishing', async ({ page }) => {
+  let timelineRequests = 0;
+  page.on('request', request => {
+    if (request.url().includes('/charts/task-execution-details')) timelineRequests += 1;
+  });
+  await page.route('**/tasks?*', async route => {
+    await new Promise(resolve => setTimeout(resolve, 350));
+    await route.continue();
+  });
+  await page.goto('/?run=run-a');
+  await expectRun(page, 'run-a');
+  await page.locator('.nav-item[data-view="tasks"]').click();
+  await page.locator('[data-module="task-execution-details"] rect[role="button"]').first().waitFor({ state: 'attached' });
+  await page.waitForTimeout(500);
+  expect(timelineRequests).toBe(1);
+});
+
 test('chart geometry, orange hover, and vertical resizing remain coherent', async ({ page }) => {
   const browserErrors = [];
   const serverErrors = [];
@@ -214,12 +231,17 @@ test('points and bars pin one shared tooltip and charts expose zoom controls', a
   const point = scatter.locator('circle.file-sizes-series-0-point').first();
   const tooltip = page.locator('#vine-tooltip');
   await point.click();
+  expect(await scatter.locator('circle[role="button"]').evaluateAll(nodes => nodes.every(node => !node.__on))).toBe(true);
   await expect(point).toHaveAttribute('aria-pressed', 'true');
   await expect(tooltip).toHaveClass(/cursor-pinned/);
   await expect(tooltip.locator('.mark-tooltip-status')).toContainText('Pinned');
   const pinnedPointText = await tooltip.textContent();
   await scatter.locator('circle.file-sizes-series-0-point').nth(1).hover();
   await expect(tooltip).toHaveText(pinnedPointText);
+  await page.keyboard.press('Escape');
+  await point.press('Enter');
+  await expect(point).toHaveAttribute('aria-pressed', 'true');
+  await expect(tooltip).toHaveClass(/cursor-pinned/);
 
   const zoom = scatter.locator('.chart-zoom-controls');
   await expect(zoom).toContainText('Ctrl/⌘ + scroll');
@@ -238,6 +260,7 @@ test('points and bars pin one shared tooltip and charts expose zoom controls', a
   const bar = timeline.locator('rect.task-type-successful-executing-on-worker').first();
   await expect(bar).toBeVisible();
   await bar.click();
+  expect(await timeline.locator('rect[role="button"]').evaluateAll(nodes => nodes.every(node => !node.__on))).toBe(true);
   await expect(point).toHaveAttribute('aria-pressed', 'false');
   await expect(bar).toHaveAttribute('aria-pressed', 'true');
   await expect(tooltip).toHaveClass(/cursor-pinned/);

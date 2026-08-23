@@ -1,10 +1,11 @@
-import { moduleClasses, enabledModuleConfigs, installMetricCatalog } from './modules/configs.js?v=6.3';
+import { moduleClasses, enabledModuleConfigs, installMetricCatalog } from './modules/configs.js?v=6.4';
 import { formatDuration } from './modules/time_format.js?v=1.0';
 
 const REQUIRED_SERVER_CAPABILITY = 'source-backed-metrics-v1';
 
 const moduleObjects = {};
 const loadedGroups = new Set();
+const loadingGroups = new Map();
 
 const state = {
     run: '',
@@ -240,28 +241,38 @@ function setupModules() {
     });
 }
 
-async function loadGroup(group, force = false, scope = currentRunScope()) {
+async function loadGroup(group, scope = currentRunScope()) {
     if (!isCurrentScope(scope) || !['tasks', 'workers', 'transfers', 'files'].includes(group)) return;
-    const cacheKey = `${scope.run}:${scope.revision}:${group}`;
-    if (!force && loadedGroups.has(cacheKey)) return;
-    const configs = enabledModuleConfigs.filter(config => config.group === group);
-    await Promise.all(configs.map(async config => {
-        const module = moduleObjects[config.id];
-        const card = document.querySelector(`[data-module="${config.id}"]`);
-        card?.classList.add('is-loading');
-        module.switchFolder(scope.run, scope.revision, scope.generation);
-        if (config.timeLinked) module._globalTimeWindow = [state.timeStart, state.timeEnd];
-        try {
-            await module.fetchDataAndPlot();
-        } catch (error) {
-            if (error?.name === 'AbortError') return;
-            console.error(`Failed to render ${config.id}`, error);
-            card?.classList.add('has-error');
-        } finally {
-            if (isCurrentScope(scope)) card?.classList.remove('is-loading');
-        }
-    }));
-    if (isCurrentScope(scope)) loadedGroups.add(cacheKey);
+    const cacheKey = `${scope.run}:${scope.revision}:${scope.generation}:${group}`;
+    if (loadedGroups.has(cacheKey)) return;
+    if (loadingGroups.has(cacheKey)) return loadingGroups.get(cacheKey);
+
+    const loading = (async () => {
+        const configs = enabledModuleConfigs.filter(config => config.group === group);
+        await Promise.all(configs.map(async config => {
+            const module = moduleObjects[config.id];
+            const card = document.querySelector(`[data-module="${config.id}"]`);
+            card?.classList.add('is-loading');
+            module.switchFolder(scope.run, scope.revision, scope.generation);
+            if (config.timeLinked) module._globalTimeWindow = [state.timeStart, state.timeEnd];
+            try {
+                await module.fetchDataAndPlot();
+            } catch (error) {
+                if (error?.name === 'AbortError') return;
+                console.error(`Failed to render ${config.id}`, error);
+                card?.classList.add('has-error');
+            } finally {
+                if (isCurrentScope(scope)) card?.classList.remove('is-loading');
+            }
+        }));
+        if (isCurrentScope(scope)) loadedGroups.add(cacheKey);
+    })();
+    loadingGroups.set(cacheKey, loading);
+    try {
+        await loading;
+    } finally {
+        if (loadingGroups.get(cacheKey) === loading) loadingGroups.delete(cacheKey);
+    }
 }
 
 async function selectView(view, push = true) {
@@ -380,7 +391,7 @@ async function selectRun(run, { force = false } = {}) {
     }
     await loadSummary(scope);
     if (!isCurrentScope(scope)) return;
-    if (['tasks', 'workers', 'transfers', 'files'].includes(state.view)) await loadGroup(state.view, true, scope);
+    if (['tasks', 'workers', 'transfers', 'files'].includes(state.view)) await loadGroup(state.view, scope);
     if (state.view === 'explorer') await loadExplorer(scope);
     renderCompareOptions();
 }
