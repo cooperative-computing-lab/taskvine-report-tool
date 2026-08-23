@@ -89,17 +89,17 @@ def make_run(root: Path, run_id: str, scale: int):
     write_csv(csv_dir / "file_sizes.csv", ["file_idx", "file_name", "file_size_kb"], [[1, "input-a", 10 * scale], [2, "output-b", 30 * scale], [3, "output-c", 60 * scale]])
     write_csv(csv_dir / "file_concurrent_replicas.csv", ["file_idx", "file_name", "max_simul_replicas"], [[1, "input-a", 1], [2, "output-b", 2], [3, "output-c", 3]])
     write_csv(csv_dir / "file_retention_time.csv", ["file_idx", "file_name", "retention_time"], [[1, "input-a", 4], [2, "output-b", 8], [3, "output-c", 12]])
-    contract_header = ["metric_id", "semantics_version", "status", "source", "coverage", "unit", "inclusion", "exclusions", "caveat"]
+    contract_header = ["metric_id", "semantics_version", "status", "source", "coverage", "unit", "inclusion", "exclusions", "caveat", "status_reason"]
     write_csv(csv_dir / "metric_contracts.csv", contract_header, [
-        ["workflow-pressure", 1, "PASS", "transactions+debug", 1, "attempts", "application states", "library,recovery", ""],
-        ["retry-pressure", 1, "PASS", "transactions+debug", 1, "attempts/second", "READY observations", "library,recovery", ""],
-        ["task-throughput", 1, "PASS", "transactions", 1, "attempts/second", "application attempts", "library,recovery", ""],
-        ["task-latency", 1, "PASS", "transactions+debug", 1, "seconds", "terminal application attempts", "library,recovery", ""],
-        ["failure-timeline", 1, "PASS", "transactions+debug", 1, "attempts", "failed application attempts", "library,recovery", ""],
-        ["worker-capacity", 1, "PASS", "performance", 1, "count", "all samples", "", ""],
-        ["core-occupancy", 1, "PASS", "performance", 1, "ratio", "committed/total", "zero capacity", ""],
-        ["worker-churn", 1, "PASS", "transactions", 1, "workers", "worker sessions", "", ""],
-        ["transfer-throughput", 1, "PASS", "transactions+performance", 1, "bytes/second", "payload bytes", "protocol overhead", ""],
+        ["workflow-pressure", 1, "PASS", "transactions+debug", 1, "attempts", "application states", "library,recovery", "", ""],
+        ["retry-pressure", 1, "PASS", "transactions+debug", 1, "attempts/second", "READY observations", "library,recovery", "", ""],
+        ["task-throughput", 1, "PASS", "transactions", 1, "attempts/second", "application attempts", "library,recovery", "", ""],
+        ["task-latency", 1, "PASS", "transactions+debug", 1, "seconds", "terminal application attempts", "library,recovery", "", ""],
+        ["failure-timeline", 1, "PARTIAL" if scale == 2 else "PASS", "transactions+debug", 1, "attempts", "failed application attempts", "library,recovery", "Statuses are TaskVine terminal outcomes.", "Manager END is missing; terminal completeness cannot be verified." if scale == 2 else ""],
+        ["worker-capacity", 1, "PASS", "performance", 1, "count", "all samples", "", "", ""],
+        ["core-occupancy", 1, "PASS", "performance", 1, "ratio", "committed/total", "zero capacity", "", ""],
+        ["worker-churn", 1, "PASS", "transactions", 1, "workers", "worker sessions", "", "", ""],
+        ["transfer-throughput", 1, "PASS", "transactions+performance", 1, "bytes/second", "payload bytes", "protocol overhead", "", ""],
     ])
     write_csv(csv_dir / "metric_workflow_pressure.csv", ["time", "queued", "executing", "retrieving"], [[0, 3, 0, 0], [10, 1, 2, 0], [30, 0, 0, 0]])
     write_csv(csv_dir / "metric_retry_pressure.csv", ["time", "bucket_seconds", "first_attempts", "retries", "first_attempt_rate_per_second", "retry_rate_per_second"], [[0, 10, 2, 0, 0.2, 0], [10, 10, 1, 1, 0.1, 0.1]])

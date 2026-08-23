@@ -1,5 +1,6 @@
 import { BaseModule } from './base.js?v=5.7';
 import { durationAxisSpec } from './time_format.js?v=1.0';
+import { metricContractDetails, metricContractError } from './metric_contract.js?v=1.0';
 
 const COLORS = ['#d96f24', '#747474', '#a9a9a5', '#4e4e4e', '#e6a06d', '#94948f'];
 
@@ -28,12 +29,12 @@ export class SourceMetricModule extends BaseModule {
             const coverage = Number(contract.coverage);
             const coverageText = Number.isFinite(coverage) ? `; coverage ${(coverage * 100).toFixed(1)}%` : '';
             title.title = contract.source
-                ? `Source: ${contract.source}${coverageText}. ${contract.caveat || ''}`.trim()
+                ? `Source: ${contract.source}${coverageText}. ${metricContractDetails(contract)}`.trim()
                 : '';
         }
         if (!payload?.available) {
             const status = contract.status || 'UNAVAILABLE';
-            const reason = contract.caveat || 'The required source evidence is unavailable.';
+            const reason = metricContractError(contract);
             return { error: `${status}: ${reason}` };
         }
         const series = (payload.series || []).filter(item => Array.isArray(item.points) && item.points.length);

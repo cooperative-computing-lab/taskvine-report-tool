@@ -42,6 +42,9 @@ are reconciled against the performance byte counters.
 
 A metric is plot-ready only when its contract status is `PASS`. The API returns
 the contract but no series for `PARTIAL` or `UNAVAILABLE` metrics.
+`status_reason` explains why a metric is not plot-ready; `caveat` documents its
+meaning and limitations. User-facing errors prefer `status_reason`, so semantic
+notes are never presented as failures.
 
 The current gates require:
 

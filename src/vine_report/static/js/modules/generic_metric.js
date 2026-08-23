@@ -1,6 +1,7 @@
 import { BaseModule } from './base.js?v=5.7';
 import { getWorkerColor } from './utils.js?v=5.0';
 import { durationAxisSpec } from './time_format.js?v=1.0';
+import { metricContractDetails, metricContractError } from './metric_contract.js?v=1.0';
 
 const COLORS = ['#d96f24', '#747474', '#a9a9a5', '#4e4e4e', '#e6a06d', '#94948f'];
 
@@ -47,14 +48,17 @@ export class GenericMetricModule extends BaseModule {
             const selectionText = omitted
                 ? ` Showing ${payload.metadata.selected_series} of ${payload.metadata.available_series} series by ${payload.metadata.series_selection}.`
                 : '';
-            title.title = `Source: ${contract.source || this.config.source || 'unknown'}${coverageText}. ${contract.caveat || ''}${selectionText}`.trim();
+            title.title = `Source: ${contract.source || this.config.source || 'unknown'}${coverageText}. ${metricContractDetails(contract)}${selectionText}`.trim();
         }
         if (!payload?.available || !Array.isArray(payload.series) || !payload.series.some(item => item.points?.length)) {
-            return { error: contract.caveat || 'No observations are available for this metric.' };
+            return { error: metricContractError(contract, 'No observations are available for this metric.') };
         }
         const xDomain = finiteDomain(payload.axes?.x?.domain);
         const yDomain = finiteDomain(payload.axes?.y?.domain);
         const xAxis = payload.axes?.x?.unit === 'seconds' ? durationAxisSpec(xDomain) : null;
+        const xFormatter = payload.axes?.x?.unit === 'count'
+            ? '(d) => d3.format(",.0f")(d)'
+            : formatterExpression(payload.axes?.x?.unit);
         const ySpan = Math.max(yDomain[1] - yDomain[0], Math.abs(yDomain[1]), 1);
         if (this.config.renderer === 'scatter') yDomain[1] += ySpan * 0.04;
         const yAxis = payload.axes?.y?.unit === 'seconds' ? durationAxisSpec(yDomain) : null;
@@ -64,7 +68,7 @@ export class GenericMetricModule extends BaseModule {
             y_domain: yDomain,
             x_tick_values: xAxis?.tickValues || d3.ticks(xDomain[0], xDomain[1], 6),
             y_tick_values: yAxis?.tickValues || d3.ticks(yDomain[0], yDomain[1], 6),
-            x_tick_formatter: xAxis?.formatterExpression || formatterExpression(payload.axes?.x?.unit),
+            x_tick_formatter: xAxis?.formatterExpression || xFormatter,
             y_tick_formatter: yAxis?.formatterExpression || formatterExpression(payload.axes?.y?.unit),
         };
     }

@@ -87,7 +87,8 @@ def _metric_payload(csv_dir_string: str, metric_id: str):
             "unit": "",
             "inclusion": "",
             "exclusions": "all",
-            "caveat": "Run was parsed before source-backed metrics were generated.",
+            "caveat": "",
+            "status_reason": "Run was parsed before source-backed metrics were generated.",
         }
     normalized_contract = {
         **contract,
@@ -112,7 +113,7 @@ def _metric_payload(csv_dir_string: str, metric_id: str):
     if not path.is_file():
         payload["available"] = False
         payload["contract"]["status"] = "UNAVAILABLE"
-        payload["contract"]["caveat"] = "Committed metric data is missing."
+        payload["contract"]["status_reason"] = "Committed metric data is missing."
         return payload
     with path.open(newline="", encoding="utf-8", errors="replace") as handle:
         rows = list(csv.DictReader(handle))

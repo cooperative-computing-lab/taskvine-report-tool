@@ -187,6 +187,7 @@ class MetricFactBuilder:
         inclusion,
         exclusions,
         caveat="",
+        status_reason="",
     ):
         self.contracts.append({
             "metric_id": metric_id,
@@ -198,15 +199,18 @@ class MetricFactBuilder:
             "inclusion": inclusion,
             "exclusions": exclusions,
             "caveat": caveat,
+            "status_reason": status_reason,
         })
 
-    def _downgrade_contract(self, metric_id, caveat):
+    def _downgrade_contract(self, metric_id, status_reason):
         for contract in self.contracts:
             if contract["metric_id"] != metric_id:
                 continue
             contract["status"] = "PARTIAL"
-            existing = contract.get("caveat", "")
-            contract["caveat"] = "; ".join(value for value in (existing, caveat) if value)
+            existing = contract.get("status_reason", "")
+            contract["status_reason"] = "; ".join(
+                value for value in (existing, status_reason) if value
+            )
             return
 
     def _task_classification(self, task_id, attempt, terminal_status):
@@ -280,7 +284,10 @@ class MetricFactBuilder:
                 "workflow-pressure", "retry-pressure", "task-throughput", "task-latency", "failure-timeline",
                 "worker-churn", "transfer-throughput",
             ):
-                self._contract(metric_id, "UNAVAILABLE", "transactions", 0, "", "", "all", "transactions file missing")
+                self._contract(
+                    metric_id, "UNAVAILABLE", "transactions", 0, "", "", "all",
+                    status_reason="Transactions source file is missing.",
+                )
             self._write_empty_transaction_outputs()
             start_epoch = None
         else:
@@ -289,7 +296,7 @@ class MetricFactBuilder:
         self._build_cache_occupancy(performance_rows)
         _write_csv(
             self.csv_dir / METRIC_CONTRACT_FILENAME,
-            ["metric_id", "semantics_version", "status", "source", "coverage", "unit", "inclusion", "exclusions", "caveat"],
+            ["metric_id", "semantics_version", "status", "source", "coverage", "unit", "inclusion", "exclusions", "caveat", "status_reason"],
             self.contracts,
         )
         return {
@@ -428,18 +435,24 @@ class MetricFactBuilder:
         complete = bool(getattr(self.dp, "manager_end_observed", False))
         status = "PASS" if coverage >= 0.995 and complete and reconciliation_ok else "PARTIAL"
         caveats = ["TaskVine cache payload only; not physical disk utilization"]
+        status_reasons = []
+        if coverage < 0.995:
+            status_reasons.append(f"Only {coverage:.1%} of eligible cache residencies were projected.")
+        if not complete:
+            status_reasons.append("Manager END is missing; cache residency completeness cannot be verified.")
         if censored:
             caveats.append(f"{censored} right-censored residencies")
         if not comparable:
-            caveats.append("performance inuse_cache unavailable")
+            status_reasons.append("Performance inuse_cache evidence is unavailable.")
         elif not reconciliation_ok:
-            caveats.append("performance inuse_cache reconciliation outside tolerance")
+            status_reasons.append("Performance inuse_cache reconciliation is outside tolerance.")
             self.partial_reasons.append("metric_cache_occupancy_mismatch")
         self._contract(
             "worker-cache-occupancy", status,
             "debug-cache-lifecycle+performance-reconciliation", coverage,
             "bytes", "cache-update to cache-invalid/unlink residencies",
             "sandbox,temp,logs,filesystem-overhead", "; ".join(caveats),
+            "; ".join(status_reasons),
         )
 
     def _write_empty_transaction_outputs(self):
@@ -554,8 +567,15 @@ class MetricFactBuilder:
         run_complete = bool(ends)
         transaction_status = "PASS" if not malformed_payloads and not self.provenance["transactions"]["malformed_records"] else "PARTIAL"
         source_status = transaction_status if run_complete else "PARTIAL"
+        transaction_reasons = []
+        if transaction_status != "PASS":
+            transaction_reasons.append("Malformed transaction evidence prevents complete validation.")
+        terminal_source_reasons = list(transaction_reasons)
         if not run_complete:
             self.partial_reasons.append("metric_manager_end_missing")
+            terminal_source_reasons.append(
+                "Manager END is missing; terminal completeness cannot be verified."
+            )
 
         app_attempts = []
         terminal_events = []
@@ -656,10 +676,21 @@ class MetricFactBuilder:
         if classification_coverage < 0.995:
             self.partial_reasons.append("metric_task_classification_incomplete")
             source_status = "PARTIAL"
+        classification_reason = (
+            f"Only {classification_coverage:.1%} of task attempts have debug classification evidence."
+            if classification_coverage < 0.995 else ""
+        )
+        source_reasons = terminal_source_reasons + ([classification_reason] if classification_reason else [])
         terminal_coverage = terminal_application / total_attempts if total_attempts else 0
         latency_denominator = max(1, total_attempts)
         status = source_status if terminal_coverage >= 0.995 else "PARTIAL"
         operational_status = transaction_status if classification_coverage >= 0.995 else "PARTIAL"
+        operational_reasons = transaction_reasons + ([classification_reason] if classification_reason else [])
+        terminal_reasons = list(source_reasons)
+        if terminal_coverage < 0.995:
+            terminal_reasons.append(
+                f"Only {terminal_coverage:.1%} of application attempts have terminal evidence."
+            )
         workflow_rows, workflow_observed = _workflow_pressure_rows(app_attempts, start_epoch, end_epoch)
         _write_csv(
             self.csv_dir / "metric_workflow_pressure.csv",
@@ -684,22 +715,54 @@ class MetricFactBuilder:
             "workflow-pressure", operational_status, "transactions+debug-classification",
             min(workflow_coverage, classification_coverage), "attempts",
             "observed application attempt lifecycle states", "library,recovery", workflow_caveat,
+            "; ".join(operational_reasons),
         )
         self._contract(
             "retry-pressure", operational_status, "transactions+debug-classification",
             classification_coverage, "attempts/s", "application READY observations",
-            "library,recovery", retry_caveat,
+            "library,recovery", retry_caveat, "; ".join(operational_reasons),
         )
-        self._contract("task-throughput", status, "transactions+debug-classification", min(terminal_coverage, classification_coverage), "attempts/s", "application attempts only", "library,recovery,incomplete", "Terminal event is RETRIEVED; no synthetic completions.")
+        self._contract(
+            "task-throughput", status, "transactions+debug-classification",
+            min(terminal_coverage, classification_coverage), "attempts/s",
+            "application attempts only", "library,recovery,incomplete",
+            "Terminal event is RETRIEVED; no synthetic completions.",
+            "; ".join(terminal_reasons),
+        )
         latency_coverage = min(complete_queue, complete_execution) / latency_denominator
-        self._contract("task-latency", source_status if latency_coverage >= 0.995 else "PARTIAL", "transactions+debug-classification", min(latency_coverage, classification_coverage), "seconds", "application attempts only", "missing phase endpoints", "Each latency field has independent coverage.")
-        self._contract("failure-timeline", status, "transactions+debug-classification", min(terminal_coverage, classification_coverage), "attempts", "unsuccessful application attempts", "library,recovery,incomplete", "Statuses are TaskVine terminal outcomes.")
+        latency_reasons = list(source_reasons)
+        if latency_coverage < 0.995:
+            latency_reasons.append(
+                f"Only {latency_coverage:.1%} of application attempts have complete queue and execution endpoints."
+            )
+        self._contract(
+            "task-latency", source_status if latency_coverage >= 0.995 else "PARTIAL",
+            "transactions+debug-classification",
+            min(latency_coverage, classification_coverage), "seconds",
+            "application attempts only", "missing phase endpoints",
+            "Each latency field has independent coverage.",
+            "; ".join(latency_reasons),
+        )
+        self._contract(
+            "failure-timeline", status, "transactions+debug-classification",
+            min(terminal_coverage, classification_coverage), "attempts",
+            "unsuccessful application attempts", "library,recovery,incomplete",
+            "Statuses are TaskVine terminal outcomes.",
+            "; ".join(terminal_reasons),
+        )
         self._contract(
             "worker-churn", transaction_status, "transactions", 1.0,
             "events/s", "observed worker connection and disconnection events", "none",
             "Disconnect reasons are source values; open sessions require no synthetic disconnect.",
+            "; ".join(transaction_reasons),
         )
-        self._contract("transfer-throughput", source_status, "transactions", 1.0 if transfer_events else 0.0, "bytes/s", "completed INPUT and OUTPUT payloads", "avoided/cache-hit transfers", "Payload throughput is not physical link utilization.")
+        self._contract(
+            "transfer-throughput", source_status, "transactions",
+            1.0 if transfer_events else 0.0, "bytes/s",
+            "completed INPUT and OUTPUT payloads", "avoided/cache-hit transfers",
+            "Payload throughput is not physical link utilization.",
+            "; ".join(terminal_source_reasons),
+        )
         self._transaction_totals = {"input_bytes": total_input, "output_bytes": total_output, "worker_connections": sum(delta > 0 for _, _, delta, _ in worker_events)}
         return start_epoch
 
@@ -707,8 +770,15 @@ class MetricFactBuilder:
         fields = ["time", "active_workers", "tasks_running", "total_cores", "committed_cores", "core_occupancy_ratio"]
         if not rows:
             _write_csv(self.csv_dir / "metric_worker_capacity.csv", fields, [])
-            self._contract("worker-capacity", "UNAVAILABLE", "performance", 0, "cores", "manager capacity samples", "all", "performance file missing")
-            self._contract("core-occupancy", "UNAVAILABLE", "performance", 0, "ratio", "manager capacity samples", "all", "performance file missing")
+            reason = "Performance source file has no usable samples."
+            self._contract(
+                "worker-capacity", "UNAVAILABLE", "performance", 0, "cores",
+                "manager capacity samples", "all", status_reason=reason,
+            )
+            self._contract(
+                "core-occupancy", "UNAVAILABLE", "performance", 0, "ratio",
+                "manager capacity samples", "all", status_reason=reason,
+            )
             return
         if start_epoch is None:
             start_epoch = rows[0]["timestamp"] / 1e6
@@ -767,16 +837,34 @@ class MetricFactBuilder:
         if not transfer_ok or not churn_ok:
             self.partial_reasons.append("metric_cross_source_mismatch")
         if not transfer_ok:
-            self._downgrade_contract("transfer-throughput", ";".join(transfer_caveats))
+            self._downgrade_contract(
+                "transfer-throughput",
+                f"Transaction/performance byte conservation failed: {', '.join(transfer_caveats)}.",
+            )
         if not churn_ok:
-            self._downgrade_contract("worker-churn", ";".join(churn_caveats))
+            self._downgrade_contract(
+                "worker-churn",
+                f"Worker connection conservation failed: {', '.join(churn_caveats)}.",
+            )
         coverage = valid / len(rows)
-        status = "PASS" if coverage >= 0.995 and not self.provenance["performance"]["malformed_records"] else "PARTIAL"
-        self._contract("worker-capacity", status, "performance", coverage, "cores", "manager capacity samples", "zero-capacity samples from occupancy ratio", "Committed capacity is a scheduler occupancy proxy, not CPU utilization.")
+        performance_malformed = self.provenance["performance"]["malformed_records"]
+        status = "PASS" if coverage >= 0.995 and not performance_malformed else "PARTIAL"
+        capacity_reasons = []
+        if coverage < 0.995:
+            capacity_reasons.append(f"Only {coverage:.1%} of performance samples have required fields.")
+        if performance_malformed:
+            capacity_reasons.append("Malformed performance records prevent complete validation.")
+        capacity_reason = "; ".join(capacity_reasons)
+        self._contract(
+            "worker-capacity", status, "performance", coverage, "cores",
+            "manager capacity samples", "zero-capacity samples from occupancy ratio",
+            "Committed capacity is a scheduler occupancy proxy, not CPU utilization.",
+            capacity_reason,
+        )
         self._contract(
             "core-occupancy", status, "performance", coverage, "ratio",
             "committed cores divided by total cores", "zero-capacity samples",
-            "Scheduler occupancy proxy; not measured CPU utilization.",
+            "Scheduler occupancy proxy; not measured CPU utilization.", capacity_reason,
         )
 
 

@@ -87,6 +87,14 @@ class MetricFactsTest(unittest.TestCase):
         evidence = generate_metric_facts(str(self.run), dp)
         self.assertIn("metric_manager_end_missing", evidence["partial_reasons"])
         self.assertEqual(evidence["contracts"]["task-throughput"]["status"], "PARTIAL")
+        self.assertIn(
+            "Manager END is missing",
+            evidence["contracts"]["task-throughput"]["status_reason"],
+        )
+        self.assertEqual(
+            evidence["contracts"]["failure-timeline"]["caveat"],
+            "Statuses are TaskVine terminal outcomes.",
+        )
         self.assertEqual(evidence["contracts"]["workflow-pressure"]["status"], "PASS")
         self.assertEqual(evidence["contracts"]["retry-pressure"]["status"], "PASS")
 

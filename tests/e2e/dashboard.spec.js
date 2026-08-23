@@ -109,6 +109,17 @@ test('source-backed metric renders only validated evidence', async ({ page }) =>
   expect(browserErrors).toEqual([]);
 });
 
+test('partial metrics show the actionable status reason, not the semantic caveat', async ({ page }) => {
+  await page.goto('/?run=run-b');
+  await expectRun(page, 'run-b');
+  await page.locator('.nav-item[data-view="tasks"]').click();
+
+  const card = page.locator('[data-module="failure-timeline"]');
+  await expect(card).toContainText('PARTIAL: Manager END is missing');
+  await expect(card).not.toContainText('PARTIAL: Statuses are TaskVine terminal outcomes');
+  await expect(card.locator('.section-title')).toHaveAttribute('title', /Statuses are TaskVine terminal outcomes/);
+});
+
 test('operational charts expose pressure, retries, occupancy, and worker loss reasons', async ({ page }) => {
   await page.goto('/?run=run-a');
   await expectRun(page, 'run-a');
@@ -244,6 +255,14 @@ test('duration axes use human units and exact cursor values', async ({ page }) =
       axes: { x: { domain: [0, 12_000], unit: 'seconds' }, y: { domain: [0, 1], unit: 'count' } },
     });
     const integratedFormatter = eval(transformed.x_tick_formatter);
+    const indexMetric = new GenericMetricModule('index-test', 'Index test', '/unused', { renderer: 'scatter' });
+    const indexData = indexMetric.transformFetchedData({
+      available: true,
+      contract: { status: 'PASS' },
+      series: [{ name: 'Tasks', points: [[0, 1], [3323, 2]] }],
+      axes: { x: { domain: [0, 3323], unit: 'count' }, y: { domain: [0, 2], unit: 'count' } },
+    });
+    const indexFormatter = eval(indexData.x_tick_formatter);
     return {
       longUnit: longAxis.label,
       longLabels: longAxis.tickValues.map(longAxis.formatter),
@@ -253,6 +272,7 @@ test('duration axes use human units and exact cursor values', async ({ page }) =
       integratedLabels: transformed.x_tick_values.map(integratedFormatter),
       exact: formatDuration(8000),
       missing: formatDuration(null),
+      index: indexFormatter(3323),
     };
   });
   expect(result.longUnit).toBe('h');
@@ -264,6 +284,7 @@ test('duration axes use human units and exact cursor values', async ({ page }) =
   expect(result.integratedLabels).toEqual(result.longLabels);
   expect(result.exact).toBe('2h 13m 20s');
   expect(result.missing).toBe('—');
+  expect(result.index).toBe('3,323');
 });
 
 test('file and worker explorers share search, filters, and detail drawers', async ({ page }) => {
