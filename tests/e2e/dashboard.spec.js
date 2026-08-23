@@ -252,6 +252,11 @@ test('points and bars pin one shared tooltip and charts expose zoom controls', a
   const zoomedPosition = await zoom.boundingBox();
   expect(Math.abs(zoomedPosition.x - zoomPosition.x)).toBeLessThanOrEqual(1);
   expect(Math.abs(zoomedPosition.y - zoomPosition.y)).toBeLessThanOrEqual(1);
+  await zoom.evaluate(node => {
+    const zoomIn = node.querySelector('[data-zoom="in"]');
+    for (let index = 0; index < 24; index += 1) zoomIn.click();
+  });
+  await expect(zoom.getByRole('button', { name: 'Reset zoom' })).toHaveText('2000%');
   await zoom.getByRole('button', { name: 'Reset zoom' }).click();
   await expect(zoom.getByRole('button', { name: 'Reset zoom' })).toHaveText('100%');
 

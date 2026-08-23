@@ -5,6 +5,7 @@ import { hasPinnedTooltip, pinTooltip, unpinTooltip } from './tooltip_pin.js?v=1
 
 let jsPDF = null;
 let svg2pdf = null;
+const MAX_ZOOM_SCALE = 20;
 
 async function ensurePdfDependencies() {
     if (!jsPDF) {
@@ -842,8 +843,8 @@ export class BaseModule {
         const point = anchor || { x: rect.width / 2, y: rect.height / 2 };
         const scaleX = rect.width ? point.x / rect.width : 0.5;
         const scaleY = rect.height ? point.y / rect.height : 0.5;
-        const width = Math.min(this.originalWidth * 8, Math.max(this.originalWidth, this.currentWidth * factor));
-        const height = Math.min(this.originalHeight * 8, Math.max(this.originalHeight, this.currentHeight * factor));
+        const width = Math.min(this.originalWidth * MAX_ZOOM_SCALE, Math.max(this.originalWidth, this.currentWidth * factor));
+        const height = Math.min(this.originalHeight * MAX_ZOOM_SCALE, Math.max(this.originalHeight, this.currentHeight * factor));
         if (width === this.currentWidth && height === this.currentHeight) return;
 
         this.svgNode.style.width = `${Math.round(width)}px`;
