@@ -1,4 +1,5 @@
-import { moduleClasses, enabledModuleConfigs, installMetricCatalog } from './modules/configs.js?v=5.7';
+import { moduleClasses, enabledModuleConfigs, installMetricCatalog } from './modules/configs.js?v=5.8';
+import { formatDuration } from './modules/time_format.js?v=1.0';
 
 const REQUIRED_SERVER_CAPABILITY = 'source-backed-metrics-v1';
 
@@ -69,22 +70,22 @@ function formatPercent(value, digits = 1) {
     return `${(Number(value) * 100).toFixed(digits)}%`;
 }
 
-function formatDuration(seconds) {
-    if (seconds == null || !Number.isFinite(Number(seconds))) return '—';
-    seconds = Number(seconds);
-    if (seconds < 1) return `${Math.round(seconds * 1000)}ms`;
-    if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`;
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ${Math.round((seconds % 3600) / 60)}m`;
-    return `${Math.floor(seconds / 86400)}d ${Math.round((seconds % 86400) / 3600)}h`;
-}
-
 function formatBytesFromMB(mb) {
     if (mb == null || !Number.isFinite(Number(mb))) return '—';
     mb = Number(mb);
     if (mb >= 1024 * 1024) return `${(mb / 1024 / 1024).toFixed(1)} TB`;
     if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`;
     return `${mb.toFixed(mb < 10 ? 1 : 0)} MB`;
+}
+
+function formatBytes(bytes) {
+    if (bytes == null || !Number.isFinite(Number(bytes))) return '—';
+    const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+    let value = Math.abs(Number(bytes));
+    let index = 0;
+    while (value >= 1024 && index < units.length - 1) { value /= 1024; index += 1; }
+    const sign = Number(bytes) < 0 ? '-' : '';
+    return `${sign}${formatNumber(value, value < 10 ? 2 : 1)} ${units[index]}`;
 }
 
 function beginRequest() {
@@ -267,7 +268,7 @@ async function selectView(view, push = true) {
     $('#app-sidebar').classList.remove('open');
     updateURL(!push);
     await loadGroup(view);
-    if (view === 'explorer' && state.run) await loadTasks();
+    if (view === 'explorer' && state.run) await loadExplorer();
     $('.workspace').scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -358,6 +359,7 @@ async function selectRun(run, { force = false } = {}) {
     if (!run || !state.runs.includes(run)) return;
     if (!force && run === state.run) return;
     const scope = beginRunScope(run);
+    explorerState.offset = 0;
     $('#log-selector').value = run;
     loadedGroups.clear();
     updateURL();
@@ -374,51 +376,173 @@ async function selectRun(run, { force = false } = {}) {
     await loadSummary(scope);
     if (!isCurrentScope(scope)) return;
     if (['tasks', 'workers', 'transfers', 'files'].includes(state.view)) await loadGroup(state.view, true, scope);
-    if (state.view === 'explorer') await loadTasks(scope);
+    if (state.view === 'explorer') await loadExplorer(scope);
     renderCompareOptions();
 }
 
-function taskRow(task) {
-    return `<tr data-task-id="${task.task_id}" data-try-id="${task.try_id}">
-        <td><strong>#${formatNumber(task.task_id)}</strong><br><small>Try ${formatNumber(task.try_id)}</small></td>
-        <td><span class="status-pill ${task.status}">${task.status}</span></td>
-        <td title="${escapeHTML(task.category)}">${escapeHTML(task.category)}</td>
-        <td title="${escapeHTML(task.worker || '')}">${escapeHTML(task.worker || 'Not dispatched')}</td>
-        <td>${formatNumber(task.cores)}</td>
-        <td>${formatDuration(task.execution_seconds)}</td>
-        <td>›</td>
-    </tr>`;
-}
+const explorerState = { entity: 'tasks', offset: 0, limit: 50, sortBy: 'execution_seconds', sortOrder: 'desc' };
 
-async function fetchTasks({ query = '', status = 'all', limit = 50 } = {}, scope = currentRunScope()) {
+const EXPLORERS = {
+    tasks: {
+        title: 'Task Explorer', singular: 'task', responseKey: 'tasks', filterParam: 'status',
+        placeholder: 'Search task ID, worker, category, or file…',
+        filters: [['all', 'All outcomes'], ['successful', 'Successful'], ['unsuccessful', 'Unsuccessful']],
+        defaultSort: ['execution_seconds', 'desc'],
+        columns: [['Task', 'task_id'], ['Outcome', 'status'], ['Category', 'category'], ['Worker', 'worker'], ['Cores', 'cores'], ['Execution', 'execution_seconds']],
+        cells: task => [
+            `<strong>#${formatNumber(task.task_id)}</strong><br><small>Try ${formatNumber(task.try_id)}</small>`,
+            `<span class="status-pill ${task.status}">${task.status}</span>`,
+            escapeHTML(task.category), escapeHTML(task.worker || 'Not dispatched'),
+            formatNumber(task.cores), formatDuration(task.execution_seconds),
+        ],
+        drawerTitle: task => `Task #${task.task_id}`,
+        details: task => [
+            ['Outcome', task.status], ['Try', task.try_id], ['Status code', task.status_code],
+            ['Category', task.category], ['Worker', task.worker || 'Not dispatched'], ['Cores', task.cores],
+            ['Execution', formatDuration(task.execution_seconds)], ['Recovery task', task.is_recovery ? 'Yes' : 'No'],
+            ['Ready', formatDuration(task.ready_at)], ['Running', formatDuration(task.running_at)], ['Done', formatDuration(task.done_at)],
+            ['Input files', task.input_files || 'None', true], ['Output files', task.output_files || 'None', true],
+        ],
+        identity: task => task.task_id,
+    },
+    files: {
+        title: 'File Explorer', singular: 'file', responseKey: 'items', filterParam: 'kind',
+        placeholder: 'Search file name, ID, task, or source worker…',
+        filters: [['all', 'All file roles'], ['input', 'Inputs'], ['intermediate', 'Intermediates'], ['output', 'Outputs'], ['unreferenced', 'Unreferenced']],
+        defaultSort: ['size_bytes', 'desc'],
+        columns: [['File', 'file_name'], ['Role', 'kind'], ['Size', 'size_bytes'], ['Retention', 'retention_seconds'], ['Peak replicas', 'max_replicas'], ['Task references', 'task_references']],
+        cells: file => [
+            `<strong title="${escapeHTML(file.file_name)}">${escapeHTML(file.file_name)}</strong>${file.file_id == null ? '' : `<br><small>ID ${formatNumber(file.file_id)}</small>`}`,
+            `<span class="status-pill ${file.kind}">${file.kind}</span>`, formatBytes(file.size_bytes),
+            formatDuration(file.retention_seconds), formatNumber(file.max_replicas),
+            formatNumber(file.producer_tasks_count + file.consumer_tasks_count),
+        ],
+        drawerTitle: file => file.file_name,
+        details: file => [
+            ['File ID', file.file_id], ['Role', file.kind], ['Size', formatBytes(file.size_bytes)],
+            ['Retention', formatDuration(file.retention_seconds)], ['Peak replicas', file.max_replicas], ['Replica activations', file.activation_count],
+            ['Producer tasks', file.producer_tasks.join(', ') || 'None', true],
+            ['Consumer tasks', file.consumer_tasks.join(', ') || 'None', true],
+            ['Source workers', file.source_workers.join(', ') || 'None', true],
+        ],
+        identity: file => file.file_name,
+    },
+    workers: {
+        title: 'Worker Explorer', singular: 'worker', responseKey: 'items', filterParam: 'status',
+        placeholder: 'Search worker address, ID, category, or cached file…',
+        filters: [['all', 'All workers'], ['productive', 'Productive'], ['issues', 'With failures'], ['idle', 'No recorded tasks']],
+        defaultSort: ['tasks', 'desc'],
+        columns: [['Worker', 'worker'], ['State', 'status'], ['Tasks', 'tasks'], ['Success', 'success_rate'], ['Lifetime', 'lifetime_seconds'], ['Peak cache', 'peak_cache_bytes']],
+        cells: worker => [
+            `<strong title="${escapeHTML(worker.worker)}">${escapeHTML(worker.worker)}</strong>${worker.worker_id == null ? '' : `<br><small>ID ${formatNumber(worker.worker_id)}</small>`}`,
+            `<span class="status-pill ${worker.status}">${worker.status}</span>`, formatNumber(worker.tasks),
+            formatPercent(worker.success_rate), formatDuration(worker.lifetime_seconds), formatBytes(worker.peak_cache_bytes),
+        ],
+        drawerTitle: worker => worker.worker,
+        details: worker => [
+            ['Worker ID', worker.worker_id], ['State', worker.status], ['Lifetime', formatDuration(worker.lifetime_seconds)],
+            ['Tasks', worker.tasks], ['Successful', worker.successful_tasks], ['Unsuccessful', worker.unsuccessful_tasks],
+            ['Success rate', formatPercent(worker.success_rate)], ['Average execution', formatDuration(worker.average_execution_seconds)],
+            ['Total execution', formatDuration(worker.execution_seconds)], ['Maximum requested cores', worker.max_cores],
+            ['Peak cache', formatBytes(worker.peak_cache_bytes)], ['Cached files observed', worker.files_cached_count],
+            ['Categories', worker.categories.join(', ') || 'None', true], ['Cached files', worker.files_cached.join(', ') || 'None', true],
+        ],
+        identity: worker => worker.worker,
+    },
+};
+
+async function fetchTasks({ query = '', status = 'all', limit = 50, offset = 0, sort, order } = {}, scope = currentRunScope()) {
     if (!isCurrentScope(scope)) return { tasks: [], matched: 0 };
-    const params = new URLSearchParams({ query, status, limit });
+    const params = new URLSearchParams({ query, status, limit, offset });
+    if (sort) params.set('sort', sort);
+    if (order) params.set('order', order);
     return getJSON(
         `/api/v1/runs/${encodeURIComponent(scope.run)}/revisions/${encodeURIComponent(scope.revision)}/tasks?${params}`,
         { scope },
     );
 }
 
-async function loadTasks(scope = currentRunScope()) {
+async function fetchExplorer(entity, { query = '', filter = 'all', limit = 50, offset = 0, sort, order } = {}, scope = currentRunScope()) {
+    const config = EXPLORERS[entity];
+    if (entity === 'tasks') return fetchTasks({ query, status: filter, limit, offset, sort, order }, scope);
+    const params = new URLSearchParams({ query, [config.filterParam]: filter, limit, offset });
+    if (sort) params.set('sort', sort);
+    if (order) params.set('order', order);
+    return getJSON(
+        `/api/v1/runs/${encodeURIComponent(scope.run)}/revisions/${encodeURIComponent(scope.revision)}/${entity}?${params}`,
+        { scope },
+    );
+}
+
+async function loadExplorer(scope = currentRunScope()) {
     if (!isCurrentScope(scope)) return;
-    const tableState = $('#task-table-state');
+    const config = EXPLORERS[explorerState.entity];
+    const tableState = $('#explorer-table-state');
     tableState.classList.remove('hidden');
-    tableState.textContent = 'Loading tasks…';
+    tableState.textContent = `Loading ${explorerState.entity}…`;
     try {
-        const payload = await fetchTasks({ query: $('#task-search').value, status: $('#task-status-filter').value, limit: 100 }, scope);
+        const payload = await fetchExplorer(explorerState.entity, {
+            query: $('#explorer-search').value,
+            filter: $('#explorer-filter').value,
+            limit: explorerState.limit,
+            offset: explorerState.offset,
+            sort: explorerState.sortBy,
+            order: explorerState.sortOrder,
+        }, scope);
         if (!isCurrentScope(scope)) return;
-        $('#task-table tbody').innerHTML = payload.tasks.map(taskRow).join('');
-        $('#task-table').classList.toggle('hidden', !payload.tasks.length);
-        tableState.classList.toggle('hidden', Boolean(payload.tasks.length));
-        if (!payload.tasks.length) tableState.textContent = 'No tasks match the current query.';
-        setText('task-result-count', `${formatNumber(payload.matched)} matched · showing ${formatNumber(payload.tasks.length)}`);
-        $('#task-table tbody').querySelectorAll('tr').forEach((row, index) => {
-            row.addEventListener('click', () => openTaskDrawer(payload.tasks[index]));
+        const items = payload[config.responseKey] || [];
+        $('#explorer-table thead').innerHTML = `<tr>${config.columns.map(([label, sort]) => {
+            const active = sort === explorerState.sortBy;
+            const ariaSort = active ? (explorerState.sortOrder === 'asc' ? 'ascending' : 'descending') : 'none';
+            return `<th aria-sort="${ariaSort}"><button class="table-sort${active ? ' active' : ''}" type="button" data-sort="${sort}">${label}<span aria-hidden="true">${active ? (explorerState.sortOrder === 'asc' ? '↑' : '↓') : '↕'}</span></button></th>`;
+        }).join('')}<th></th></tr>`;
+        $('#explorer-table tbody').innerHTML = items.map(item => `<tr>${config.cells(item).map(cell => `<td>${cell}</td>`).join('')}<td>›</td></tr>`).join('');
+        $('#explorer-table').classList.toggle('hidden', !items.length);
+        tableState.classList.toggle('hidden', Boolean(items.length));
+        if (!items.length) tableState.textContent = `No ${explorerState.entity} match the current query.`;
+        setText('explorer-result-count', `${formatNumber(payload.matched)} matched · showing ${formatNumber(items.length)}`);
+        const page = Math.floor(payload.offset / payload.limit) + 1;
+        const pages = Math.max(1, Math.ceil(payload.matched / payload.limit));
+        setText('explorer-page', `Page ${page} of ${pages}`);
+        $('#explorer-prev').disabled = payload.offset === 0;
+        $('#explorer-next').disabled = !payload.has_more;
+        $('#explorer-table tbody').querySelectorAll('tr').forEach((row, index) => {
+            row.addEventListener('click', () => openEntityDrawer(explorerState.entity, items[index]));
+        });
+        $('#explorer-table thead').querySelectorAll('[data-sort]').forEach(button => {
+            button.addEventListener('click', () => {
+                const sortBy = button.dataset.sort;
+                explorerState.sortOrder = explorerState.sortBy === sortBy && explorerState.sortOrder === 'asc' ? 'desc' : 'asc';
+                explorerState.sortBy = sortBy;
+                explorerState.offset = 0;
+                loadExplorer();
+            });
         });
     } catch (error) {
         if (error?.name === 'AbortError') return;
-        tableState.textContent = `Unable to load tasks: ${error.message}`;
+        tableState.textContent = `Unable to load ${explorerState.entity}: ${error.message}`;
     }
+}
+
+async function selectExplorer(entity, { load = true } = {}) {
+    if (!EXPLORERS[entity]) entity = 'tasks';
+    explorerState.entity = entity;
+    explorerState.offset = 0;
+    const config = EXPLORERS[entity];
+    [explorerState.sortBy, explorerState.sortOrder] = config.defaultSort;
+    setText('explorer-title', config.title);
+    $('#explorer-search').placeholder = config.placeholder;
+    $('#explorer-search').value = '';
+    $('#explorer-filter').innerHTML = config.filters.map(([value, label]) => `<option value="${value}">${label}</option>`).join('');
+    $$('[data-explorer]').forEach(button => {
+        const active = button.dataset.explorer === entity;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-selected', String(active));
+    });
+    const url = new URL(window.location.href);
+    url.searchParams.set('entity', entity);
+    history.replaceState({}, '', url);
+    if (load && state.view === 'explorer' && state.run) await loadExplorer();
 }
 
 async function loadSlowTasks(scope = currentRunScope()) {
@@ -431,7 +555,7 @@ async function loadSlowTasks(scope = currentRunScope()) {
                 <span class="compact-task-id">#${task.task_id}</span><span><strong>${escapeHTML(task.category)}</strong><small>${escapeHTML(task.worker || 'Not dispatched')}</small></span><span class="compact-task-time">${formatDuration(task.execution_seconds)}</span>
             </button>`).join('') || '<div class="inline-state">No task rows available.</div>';
         $('#slow-task-list').querySelectorAll('.compact-task').forEach((button, index) => {
-            button.addEventListener('click', () => openTaskDrawer(payload.tasks[index]));
+            button.addEventListener('click', () => openEntityDrawer('tasks', payload.tasks[index]));
         });
     } catch (error) {
         if (error?.name === 'AbortError') return;
@@ -447,36 +571,31 @@ function openDrawer(id) {
 }
 
 function closeDrawers() {
-    const taskWasOpen = $('#task-drawer').classList.contains('open');
+    const entityWasOpen = $('#entity-drawer').classList.contains('open');
     const compareWasOpen = $('#compare-drawer').classList.contains('open');
     $('#modal-backdrop').classList.add('hidden');
     $$('.side-drawer').forEach(drawer => {
         drawer.classList.remove('open');
         drawer.setAttribute('aria-hidden', 'true');
     });
-    if (taskWasOpen || compareWasOpen) {
+    if (entityWasOpen || compareWasOpen) {
         const url = new URL(window.location.href);
-        if (taskWasOpen) url.searchParams.delete('task');
+        if (entityWasOpen) for (const key of ['task', 'file', 'worker']) url.searchParams.delete(key);
         if (compareWasOpen) url.searchParams.delete('compare');
         history.replaceState({}, '', url);
     }
 }
 
-function openTaskDrawer(task) {
-    setText('task-drawer-title', `Task #${task.task_id}`);
-    const fields = [
-        ['Outcome', task.status], ['Try', task.try_id], ['Status code', task.status_code],
-        ['Category', task.category], ['Worker', task.worker || 'Not dispatched'], ['Cores', task.cores],
-        ['Execution', formatDuration(task.execution_seconds)], ['Recovery task', task.is_recovery ? 'Yes' : 'No'],
-        ['Ready', task.ready_at], ['Running', task.running_at], ['Done', task.done_at],
-        ['Input files', task.input_files || 'None'], ['Output files', task.output_files || 'None'],
-    ];
-    $('#task-drawer-body').innerHTML = `<div class="detail-grid">${fields.map(([label, value], index) => `
-        <div class="detail-item ${index >= 11 ? 'full' : ''}"><label>${escapeHTML(label)}</label><div>${escapeHTML(value ?? '—')}</div></div>`).join('')}</div>`;
+function openEntityDrawer(entity, item) {
+    const config = EXPLORERS[entity];
+    setText('entity-drawer-title', config.drawerTitle(item));
+    $('#entity-drawer-body').innerHTML = `<div class="detail-grid">${config.details(item).map(([label, value, full]) => `
+        <div class="detail-item ${full ? 'full' : ''}"><label>${escapeHTML(label)}</label><div>${escapeHTML(value ?? '—')}</div></div>`).join('')}</div>`;
     const url = new URL(window.location.href);
-    url.searchParams.set('task', task.task_id);
+    for (const key of ['task', 'file', 'worker']) url.searchParams.delete(key);
+    url.searchParams.set(config.singular, config.identity(item));
     history.replaceState({}, '', url);
-    openDrawer('task-drawer');
+    openDrawer('entity-drawer');
 }
 
 function renderCompareOptions() {
@@ -628,9 +747,12 @@ function bindEvents() {
     $('#reload-button').addEventListener('click', reloadRun);
     $('#share-button').addEventListener('click', shareView);
     $('#run-comparison').addEventListener('click', runComparison);
-    $('#task-search-button').addEventListener('click', loadTasks);
-    $('#task-search').addEventListener('keydown', event => { if (event.key === 'Enter') loadTasks(); });
-    $('#task-status-filter').addEventListener('change', loadTasks);
+    $$('[data-explorer]').forEach(button => button.addEventListener('click', () => selectExplorer(button.dataset.explorer)));
+    $('#explorer-search-button').addEventListener('click', () => { explorerState.offset = 0; loadExplorer(); });
+    $('#explorer-search').addEventListener('keydown', event => { if (event.key === 'Enter') { explorerState.offset = 0; loadExplorer(); } });
+    $('#explorer-filter').addEventListener('change', () => { explorerState.offset = 0; loadExplorer(); });
+    $('#explorer-prev').addEventListener('click', () => { explorerState.offset = Math.max(0, explorerState.offset - explorerState.limit); loadExplorer(); });
+    $('#explorer-next').addEventListener('click', () => { explorerState.offset += explorerState.limit; loadExplorer(); });
     $('#mobile-menu').addEventListener('click', () => $('#app-sidebar').classList.toggle('open'));
     window.addEventListener('popstate', () => {
         const params = new URLSearchParams(window.location.search);
@@ -657,6 +779,10 @@ async function initialize() {
             showRestartRequired('This page requires the metric registry API from the running backend.');
             return;
         }
+        if (!health.capabilities?.includes('entity-explorers-v1')) {
+            showRestartRequired('This page requires the entity explorer API from the running backend.');
+            return;
+        }
         const catalog = await getJSON('/api/v1/catalog');
         installMetricCatalog(catalog.metrics || []);
     } catch (error) {
@@ -670,6 +796,7 @@ async function initialize() {
     setupModules();
     setupTimeFilters();
     bindEvents();
+    await selectExplorer(params.get('entity') || 'tasks', { load: false });
     try {
         const payload = await getJSON('/api/v1/runs');
         state.runs = payload.runs;
@@ -690,11 +817,13 @@ async function initialize() {
             openDrawer('compare-drawer');
             await runComparison();
         }
-        const requestedTask = params.get('task');
-        if (requestedTask && initialRun) {
-            const payload = await fetchTasks({ query: requestedTask, limit: 50 });
-            const exact = payload.tasks.find(task => String(task.task_id) === String(requestedTask));
-            if (exact) openTaskDrawer(exact);
+        const deepLink = Object.entries(EXPLORERS).find(([, config]) => params.has(config.singular));
+        if (deepLink && initialRun) {
+            const [entity, config] = deepLink;
+            const requested = params.get(config.singular);
+            const payload = await fetchExplorer(entity, { query: requested, limit: 50 });
+            const exact = (payload[config.responseKey] || []).find(item => String(config.identity(item)) === requested);
+            if (exact) openEntityDrawer(entity, exact);
         }
     } catch (error) {
         showBanner(`Dashboard initialization failed: ${error.message}`);

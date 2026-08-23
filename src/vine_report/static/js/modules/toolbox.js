@@ -114,6 +114,12 @@ export class Toolbox {
         this.panel = document.createElement("div");
         this.panel.className = "toolbox-panel hide";
         this.panel.id = this.id;
+        this.panel.setAttribute("role", "group");
+        this.panel.setAttribute("aria-label", "Chart controls");
+
+        const title = document.createElement("div");
+        title.className = "toolbox-panel-title";
+        title.textContent = "Chart controls";
 
         const group = document.createElement("div");
         group.className = "toolbox-group";
@@ -122,17 +128,27 @@ export class Toolbox {
             group.appendChild(item.render());
         });
 
-        this.panel.appendChild(group);
+        this.panel.append(title, group);
     }
 
     _renderToggle() {
         this.toggle = document.createElement("button");
-        this.toggle.textContent = this.title;
         this.toggle.className = "toolbox-toggle-button";
+        this.toggle.type = "button";
+        this.toggle.setAttribute("aria-label", "Chart controls");
+        this.toggle.setAttribute("aria-controls", this.id);
+        this.toggle.setAttribute("aria-expanded", "false");
+        this.toggle.title = "Chart controls";
+        this.toggle.innerHTML = `
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M3 5h14M3 10h14M3 15h14M7 3v4M13 8v4M9 13v4" />
+            </svg>
+            <span>Controls</span>`;
     
         this.toggle.addEventListener("click", (e) => {
             e.stopPropagation();
-            this._showPanel();
+            if (this.panel.classList.contains("show")) this._hidePanel();
+            else this._showPanel();
         });
     
         this._boundDocClick = (e) => {
@@ -157,11 +173,13 @@ export class Toolbox {
     _showPanel() {
         this.panel.classList.add("show");
         this.panel.classList.remove("hide");
+        this.toggle.setAttribute("aria-expanded", "true");
     }
 
     _hidePanel() {
         this.panel.classList.add("hide");
         this.panel.classList.remove("show");
+        this.toggle.setAttribute("aria-expanded", "false");
         const inputs = this.panel.querySelectorAll(".toolbox-input");
         inputs.forEach((input) => {
             input.value = "";
@@ -205,9 +223,6 @@ export class Toolbox {
     mount(container) {
         const wrapper = document.createElement("div");
         wrapper.className = "toolbox-wrapper";
-        wrapper.style.position = "relative";
-        wrapper.style.width = "100%";
-        wrapper.style.height = "100%";
 
         this._renderPanel();
         this._renderToggle();

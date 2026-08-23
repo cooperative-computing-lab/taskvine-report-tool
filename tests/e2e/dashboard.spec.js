@@ -187,6 +187,80 @@ test('line cursor prioritizes active series and stays fast at scale', async ({ p
   expect(result.durationMs).toBeLessThan(1500);
 });
 
+test('duration axes use human units and exact cursor values', async ({ page }) => {
+  await page.goto('/?run=run-a');
+  await expectRun(page, 'run-a');
+  const result = await page.evaluate(async () => {
+    const { durationAxisSpec, formatDuration } = await import('/static/js/modules/time_format.js?v=axis-test');
+    const { GenericMetricModule } = await import('/static/js/modules/generic_metric.js?v=axis-test');
+    const longAxis = durationAxisSpec([0, 12_000], 6);
+    const mediumAxis = durationAxisSpec([0, 1800], 6);
+    const shortAxis = durationAxisSpec([0, 90], 6);
+    const metric = new GenericMetricModule('axis-test', 'Axis test', '/unused', { renderer: 'line' });
+    const transformed = metric.transformFetchedData({
+      available: true,
+      series: [{ name: 'Tasks', points: [[0, 0], [12_000, 1]] }],
+      axes: { x: { domain: [0, 12_000], unit: 'seconds' }, y: { domain: [0, 1], unit: 'count' } },
+    });
+    const integratedFormatter = eval(transformed.x_tick_formatter);
+    return {
+      longUnit: longAxis.label,
+      longLabels: longAxis.tickValues.map(longAxis.formatter),
+      mediumUnit: mediumAxis.label,
+      mediumLabels: mediumAxis.tickValues.map(mediumAxis.formatter),
+      shortUnit: shortAxis.label,
+      integratedLabels: transformed.x_tick_values.map(integratedFormatter),
+      exact: formatDuration(8000),
+      missing: formatDuration(null),
+    };
+  });
+  expect(result.longUnit).toBe('h');
+  expect(result.longLabels).toEqual(['0 h', '0.5 h', '1 h', '1.5 h', '2 h', '2.5 h', '3 h']);
+  expect(result.longLabels.join(' ')).not.toContain('ks');
+  expect(result.mediumUnit).toBe('min');
+  expect(result.mediumLabels).toEqual(['0 min', '5 min', '10 min', '15 min', '20 min', '25 min', '30 min']);
+  expect(result.shortUnit).toBe('s');
+  expect(result.integratedLabels).toEqual(result.longLabels);
+  expect(result.exact).toBe('2h 13m 20s');
+  expect(result.missing).toBe('—');
+});
+
+test('file and worker explorers share search, filters, and detail drawers', async ({ page }) => {
+  await page.goto('/?run=run-a&view=explorer');
+  await expect(page.locator('#overview-title')).toHaveText('run-a');
+  await expect(page.locator('#log-selector')).toHaveValue('run-a');
+  await expect(page.locator('#view-explorer')).toBeVisible();
+  await expect(page.locator('#explorer-title')).toHaveText('Task Explorer');
+  await expect(page.locator('#explorer-table tbody tr')).toHaveCount(3);
+  await expect(page.getByRole('columnheader', { name: /Execution/ })).toHaveAttribute('aria-sort', 'descending');
+  await page.getByRole('button', { name: 'Task', exact: true }).click();
+  await expect(page.getByRole('columnheader', { name: /Task/ })).toHaveAttribute('aria-sort', 'ascending');
+  await expect(page.locator('#explorer-table tbody tr').first()).toContainText('#1');
+  await page.getByRole('button', { name: 'Task', exact: true }).click();
+  await expect(page.getByRole('columnheader', { name: /Task/ })).toHaveAttribute('aria-sort', 'descending');
+  await expect(page.locator('#explorer-table tbody tr').first()).toContainText('#3');
+
+  await page.getByRole('tab', { name: 'Files' }).click();
+  await expect(page.locator('#explorer-title')).toHaveText('File Explorer');
+  await expect(page.getByRole('columnheader', { name: /Size/ })).toHaveAttribute('aria-sort', 'descending');
+  await page.locator('#explorer-search').fill('output-b');
+  await page.locator('#explorer-search-button').click();
+  await expect(page.locator('#explorer-table tbody tr')).toHaveCount(1);
+  await expect(page.locator('#explorer-table tbody')).toContainText('output-b');
+  await page.locator('#explorer-table tbody tr').click();
+  await expect(page.locator('#entity-drawer')).toHaveClass(/open/);
+  await expect(page.locator('#entity-drawer-title')).toHaveText('output-b');
+  await page.locator('#entity-drawer .drawer-close').click();
+
+  await page.getByRole('tab', { name: 'Workers' }).click();
+  await page.locator('#explorer-filter').selectOption('issues');
+  await expect(page.locator('#explorer-table tbody tr')).toHaveCount(1);
+  await expect(page.locator('#explorer-table tbody')).toContainText('worker-b');
+  await page.locator('#explorer-table tbody tr').click();
+  await expect(page.locator('#entity-drawer-body')).toContainText('Unsuccessful');
+  await expect(page.locator('#entity-drawer-body')).toContainText('1');
+});
+
 test('Display CDF renders and restores a generic scatter metric', async ({ page }) => {
   await page.goto('/?run=run-a');
   await expectRun(page, 'run-a');
@@ -194,7 +268,11 @@ test('Display CDF renders and restores a generic scatter metric', async ({ page 
 
   const card = page.locator('[data-module="file-sizes"]');
   await expect(card.locator('circle.file-sizes-series-0-point').first()).toBeVisible();
+  await expect(card.locator('.toolbox-container')).toBeVisible();
+  await expect(card.locator('.toolbox-toggle-button')).toHaveAttribute('aria-expanded', 'false');
   await card.locator('.toolbox-toggle-button').click();
+  await expect(card.locator('.toolbox-toggle-button')).toHaveAttribute('aria-expanded', 'true');
+  await expect(card.locator('.toolbox-panel-title')).toHaveText('Chart controls');
   await card.getByRole('button', { name: 'Display CDF', exact: true }).click();
 
   const cdf = card.locator('path.cdf-path');
@@ -207,6 +285,16 @@ test('Display CDF renders and restores a generic scatter metric', async ({ page 
   await card.getByRole('button', { name: 'Undisplay CDF', exact: true }).click();
   await expect(card.locator('circle.file-sizes-series-0-point').first()).toBeVisible();
   await expect(card.locator('path.cdf-path')).toHaveCount(0);
+
+  await page.locator('.nav-item[data-view="tasks"]').click();
+  const durationCard = page.locator('[data-module="task-execution-time"]');
+  await expect(durationCard.locator('circle').first()).toBeVisible();
+  await durationCard.locator('.toolbox-toggle-button').click();
+  await durationCard.getByRole('button', { name: 'Display CDF', exact: true }).click();
+  await expect(durationCard.locator('path.cdf-path')).toBeVisible();
+  const durationLabels = await durationCard.locator('svg text').allTextContents();
+  expect(durationLabels.some(label => / (?:ms|s|min|h|d)$/.test(label))).toBe(true);
+  expect(durationLabels.join(' ')).not.toContain('ks');
 });
 
 test('every visible chart section has a readable explanation', async ({ page }) => {

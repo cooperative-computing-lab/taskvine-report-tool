@@ -1,3 +1,5 @@
+import { formatDuration } from './time_format.js?v=1.0';
+
 function finitePoint(point) {
     return Array.isArray(point)
         && point.length >= 2
@@ -68,18 +70,7 @@ export function sortCursorValues(values) {
 }
 
 export function formatCursorValue(value, unit, fallback = item => item) {
-    const numeric = Number(value);
-    if (unit !== 'seconds' || !Number.isFinite(numeric)) return safeFormat(fallback, value);
-    const sign = numeric < 0 ? '-' : '';
-    const absolute = Math.abs(numeric);
-    if (absolute < 1) return `${sign}${d3.format('.3~f')(absolute * 1000)} ms`;
-    if (absolute < 60) return `${sign}${d3.format('.3~f')(absolute)} s`;
-    const hours = Math.floor(absolute / 3600);
-    const minutes = Math.floor((absolute % 3600) / 60);
-    const seconds = absolute % 60;
-    const tail = seconds >= 0.05 ? ` ${d3.format('.3~f')(seconds)}s` : '';
-    if (hours) return `${sign}${hours}h ${minutes}m${tail}`;
-    return `${sign}${minutes}m${tail}`;
+    return unit === 'seconds' ? formatDuration(value) : safeFormat(fallback, value);
 }
 
 export class LineCursor {

@@ -1,5 +1,6 @@
 import { Toolbox } from './toolbox.js?v=5.0';
-import { LineCursor } from './line_cursor.js?v=1.1';
+import { LineCursor } from './line_cursor.js?v=1.2';
+import { durationAxisSpec } from './time_format.js?v=1.0';
 
 let jsPDF = null;
 let svg2pdf = null;
@@ -141,19 +142,18 @@ export class BaseModule {
         section.innerHTML = `
         <div class="section-header" id="${this.id}-header">
             <h2 class="section-title">${this.title}</h2>
+            <div id="${this.id}-toolbox-container" class="toolbox-container"></div>
         </div>
       
         <div class="section-content">
             <div class="section-row top">
                 <div class="legend-container" id="${this.id}-legend"></div>
-                <div class="legend-placeholder"></div>
             </div>
       
             <div class="section-row bottom">
                 <div class="plotting-container" id="${this.id}-container">
                     <svg id="${this.id}-d3-svg" xmlns="http://www.w3.org/2000/svg"></svg>
                 </div>
-                <div id="${this.id}-toolbox-container" class="toolbox-container"></div>
             </div>
         </div>
       `;
@@ -256,6 +256,14 @@ export class BaseModule {
         content.appendChild(state);
     }
 
+    _setDurationBottomAxis(domain, tickCount = 6) {
+        if (this.data?.axes?.x?.unit !== 'seconds') return false;
+        const axis = durationAxisSpec(domain, tickCount);
+        this.setBottomTickValues(axis.tickValues);
+        this.setBottomFormatter(axis.formatter);
+        return true;
+    }
+
     applyGlobalTimeWindow(startPercent = 0, endPercent = 100) {
         this._globalTimeWindow = [startPercent, endPercent];
         const fullDomain = this.data?.x_domain;
@@ -271,9 +279,11 @@ export class BaseModule {
         const span = fullMax - fullMin;
         const domain = [fullMin + span * start, fullMin + span * end];
         this.setBottomDomain(domain);
-        this.setBottomTickValues(this._dedupeTicksByFormatter(
-            this._computeLinearTicks(domain, 6), this.bottomFormatter
-        ));
+        if (!this._setDurationBottomAxis(domain)) {
+            this.setBottomTickValues(this._dedupeTicksByFormatter(
+                this._computeLinearTicks(domain, 6), this.bottomFormatter
+            ));
+        }
         this.clearSVG();
         this._plotAxes();
         this._invokePlot();
@@ -343,6 +353,13 @@ export class BaseModule {
         }
     
         this.setBottomDomain([newMin, newMax]);
+
+        if (this._setDurationBottomAxis([newMin, newMax])) {
+            this.clearSVG();
+            this._plotAxes();
+            this._invokePlot();
+            return;
+        }
     
         const oldTicks = this.bottomTickValues;
     
@@ -1688,13 +1705,14 @@ export class BaseModule {
         const xMax = Math.max(...xs);
         const xDomain = xMin === xMax ? [xMin - 0.5, xMax + 0.5] : [xMin, xMax];
         this.setBottomDomain(xDomain);
-        const numTicks = 5;
-        const tickValues = uniqueXs.length <= numTicks
-            ? uniqueXs
-            : this._computeLinearTicks(xDomain, numTicks);
-        this.setBottomTickValues(tickValues);
         const origYFormatter = this.data?.['y_tick_formatter'] ? eval(this.data['y_tick_formatter']) : (d => String(d));
-        this.setBottomFormatter(origYFormatter);
+        const isDuration = this.data?.axes?.y?.unit === 'seconds';
+        const durationAxis = isDuration ? durationAxisSpec(xDomain, 5) : null;
+        const tickValues = durationAxis?.tickValues || (uniqueXs.length <= 5
+            ? uniqueXs
+            : this._computeLinearTicks(xDomain, 5));
+        this.setBottomTickValues(tickValues);
+        this.setBottomFormatter(durationAxis?.formatter || origYFormatter);
         this.setLeftDomain([0, 1]);
         this.setLeftTickValues([0, 0.25, 0.5, 0.75, 1]);
         this.setLeftFormatter(d => (d * 100).toFixed(0) + '%');

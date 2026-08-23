@@ -80,7 +80,7 @@ class DashboardAPITest(unittest.TestCase):
         self.assertIn("TaskVine Report", page)
         self.assertIn("Task Explorer", page)
         self.assertIn("Compare runs", page)
-        self.assertIn("css/app.css') }}?v=5.5", Path("src/vine_report/templates/index.html").read_text())
+        self.assertIn("css/app.css') }}?v=5.8", Path("src/vine_report/templates/index.html").read_text())
 
     def test_v1_contract_matches_registered_routes(self):
         contract = json.loads(Path("docs/api-v1-contract.json").read_text(encoding="utf-8"))
@@ -105,6 +105,7 @@ class DashboardAPITest(unittest.TestCase):
         self.assertEqual(health.json["data"]["run_count"], 2)
         self.assertIn("source-backed-metrics-v1", health.json["data"]["capabilities"])
         self.assertIn("metric-registry-v1", health.json["data"]["capabilities"])
+        self.assertIn("entity-explorers-v1", health.json["data"]["capabilities"])
         self.assertEqual(health.json["data"]["runtime"]["request_threads"], 8)
 
         self.client.get("/api/v1/runs/run-a")
@@ -229,6 +230,60 @@ class DashboardAPITest(unittest.TestCase):
         )
         self.assertEqual(page.json["offset"], 1)
         self.assertFalse(page.json["has_more"])
+
+        ascending = self.client.get(
+            "/api/dashboard/tasks",
+            query_string={"folder": "run-a", "sort": "execution_seconds", "order": "asc"},
+        )
+        self.assertEqual([item["task_id"] for item in ascending.json["tasks"]], [2, 1])
+
+        task_path = self.root / "run-a" / "csv-files" / "task_execution_details.csv"
+        with task_path.open("a", newline="", encoding="utf-8") as handle:
+            csv.writer(handle).writerow([
+                "successful_tasks", 1, 2, "worker-a", 2, "False", 0, "alpha", 4,
+                0, 1, 5, "in-a", "out-a-retry",
+            ])
+        by_identity = self.client.get(
+            "/api/dashboard/tasks",
+            query_string={"folder": "run-a", "sort": "task_id", "order": "asc"},
+        ).json["tasks"]
+        self.assertEqual(
+            [(item["task_id"], item["try_id"]) for item in by_identity],
+            [(1, 1), (1, 2), (2, 1)],
+        )
+
+    def test_file_and_worker_explorers_are_searchable_and_pinned(self):
+        revision = self.client.get("/api/v1/runs/run-a").json["revision"]
+        base = f"/api/v1/runs/run-a/revisions/{revision}"
+
+        files = self.client.get(f"{base}/files", query_string={"query": "out-a"})
+        self.assertEqual(files.status_code, 200, files.get_data(as_text=True))
+        self.assertEqual(files.json["run_id"], "run-a")
+        self.assertEqual(files.json["revision"], revision)
+        self.assertEqual(files.json["data"]["matched"], 1)
+        self.assertEqual(files.json["data"]["items"][0]["file_name"], "out-a")
+        self.assertEqual(files.json["data"]["items"][0]["kind"], "output")
+
+        files_by_name = self.client.get(f"{base}/files", query_string={"sort": "file_name", "order": "asc"})
+        file_names = [item["file_name"] for item in files_by_name.json["data"]["items"]]
+        self.assertEqual(file_names, sorted(file_names, key=str.casefold))
+
+        workers = self.client.get(f"{base}/workers", query_string={"status": "issues"})
+        self.assertEqual(workers.status_code, 200, workers.get_data(as_text=True))
+        self.assertEqual(workers.json["data"]["matched"], 1)
+        worker = workers.json["data"]["items"][0]
+        self.assertEqual(worker["worker"], "worker-b")
+        self.assertEqual(worker["tasks"], 1)
+        self.assertEqual(worker["unsuccessful_tasks"], 1)
+
+        workers_by_name = self.client.get(f"{base}/workers", query_string={"sort": "worker", "order": "desc"})
+        worker_names = [item["worker"] for item in workers_by_name.json["data"]["items"]]
+        self.assertEqual(worker_names, sorted(worker_names, key=str.casefold, reverse=True))
+
+        self.assertEqual(self.client.get(f"{base}/files?kind=maybe").status_code, 400)
+        self.assertEqual(self.client.get(f"{base}/workers?status=maybe").status_code, 400)
+        self.assertEqual(self.client.get(f"{base}/files?sort=unknown").status_code, 400)
+        self.assertEqual(self.client.get(f"{base}/workers?sort=tasks&order=sideways").status_code, 400)
 
     def test_invalid_and_incomplete_requests_fail_closed(self):
         self.assertEqual(self.client.get("/api/dashboard/summary?folder=../run-a").status_code, 400)

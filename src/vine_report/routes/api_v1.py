@@ -20,7 +20,9 @@ from .dashboard import (
     DashboardAPIError,
     _comparison_from_summaries,
     _summary,
+    files as dashboard_files,
     tasks as dashboard_tasks,
+    workers as dashboard_workers,
 )
 
 
@@ -164,14 +166,28 @@ def summary(run_id, revision):
     return jsonify(_envelope(_summary(run_id), snapshot))
 
 
-@api_v1_bp.get("/runs/<run_id>/revisions/<revision>/tasks")
-def tasks(run_id, revision):
+def _dashboard_entity(run_id, revision, view):
     snapshot = _pinned(run_id, revision)
-    raw = make_response(dashboard_tasks())
+    raw = make_response(view())
     data = raw.get_json(silent=True)
     if raw.status_code >= 400:
         return raw
     return jsonify(_envelope(data, snapshot))
+
+
+@api_v1_bp.get("/runs/<run_id>/revisions/<revision>/tasks")
+def tasks(run_id, revision):
+    return _dashboard_entity(run_id, revision, dashboard_tasks)
+
+
+@api_v1_bp.get("/runs/<run_id>/revisions/<revision>/files")
+def files(run_id, revision):
+    return _dashboard_entity(run_id, revision, dashboard_files)
+
+
+@api_v1_bp.get("/runs/<run_id>/revisions/<revision>/workers")
+def workers(run_id, revision):
+    return _dashboard_entity(run_id, revision, dashboard_workers)
 
 
 @api_v1_bp.get("/runs/<run_id>/revisions/<revision>/metrics/<metric_id>")

@@ -5,8 +5,8 @@
  * come from the backend MetricSpec registry.  Only genuinely custom renderers
  * are named here; every standard metric shares GenericMetricModule.
  */
-import { GenericMetricModule } from './generic_metric.js?v=5.6';
-import { SourceMetricModule } from './source_metric.js?v=5.6';
+import { GenericMetricModule } from './generic_metric.js?v=5.7';
+import { SourceMetricModule } from './source_metric.js?v=5.7';
 import { TaskExecutionDetailsModule } from './task_execution_details.js?v=5.0';
 import { TaskSubgraphsModule } from './task_subgraphs.js?v=5.0';
 

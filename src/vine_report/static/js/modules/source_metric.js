@@ -1,4 +1,5 @@
-import { BaseModule } from './base.js?v=5.6';
+import { BaseModule } from './base.js?v=5.7';
+import { durationAxisSpec } from './time_format.js?v=1.0';
 
 const COLORS = ['#d96f24', '#747474', '#a9a9a5', '#4e4e4e', '#e6a06d', '#94948f'];
 
@@ -40,6 +41,7 @@ export class SourceMetricModule extends BaseModule {
         if (!allPoints.length) return { error: 'No validated observations are available for this metric.' };
         const xDomain = finiteExtent(payload.axes?.x?.domain || allPoints.map(point => point[0]));
         const yDomain = finiteExtent(allPoints.map(point => point[1]));
+        const xAxis = payload.axes?.x?.unit === 'seconds' ? durationAxisSpec(xDomain) : null;
         if (payload.kind === 'cdf') {
             yDomain[1] = 1;
         } else {
@@ -51,11 +53,9 @@ export class SourceMetricModule extends BaseModule {
             series,
             x_domain: xDomain,
             y_domain: yDomain,
-            x_tick_values: d3.ticks(xDomain[0], xDomain[1], 6),
+            x_tick_values: xAxis?.tickValues || d3.ticks(xDomain[0], xDomain[1], 6),
             y_tick_values: d3.ticks(yDomain[0], yDomain[1], 6),
-            x_tick_formatter: payload.metric_id === 'task-latency'
-                ? '(d) => d < 1 ? `${Math.round(d * 1000)}ms` : d3.format("~s")(d) + "s"'
-                : '(d) => d3.format("~s")(d) + "s"',
+            x_tick_formatter: xAxis?.formatterExpression || '(d) => d3.format("~s")(d)',
             y_tick_formatter: payload.kind === 'cdf'
                 ? '(d) => d3.format(".0%")(d)'
                 : payload.metric_id === 'transfer-throughput'

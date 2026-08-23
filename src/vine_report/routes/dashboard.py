@@ -11,6 +11,7 @@ from pathlib import Path
 from flask import Blueprint, current_app, g, jsonify, request
 import polars as pl
 from src.vine_report.chart_service import cache_occupancy_peak_bytes
+from src.vine_report.explorer_service import file_records, worker_records
 
 
 dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/api/dashboard")
@@ -487,22 +488,61 @@ def _task_value(row: dict, key: str, cast=float):
         return None
 
 
-@dashboard_bp.route("/tasks")
-def tasks():
-    bound = getattr(g, "run_snapshot", None)
-    folder = request.args.get("folder") or (bound.run_id if bound else "")
-    run_dir = _run_dir(folder)
+def _explorer_pagination():
     query = request.args.get("query", "").strip().lower()
     if len(query) > 200:
         raise DashboardAPIError("invalid_parameter", "query must be at most 200 characters")
-    status = request.args.get("status", "all")
-    if status not in {"all", "successful", "unsuccessful"}:
-        raise DashboardAPIError("invalid_parameter", "status is not supported")
     try:
         limit = min(max(int(request.args.get("limit", 50)), 1), 200)
         offset = max(int(request.args.get("offset", 0)), 0)
     except ValueError as error:
         raise DashboardAPIError("invalid_parameter", "limit and offset must be integers") from error
+    return query, limit, offset
+
+
+def _entity_page(items, query, limit, offset, searchable):
+    matched = [item for item in items if not query or query in searchable(item).lower()]
+    page = matched[offset:offset + limit]
+    return {
+        "items": page,
+        "matched": len(matched),
+        "limit": limit,
+        "offset": offset,
+        "has_more": offset + len(page) < len(matched),
+    }
+
+
+def _explorer_sort(items, fields):
+    sort_by = request.args.get("sort")
+    order = request.args.get("order", "asc")
+    if sort_by is None:
+        return items
+    if sort_by not in fields or order not in {"asc", "desc"}:
+        raise DashboardAPIError("invalid_parameter", "sort field or order is not supported")
+
+    accessor = fields[sort_by]
+    present, missing = [], []
+    for item in items:
+        value = accessor(item)
+        (missing if value is None else present).append((item, value))
+
+    def key(entry):
+        value = entry[1]
+        return value.casefold() if isinstance(value, str) else value
+
+    present.sort(key=key, reverse=order == "desc")
+    return tuple(item for item, _ in present + missing)
+
+
+@dashboard_bp.route("/tasks")
+def tasks():
+    bound = getattr(g, "run_snapshot", None)
+    folder = request.args.get("folder") or (bound.run_id if bound else "")
+    run_dir = _run_dir(folder)
+    query, limit, offset = _explorer_pagination()
+    status = request.args.get("status", "all")
+    if status not in {"all", "successful", "unsuccessful"}:
+        raise DashboardAPIError("invalid_parameter", "status is not supported")
     rows = []
     path = run_dir / "csv-files" / "task_execution_details.csv"
     if not path.is_file():
@@ -542,6 +582,16 @@ def tasks():
                     "is_recovery": str(row.get("is_recovery_task", "")).lower() == "true",
                 })
         rows.sort(key=lambda item: item["execution_seconds"] or -1, reverse=True)
+        rows = _explorer_sort(rows, {
+            "task_id": lambda item: (
+                item["task_id"], item["try_id"] if item["try_id"] is not None else 0
+            ) if item["task_id"] is not None else None,
+            "status": lambda item: item["status"],
+            "category": lambda item: item["category"],
+            "worker": lambda item: item["worker"],
+            "cores": lambda item: item["cores"],
+            "execution_seconds": lambda item: item["execution_seconds"],
+        })
         page = rows[offset:offset + limit]
         return jsonify({
             "tasks": page,
@@ -552,3 +602,70 @@ def tasks():
         })
     except (OSError, csv.Error) as error:
         raise DashboardAPIError("run_data_invalid", "task details could not be read", 422) from error
+
+
+@dashboard_bp.route("/files")
+def files():
+    bound = getattr(g, "run_snapshot", None)
+    folder = request.args.get("folder") or (bound.run_id if bound else "")
+    csv_dir = _run_dir(folder) / "csv-files"
+    query, limit, offset = _explorer_pagination()
+    kind = request.args.get("kind", "all")
+    allowed = {"all", "input", "intermediate", "output", "unreferenced"}
+    if kind not in allowed:
+        raise DashboardAPIError("invalid_parameter", "file kind is not supported")
+    try:
+        items = file_records(str(csv_dir))
+    except (OSError, csv.Error) as error:
+        raise DashboardAPIError("run_data_invalid", "file details could not be read", 422) from error
+    if not items:
+        raise DashboardAPIError("run_data_unavailable", "file details are unavailable", 422)
+    if kind != "all":
+        items = tuple(item for item in items if item["kind"] == kind)
+    items = _explorer_sort(items, {
+        "file_name": lambda item: item["file_name"],
+        "kind": lambda item: item["kind"],
+        "size_bytes": lambda item: item["size_bytes"],
+        "retention_seconds": lambda item: item["retention_seconds"],
+        "max_replicas": lambda item: item["max_replicas"],
+        "task_references": lambda item: item["producer_tasks_count"] + item["consumer_tasks_count"],
+    })
+    data = _entity_page(items, query, limit, offset, lambda item: " ".join((
+        item["file_name"], str(item["file_id"] or ""),
+        " ".join(map(str, item["producer_tasks"])),
+        " ".join(map(str, item["consumer_tasks"])),
+        " ".join(item["source_workers"]),
+    )))
+    return jsonify({"entity": "files", **data})
+
+
+@dashboard_bp.route("/workers")
+def workers():
+    bound = getattr(g, "run_snapshot", None)
+    folder = request.args.get("folder") or (bound.run_id if bound else "")
+    csv_dir = _run_dir(folder) / "csv-files"
+    query, limit, offset = _explorer_pagination()
+    status = request.args.get("status", "all")
+    if status not in {"all", "productive", "issues", "idle"}:
+        raise DashboardAPIError("invalid_parameter", "worker status is not supported")
+    try:
+        items = worker_records(str(csv_dir))
+    except (OSError, csv.Error) as error:
+        raise DashboardAPIError("run_data_invalid", "worker details could not be read", 422) from error
+    if not items:
+        raise DashboardAPIError("run_data_unavailable", "worker details are unavailable", 422)
+    if status != "all":
+        items = tuple(item for item in items if item["status"] == status)
+    items = _explorer_sort(items, {
+        "worker": lambda item: item["worker"],
+        "status": lambda item: item["status"],
+        "tasks": lambda item: item["tasks"],
+        "success_rate": lambda item: item["success_rate"],
+        "lifetime_seconds": lambda item: item["lifetime_seconds"],
+        "peak_cache_bytes": lambda item: item["peak_cache_bytes"],
+    })
+    data = _entity_page(items, query, limit, offset, lambda item: " ".join((
+        item["worker"], str(item["worker_id"] or ""),
+        " ".join(item["categories"]), " ".join(item["files_cached"]),
+    )))
+    return jsonify({"entity": "workers", **data})

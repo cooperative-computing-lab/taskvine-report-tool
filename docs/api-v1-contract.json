@@ -20,6 +20,8 @@
     {"method": "POST", "path": "/api/v1/runs/<run_id>/refresh", "identity": "pinned"},
     {"method": "GET", "path": "/api/v1/runs/<run_id>/revisions/<revision>/summary", "identity": "pinned"},
     {"method": "GET", "path": "/api/v1/runs/<run_id>/revisions/<revision>/tasks", "identity": "pinned"},
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/revisions/<revision>/files", "identity": "pinned"},
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/revisions/<revision>/workers", "identity": "pinned"},
     {"method": "GET", "path": "/api/v1/runs/<run_id>/revisions/<revision>/metrics/<metric_id>", "identity": "pinned"},
     {"method": "GET", "path": "/api/v1/runs/<run_id>/revisions/<revision>/charts/<chart_id>", "identity": "pinned"},
     {"method": "GET", "path": "/api/v1/runs/<run_id>/revisions/<revision>/exports/<chart_id>.csv", "identity": "pinned"}

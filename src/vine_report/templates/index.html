@@ -20,11 +20,11 @@
     <link rel="stylesheet" href="https://cdn.datatables.net/fixedheader/4.0.1/css/fixedHeader.bootstrap.css">
     <link rel="stylesheet" href="https://cdn.datatables.net/fixedcolumns/5.0.1/css/fixedColumns.bootstrap.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/report.css') }}?v=2.0">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/toolbox.css') }}?v=2.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/toolbox.css') }}?v=2.1">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/legend.css') }}?v=2.0">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/section.css') }}?v=2.0">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tables.css') }}?v=2.0">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=5.5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=5.8">
 </head>
 <body>
     <div id="vine-tooltip" class="tooltip" role="tooltip"></div>
@@ -55,7 +55,7 @@
             </button>
 
             <button class="nav-item nav-separated" data-view="explorer" type="button">
-                <span class="nav-icon">⌕</span><span>Task Explorer</span>
+                <span class="nav-icon">⌕</span><span>Explorer</span>
             </button>
         </nav>
 
@@ -168,20 +168,32 @@
             </section>
 
             <section id="view-explorer" class="app-view" data-view="explorer">
-                <div class="page-heading compact"><h1>Task Explorer</h1></div>
+                <div class="page-heading compact explorer-heading">
+                    <h1 id="explorer-title">Task Explorer</h1>
+                    <div class="explorer-tabs" role="tablist" aria-label="Explorer entity">
+                        <button class="active" data-explorer="tasks" role="tab" aria-selected="true" type="button">Tasks</button>
+                        <button data-explorer="files" role="tab" aria-selected="false" type="button">Files</button>
+                        <button data-explorer="workers" role="tab" aria-selected="false" type="button">Workers</button>
+                    </div>
+                </div>
                 <div class="explorer-toolbar panel">
-                    <div class="search-box"><span>⌕</span><input id="task-search" type="search" placeholder="Search task ID, worker, category, or file…"></div>
-                    <select id="task-status-filter"><option value="all">All outcomes</option><option value="successful">Successful</option><option value="unsuccessful">Unsuccessful</option></select>
-                    <button id="task-search-button" class="button button-primary" type="button">Search</button>
-                    <span id="task-result-count" class="result-count"></span>
+                    <div class="search-box"><span>⌕</span><input id="explorer-search" type="search" placeholder="Search task ID, worker, category, or file…"></div>
+                    <select id="explorer-filter" aria-label="Filter explorer results"></select>
+                    <button id="explorer-search-button" class="button button-primary" type="button">Search</button>
+                    <span id="explorer-result-count" class="result-count"></span>
                 </div>
                 <div class="panel table-panel">
-                    <div id="task-table-state" class="inline-state">Select a run to inspect tasks.</div>
+                    <div id="explorer-table-state" class="inline-state">Select a run to inspect entities.</div>
                     <div class="table-scroll">
-                        <table class="task-table" id="task-table">
-                            <thead><tr><th>Task</th><th>Outcome</th><th>Category</th><th>Worker</th><th>Cores</th><th>Execution</th><th></th></tr></thead>
+                        <table class="task-table" id="explorer-table">
+                            <thead></thead>
                             <tbody></tbody>
                         </table>
+                    </div>
+                    <div class="explorer-pagination">
+                        <button id="explorer-prev" class="button button-tertiary" type="button">Previous</button>
+                        <span id="explorer-page"></span>
+                        <button id="explorer-next" class="button button-tertiary" type="button">Next</button>
                     </div>
                 </div>
             </section>
@@ -198,13 +210,13 @@
         <div id="comparison-results" class="comparison-results"></div>
     </section>
 
-    <section id="task-drawer" class="side-drawer task-drawer" aria-hidden="true">
-        <div class="drawer-header"><h2 id="task-drawer-title">Task</h2><button class="icon-button drawer-close" type="button" aria-label="Close">×</button></div>
-        <div id="task-drawer-body" class="task-detail-body"></div>
+    <section id="entity-drawer" class="side-drawer entity-drawer" aria-hidden="true">
+        <div class="drawer-header"><h2 id="entity-drawer-title">Details</h2><button class="icon-button drawer-close" type="button" aria-label="Close">×</button></div>
+        <div id="entity-drawer-body" class="task-detail-body"></div>
     </section>
 
     <div id="toast-region" class="toast-region" aria-live="polite"></div>
 
-    <script src="{{ url_for('static', filename='js/main.js') }}?v=5.7" type="module"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}?v=6.1" type="module"></script>
 </body>
 </html>

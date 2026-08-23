@@ -1,11 +1,11 @@
-import { BaseModule } from './base.js?v=5.6';
+import { BaseModule } from './base.js?v=5.7';
 import { getWorkerColor } from './utils.js?v=5.0';
+import { durationAxisSpec } from './time_format.js?v=1.0';
 
 const COLORS = ['#d96f24', '#747474', '#a9a9a5', '#4e4e4e', '#e6a06d', '#94948f'];
 
 function formatterExpression(unit) {
     const formats = {
-        seconds: '(d) => d < 1 ? `${Math.round(d * 1000)}ms` : d3.format("~s")(d) + "s"',
         bytes: '(d) => { const a=Math.abs(d); if(a>=1099511627776)return d3.format(".2~f")(d/1099511627776)+" TiB"; if(a>=1073741824)return d3.format(".2~f")(d/1073741824)+" GiB"; if(a>=1048576)return d3.format(".2~f")(d/1048576)+" MiB"; if(a>=1024)return d3.format(".2~f")(d/1024)+" KiB"; return d3.format("~s")(d)+" B"; }',
         percent: '(d) => d3.format(".0f")(d) + "%"',
         ratio: '(d) => d3.format(".0%")(d)',
@@ -54,16 +54,18 @@ export class GenericMetricModule extends BaseModule {
         }
         const xDomain = finiteDomain(payload.axes?.x?.domain);
         const yDomain = finiteDomain(payload.axes?.y?.domain);
+        const xAxis = payload.axes?.x?.unit === 'seconds' ? durationAxisSpec(xDomain) : null;
         const ySpan = Math.max(yDomain[1] - yDomain[0], Math.abs(yDomain[1]), 1);
         if (this.config.renderer === 'scatter') yDomain[1] += ySpan * 0.04;
+        const yAxis = payload.axes?.y?.unit === 'seconds' ? durationAxisSpec(yDomain) : null;
         return {
             ...payload,
             x_domain: xDomain,
             y_domain: yDomain,
-            x_tick_values: d3.ticks(xDomain[0], xDomain[1], 6),
-            y_tick_values: d3.ticks(yDomain[0], yDomain[1], 6),
-            x_tick_formatter: formatterExpression(payload.axes?.x?.unit),
-            y_tick_formatter: formatterExpression(payload.axes?.y?.unit),
+            x_tick_values: xAxis?.tickValues || d3.ticks(xDomain[0], xDomain[1], 6),
+            y_tick_values: yAxis?.tickValues || d3.ticks(yDomain[0], yDomain[1], 6),
+            x_tick_formatter: xAxis?.formatterExpression || formatterExpression(payload.axes?.x?.unit),
+            y_tick_formatter: yAxis?.formatterExpression || formatterExpression(payload.axes?.y?.unit),
         };
     }
 
