@@ -1,5 +1,5 @@
 import { formatDuration } from './time_format.js?v=1.0';
-import { pinTooltip, tooltipPinnedByOther, unpinTooltip } from './tooltip_pin.js?v=1.0';
+import { pinTooltip, tooltipPinnedByOther, unpinTooltip } from './tooltip_pin.js?v=1.1';
 
 function finitePoint(point) {
     return Array.isArray(point)

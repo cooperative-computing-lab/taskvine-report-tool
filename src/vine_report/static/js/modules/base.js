@@ -1,7 +1,7 @@
 import { Toolbox } from './toolbox.js?v=5.0';
-import { LineCursor } from './line_cursor.js?v=1.3';
+import { LineCursor } from './line_cursor.js?v=1.4';
 import { durationAxisSpec } from './time_format.js?v=1.0';
-import { hasPinnedTooltip, pinTooltip, unpinTooltip } from './tooltip_pin.js?v=1.0';
+import { hasPinnedTooltip, pinTooltip, unpinTooltip } from './tooltip_pin.js?v=1.1';
 
 let jsPDF = null;
 let svg2pdf = null;

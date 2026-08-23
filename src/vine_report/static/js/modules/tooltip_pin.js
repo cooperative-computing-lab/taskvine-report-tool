@@ -1,18 +1,24 @@
 let pinnedOwner = null;
-let escapeHandlerBound = false;
+let releaseHandlersBound = false;
 
-function bindEscapeHandler() {
-    if (escapeHandlerBound) return;
-    escapeHandlerBound = true;
+function bindReleaseHandlers() {
+    if (releaseHandlersBound) return;
+    releaseHandlersBound = true;
     document.addEventListener('keydown', event => {
         if (event.key === 'Escape' && pinnedOwner) {
             pinnedOwner.releasePinnedTooltip?.();
         }
     });
+    document.addEventListener('click', event => {
+        if (!pinnedOwner) return;
+        const target = event.target;
+        if (target.closest?.('[data-vine-mark], .line-cursor-hitbox')) return;
+        pinnedOwner.releasePinnedTooltip?.();
+    });
 }
 
 export function pinTooltip(owner) {
-    bindEscapeHandler();
+    bindReleaseHandlers();
     if (pinnedOwner && pinnedOwner !== owner) {
         pinnedOwner.releasePinnedTooltip?.();
     }

@@ -215,6 +215,12 @@ test('line grids inspect every visible series at the cursor x position', async (
   await expect(tooltip).toHaveClass(/cursor-pinned/);
   await expect(tooltip.locator('.line-cursor-x')).toHaveText(pinnedCoordinate);
   await expect(hitbox).toHaveAttribute('aria-pressed', 'true');
+  await card.locator('.section-title').click();
+  await expect(tooltip).toBeHidden();
+  await expect(hitbox).toHaveAttribute('aria-pressed', 'false');
+
+  await hitbox.click({ position: { x: box.width * 0.6, y: box.height * 0.45 } });
+  await expect(tooltip).toHaveClass(/cursor-pinned/);
   await hitbox.press('Escape');
   await expect(tooltip).toBeHidden();
 
@@ -242,6 +248,9 @@ test('points and bars pin one shared tooltip and charts expose zoom controls', a
   await point.press('Enter');
   await expect(point).toHaveAttribute('aria-pressed', 'true');
   await expect(tooltip).toHaveClass(/cursor-pinned/);
+  await scatter.locator('.section-description').click();
+  await expect(point).toHaveAttribute('aria-pressed', 'false');
+  await expect(tooltip).toBeHidden();
 
   const zoom = scatter.locator('.chart-zoom-controls');
   await expect(zoom).toContainText('Ctrl/⌘ + scroll');

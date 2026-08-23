@@ -1,4 +1,4 @@
-import { BaseModule } from './base.js?v=6.1';
+import { BaseModule } from './base.js?v=6.2';
 import { getTaskInnerHTML, getWorkerInnerHTML } from './utils.js?v=5.0';
 
 export class TaskExecutionDetailsModule extends BaseModule {
