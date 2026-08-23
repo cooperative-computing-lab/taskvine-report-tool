@@ -77,6 +77,94 @@ def _bucket_rows(events, start_epoch, end_epoch, value_keys, max_points=400):
     return rows
 
 
+def _workflow_pressure_rows(attempts, start_epoch, end_epoch):
+    states = ("queued", "executing", "retrieving")
+    deltas = defaultdict(Counter)
+    observed = 0
+    for fact in attempts:
+        ready = fact.get("ready")
+        if ready is None:
+            continue
+        observed += 1
+        current, last = "queued", ready
+        deltas[ready][current] += 1
+        for field, next_state in (("running", "executing"), ("waiting_retrieval", "retrieving")):
+            timestamp = fact.get(field)
+            if timestamp is None or timestamp < last:
+                continue
+            deltas[timestamp][current] -= 1
+            deltas[timestamp][next_state] += 1
+            current, last = next_state, timestamp
+        terminal = fact.get("terminal") or fact.get("done")
+        if terminal is not None and terminal >= last:
+            deltas[terminal][current] -= 1
+
+    current = Counter({state: 0 for state in states})
+    rows = []
+    for timestamp in sorted(deltas):
+        for state, delta in deltas[timestamp].items():
+            current[state] += delta
+        rows.append({
+            "time": round(max(0.0, timestamp - start_epoch), 6),
+            **{state: current[state] for state in states},
+        })
+    if not rows or rows[0]["time"] > 0:
+        rows.insert(0, {"time": 0.0, **{state: 0 for state in states}})
+    duration = max(0.0, end_epoch - start_epoch)
+    if rows[-1]["time"] < duration:
+        rows.append({"time": duration, **{state: current[state] for state in states}})
+    return rows, observed
+
+
+def _retry_pressure_rows(attempts, start_epoch, end_epoch):
+    # Retry is an application-level concept. Internal library/recovery tries
+    # may precede the first application try for the same task id, so the raw
+    # transaction attempt number cannot classify the filtered sequence.
+    first_application_attempt = {}
+    for fact in attempts:
+        task_id = fact["task_id"]
+        first_application_attempt[task_id] = min(
+            fact["attempt"], first_application_attempt.get(task_id, fact["attempt"])
+        )
+    events = []
+    for fact in attempts:
+        ready = fact.get("ready")
+        if ready is None:
+            continue
+        is_first = fact["attempt"] == first_application_attempt[fact["task_id"]]
+        events.append((ready, {
+            "first_attempts": float(is_first),
+            "retries": float(not is_first),
+        }))
+    rows = _bucket_rows(events, start_epoch, end_epoch, ["first_attempts", "retries"])
+    for row in rows:
+        row["first_attempt_rate_per_second"] = row["first_attempts"] / row["bucket_seconds"]
+        row["retry_rate_per_second"] = row["retries"] / row["bucket_seconds"]
+    return rows
+
+
+def _worker_event_rows(events, start_epoch, end_epoch):
+    reasons = sorted({"CONNECTED" if delta > 0 else reason for _, _, delta, reason in events})
+    if not reasons:
+        return []
+    duration = max(0.0, end_epoch - start_epoch)
+    width = max(1.0, math.ceil(duration / 400))
+    bucket_count = max(1, math.ceil(duration / width))
+    buckets = defaultdict(Counter)
+    for timestamp, _, delta, reason in events:
+        index = min(bucket_count - 1, int(max(0.0, timestamp - start_epoch) // width))
+        buckets[index]["CONNECTED" if delta > 0 else reason] += 1
+    return [
+        {
+            "time": round(index * width, 6), "bucket_seconds": width,
+            "reason": reason, "count": buckets[index][reason],
+            "events_per_second": buckets[index][reason] / width,
+        }
+        for index in range(bucket_count)
+        for reason in reasons
+    ]
+
+
 class MetricFactBuilder:
     """Build immutable metric projections and explicit quality contracts."""
 
@@ -189,7 +277,7 @@ class MetricFactBuilder:
         performance_rows = self._performance()
         if transaction_records is None:
             for metric_id in (
-                "task-throughput", "task-latency", "failure-timeline",
+                "workflow-pressure", "retry-pressure", "task-throughput", "task-latency", "failure-timeline",
                 "worker-churn", "transfer-throughput",
             ):
                 self._contract(metric_id, "UNAVAILABLE", "transactions", 0, "", "", "all", "transactions file missing")
@@ -355,10 +443,12 @@ class MetricFactBuilder:
         )
 
     def _write_empty_transaction_outputs(self):
+        _write_csv(self.csv_dir / "metric_workflow_pressure.csv", ["time", "queued", "executing", "retrieving"], [])
+        _write_csv(self.csv_dir / "metric_retry_pressure.csv", ["time", "bucket_seconds", "first_attempts", "retries", "first_attempt_rate_per_second", "retry_rate_per_second"], [])
         _write_csv(self.csv_dir / "metric_task_throughput.csv", ["time", "bucket_seconds", "successful", "failed", "success_rate_per_second", "failure_rate_per_second"], [])
         _write_csv(self.csv_dir / "metric_task_latency.csv", ["task_id", "attempt", "category", "outcome", "queue_seconds", "execution_seconds", "retrieval_seconds"], [])
         _write_csv(self.csv_dir / "metric_failure_timeline.csv", ["time", "status", "count"], [])
-        _write_csv(self.csv_dir / "metric_worker_churn.csv", ["time", "connected", "disconnected", "active", "reason"], [])
+        _write_csv(self.csv_dir / "metric_worker_churn.csv", ["time", "bucket_seconds", "reason", "count", "events_per_second"], [])
         _write_csv(self.csv_dir / "metric_transfer_throughput.csv", ["time", "bucket_seconds", "input_bytes", "output_bytes", "input_bytes_per_second", "output_bytes_per_second"], [])
 
     def _build_transaction_metrics(self, records):
@@ -462,7 +552,8 @@ class MetricFactBuilder:
         start_epoch = starts[-1] if starts else min(all_timestamps)
         end_epoch = ends[-1] if ends else max(all_timestamps)
         run_complete = bool(ends)
-        source_status = "PASS" if run_complete and not malformed_payloads and not self.partial_reasons else "PARTIAL"
+        transaction_status = "PASS" if not malformed_payloads and not self.provenance["transactions"]["malformed_records"] else "PARTIAL"
+        source_status = transaction_status if run_complete else "PARTIAL"
         if not run_complete:
             self.partial_reasons.append("metric_manager_end_missing")
 
@@ -537,24 +628,11 @@ class MetricFactBuilder:
         ]
         _write_csv(self.csv_dir / "metric_failure_timeline.csv", ["time", "status", "count"], failure_rows)
 
-        active = 0
-        churn_rows = []
-        for timestamp, _, delta, reason in sorted(worker_events):
-            active = max(0, active + delta)
-            churn_rows.append({
-                "time": max(0.0, timestamp - start_epoch),
-                "connected": int(delta > 0), "disconnected": int(delta < 0),
-                "active": active, "reason": reason,
-            })
-        if not churn_rows or churn_rows[0]["time"] > 0:
-            churn_rows.insert(0, {"time": 0.0, "connected": 0, "disconnected": 0, "active": 0, "reason": "BASELINE"})
-        duration = max(0.0, end_epoch - start_epoch)
-        if churn_rows[-1]["time"] < duration:
-            churn_rows.append({
-                "time": duration, "connected": 0, "disconnected": 0,
-                "active": churn_rows[-1]["active"], "reason": "MANAGER_END",
-            })
-        _write_csv(self.csv_dir / "metric_worker_churn.csv", ["time", "connected", "disconnected", "active", "reason"], churn_rows)
+        churn_rows = _worker_event_rows(worker_events, start_epoch, end_epoch)
+        _write_csv(
+            self.csv_dir / "metric_worker_churn.csv",
+            ["time", "bucket_seconds", "reason", "count", "events_per_second"], churn_rows,
+        )
 
         transfer_bucket_events = []
         total_input = total_output = 0.0
@@ -581,12 +659,46 @@ class MetricFactBuilder:
         terminal_coverage = terminal_application / total_attempts if total_attempts else 0
         latency_denominator = max(1, total_attempts)
         status = source_status if terminal_coverage >= 0.995 else "PARTIAL"
+        operational_status = transaction_status if classification_coverage >= 0.995 else "PARTIAL"
+        workflow_rows, workflow_observed = _workflow_pressure_rows(app_attempts, start_epoch, end_epoch)
+        _write_csv(
+            self.csv_dir / "metric_workflow_pressure.csv",
+            ["time", "queued", "executing", "retrieving"], workflow_rows,
+        )
+        _write_csv(
+            self.csv_dir / "metric_retry_pressure.csv",
+            ["time", "bucket_seconds", "first_attempts", "retries", "first_attempt_rate_per_second", "retry_rate_per_second"],
+            _retry_pressure_rows(app_attempts, start_epoch, end_epoch),
+        )
+        workflow_coverage = workflow_observed / max(1, len(app_attempts))
+        open_attempts = sum(
+            fact.get("terminal") is None and fact.get("done") is None
+            for fact in app_attempts
+        )
+        workflow_caveat = (
+            f"{open_attempts} open attempts are right-censored at the latest observation."
+            if open_attempts else ""
+        )
+        retry_caveat = "Future attempts are not yet observed." if not run_complete else ""
+        self._contract(
+            "workflow-pressure", operational_status, "transactions+debug-classification",
+            min(workflow_coverage, classification_coverage), "attempts",
+            "observed application attempt lifecycle states", "library,recovery", workflow_caveat,
+        )
+        self._contract(
+            "retry-pressure", operational_status, "transactions+debug-classification",
+            classification_coverage, "attempts/s", "application READY observations",
+            "library,recovery", retry_caveat,
+        )
         self._contract("task-throughput", status, "transactions+debug-classification", min(terminal_coverage, classification_coverage), "attempts/s", "application attempts only", "library,recovery,incomplete", "Terminal event is RETRIEVED; no synthetic completions.")
         latency_coverage = min(complete_queue, complete_execution) / latency_denominator
         self._contract("task-latency", source_status if latency_coverage >= 0.995 else "PARTIAL", "transactions+debug-classification", min(latency_coverage, classification_coverage), "seconds", "application attempts only", "missing phase endpoints", "Each latency field has independent coverage.")
         self._contract("failure-timeline", status, "transactions+debug-classification", min(terminal_coverage, classification_coverage), "attempts", "unsuccessful application attempts", "library,recovery,incomplete", "Statuses are TaskVine terminal outcomes.")
-        churn_coverage = 1.0 if run_complete else 0.0
-        self._contract("worker-churn", source_status, "transactions", churn_coverage, "workers", "worker sessions", "open sessions are censored", "Disconnect reasons are source values.")
+        self._contract(
+            "worker-churn", transaction_status, "transactions", 1.0,
+            "events/s", "observed worker connection and disconnection events", "none",
+            "Disconnect reasons are source values; open sessions require no synthetic disconnect.",
+        )
         self._contract("transfer-throughput", source_status, "transactions", 1.0 if transfer_events else 0.0, "bytes/s", "completed INPUT and OUTPUT payloads", "avoided/cache-hit transfers", "Payload throughput is not physical link utilization.")
         self._transaction_totals = {"input_bytes": total_input, "output_bytes": total_output, "worker_connections": sum(delta > 0 for _, _, delta, _ in worker_events)}
         return start_epoch
@@ -596,6 +708,7 @@ class MetricFactBuilder:
         if not rows:
             _write_csv(self.csv_dir / "metric_worker_capacity.csv", fields, [])
             self._contract("worker-capacity", "UNAVAILABLE", "performance", 0, "cores", "manager capacity samples", "all", "performance file missing")
+            self._contract("core-occupancy", "UNAVAILABLE", "performance", 0, "ratio", "manager capacity samples", "all", "performance file missing")
             return
         if start_epoch is None:
             start_epoch = rows[0]["timestamp"] / 1e6
@@ -660,6 +773,11 @@ class MetricFactBuilder:
         coverage = valid / len(rows)
         status = "PASS" if coverage >= 0.995 and not self.provenance["performance"]["malformed_records"] else "PARTIAL"
         self._contract("worker-capacity", status, "performance", coverage, "cores", "manager capacity samples", "zero-capacity samples from occupancy ratio", "Committed capacity is a scheduler occupancy proxy, not CPU utilization.")
+        self._contract(
+            "core-occupancy", status, "performance", coverage, "ratio",
+            "committed cores divided by total cores", "zero-capacity samples",
+            "Scheduler occupancy proxy; not measured CPU utilization.",
+        )
 
 
 def generate_metric_facts(runtime_template: str, data_parser):

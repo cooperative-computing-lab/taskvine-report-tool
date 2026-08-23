@@ -1,4 +1,4 @@
-import { moduleClasses, enabledModuleConfigs, installMetricCatalog } from './modules/configs.js?v=5.8';
+import { moduleClasses, enabledModuleConfigs, installMetricCatalog } from './modules/configs.js?v=5.9';
 import { formatDuration } from './modules/time_format.js?v=1.0';
 
 const REQUIRED_SERVER_CAPABILITY = 'source-backed-metrics-v1';
@@ -17,6 +17,10 @@ const state = {
     timeStart: 0,
     timeEnd: 100,
     requestCount: 0,
+    sourceToken: '',
+    autoRefresh: true,
+    refreshInFlight: false,
+    watchInFlight: false,
 };
 
 function beginRunScope(run) {
@@ -99,9 +103,9 @@ function endRequest() {
 }
 
 async function getJSON(url, options = {}) {
-    const { scope = null, allowRevisionChange = false, ...fetchOptions } = options || {};
+    const { scope = null, allowRevisionChange = false, quiet = false, ...fetchOptions } = options || {};
     if (scope && !fetchOptions.signal) fetchOptions.signal = scope.signal;
-    beginRequest();
+    if (!quiet) beginRequest();
     try {
         const response = await fetch(url, fetchOptions);
         const payload = await response.json().catch(() => ({}));
@@ -115,7 +119,7 @@ async function getJSON(url, options = {}) {
         }
         return payload.schema_version === 'report-api/v1' ? payload.data : payload;
     } finally {
-        endRequest();
+        if (!quiet) endRequest();
     }
 }
 
@@ -367,6 +371,7 @@ async function selectRun(run, { force = false } = {}) {
         const descriptor = await getJSON(`/api/v1/runs/${encodeURIComponent(run)}`, { scope });
         if (!isCurrentScope(scope)) return;
         state.revision = descriptor.current_revision;
+        state.sourceToken = descriptor.source_token || '';
         scope.revision = descriptor.current_revision;
     } catch (error) {
         if (error?.name === 'AbortError') return;
@@ -703,27 +708,69 @@ function setupTimeFilters() {
     });
 }
 
-async function reloadRun() {
-    if (!state.run) return toast('Select a run first.');
+async function reloadRun({ silent = false } = {}) {
+    if (!state.run) { toast('Select a run first.'); return false; }
+    if (state.refreshInFlight) return false;
+    state.refreshInFlight = true;
     const button = $('#reload-button');
     button.disabled = true;
     button.classList.add('is-reloading');
     button.setAttribute('aria-busy', 'true');
     try {
         const scope = currentRunScope();
-        await getJSON(`/api/v1/runs/${encodeURIComponent(state.run)}/refresh`, {
+        const refreshed = await getJSON(`/api/v1/runs/${encodeURIComponent(state.run)}/refresh`, {
             method: 'POST', scope, allowRevisionChange: true,
         });
+        state.sourceToken = refreshed.source_token || state.sourceToken;
         loadedGroups.clear();
         await selectRun(state.run, { force: true });
-        toast('Run data reloaded.');
+        if (!silent) toast('Run data reloaded.');
+        return true;
     } catch (error) {
-        toast(`Reload failed: ${error.message}`);
+        if (!silent) toast(`Reload failed: ${error.message}`);
+        return false;
     } finally {
+        state.refreshInFlight = false;
         button.disabled = false;
         button.classList.remove('is-reloading');
         button.removeAttribute('aria-busy');
     }
+}
+
+function renderAutoRefresh() {
+    const button = $('#auto-refresh-button');
+    button.setAttribute('aria-pressed', String(state.autoRefresh));
+    button.title = state.autoRefresh ? 'Automatic updates enabled' : 'Automatic updates paused';
+}
+
+async function watchRun() {
+    if (!state.autoRefresh || document.hidden || !state.run || state.refreshInFlight || state.watchInFlight) return;
+    const scope = currentRunScope();
+    if (!scope) return;
+    const button = $('#auto-refresh-button');
+    state.watchInFlight = true;
+    button.classList.add('is-checking');
+    try {
+        const watch = await getJSON(`/api/v1/runs/${encodeURIComponent(scope.run)}/watch`, {
+            scope, allowRevisionChange: true, quiet: true,
+        });
+        if (!isCurrentScope(scope)) return;
+        if (!state.sourceToken) state.sourceToken = watch.source_token;
+        else if (watch.source_token && watch.source_token !== state.sourceToken) {
+            if (await reloadRun({ silent: true })) toast('New run data loaded.');
+        }
+    } catch (error) {
+        if (error?.name !== 'AbortError') console.warn(`Automatic update check failed: ${error.message}`);
+    } finally {
+        state.watchInFlight = false;
+        button.classList.remove('is-checking');
+    }
+}
+
+function toggleAutoRefresh() {
+    state.autoRefresh = !state.autoRefresh;
+    renderAutoRefresh();
+    if (state.autoRefresh) watchRun();
 }
 
 async function shareView() {
@@ -745,6 +792,7 @@ function bindEvents() {
     document.addEventListener('keydown', event => { if (event.key === 'Escape') closeDrawers(); });
     $('#log-selector').addEventListener('change', event => selectRun(event.target.value));
     $('#reload-button').addEventListener('click', reloadRun);
+    $('#auto-refresh-button').addEventListener('click', toggleAutoRefresh);
     $('#share-button').addEventListener('click', shareView);
     $('#run-comparison').addEventListener('click', runComparison);
     $$('[data-explorer]').forEach(button => button.addEventListener('click', () => selectExplorer(button.dataset.explorer)));
@@ -758,6 +806,7 @@ function bindEvents() {
         const params = new URLSearchParams(window.location.search);
         selectView(params.get('view') || 'overview', false);
     });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) watchRun(); });
 }
 
 async function initialize() {
@@ -783,6 +832,10 @@ async function initialize() {
             showRestartRequired('This page requires the entity explorer API from the running backend.');
             return;
         }
+        if (!health.capabilities?.includes('revision-watch-v1')) {
+            showRestartRequired('This page requires revision-aware automatic updates from the running backend.');
+            return;
+        }
         const catalog = await getJSON('/api/v1/catalog');
         installMetricCatalog(catalog.metrics || []);
     } catch (error) {
@@ -796,6 +849,8 @@ async function initialize() {
     setupModules();
     setupTimeFilters();
     bindEvents();
+    renderAutoRefresh();
+    window.setInterval(watchRun, 10_000);
     await selectExplorer(params.get('entity') || 'tasks', { load: false });
     try {
         const payload = await getJSON('/api/v1/runs');

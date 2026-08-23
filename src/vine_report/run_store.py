@@ -178,6 +178,32 @@ class SnapshotStore:
         with self._locks_guard:
             return self._locks.setdefault(run_id, threading.Lock())
 
+    def source_token(self, run_id: str) -> str:
+        """Cheap change token for polling; full refresh still verifies every output."""
+        run_path = self.catalog.resolve(run_id)
+        csv_dir = run_path / "csv-files"
+        manifest = csv_dir / "parse-manifest.json"
+        digest = hashlib.sha256()
+        if manifest.is_file():
+            digest.update(b"manifest\0")
+            digest.update(manifest.read_bytes())
+        else:
+            digest.update(b"legacy\0")
+            inventory = []
+            for pattern in ("*.csv", "*.parquet"):
+                for path in csv_dir.glob(pattern):
+                    try:
+                        stat = path.stat()
+                    except FileNotFoundError:
+                        continue
+                    inventory.append((path.name, stat.st_size, stat.st_mtime_ns))
+            digest.update(json.dumps(sorted(inventory), separators=(",", ":")).encode())
+        diagnostics = run_path / "vine-logs" / "parse-diagnostics.json"
+        if diagnostics.is_file():
+            digest.update(b"\0diagnostics\0")
+            digest.update(diagnostics.read_bytes())
+        return digest.hexdigest()
+
     def _touch_access(self, run_path: Path, run_id: str, revision: str) -> None:
         key = (run_id, revision)
         now = time.monotonic()

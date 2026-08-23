@@ -138,21 +138,35 @@ def compare():
 
 @api_v1_bp.get("/runs/<run_id>")
 def run_descriptor(run_id):
-    snapshot = current_app.config["SNAPSHOT_STORE"].refresh(run_id)
+    store = current_app.config["SNAPSHOT_STORE"]
+    snapshot = store.refresh(run_id)
     g.run_snapshot = snapshot
     return jsonify(_envelope({
         "run_id": run_id,
         "current_revision": snapshot.revision,
+        "source_token": store.source_token(run_id),
     }, snapshot))
+
+
+@api_v1_bp.get("/runs/<run_id>/watch")
+def watch_run(run_id):
+    store = current_app.config["SNAPSHOT_STORE"]
+    return jsonify(_envelope({
+        "run_id": run_id,
+        "current_revision": store.current_revision(run_id, refresh=False),
+        "source_token": store.source_token(run_id),
+    }))
 
 
 @api_v1_bp.post("/runs/<run_id>/refresh")
 def refresh(run_id):
-    snapshot = current_app.config["SNAPSHOT_STORE"].refresh(run_id)
+    store = current_app.config["SNAPSHOT_STORE"]
+    snapshot = store.refresh(run_id)
     g.run_snapshot = snapshot
     return jsonify(_envelope({
         "run_id": run_id,
         "current_revision": snapshot.revision,
+        "source_token": store.source_token(run_id),
     }, snapshot))
 
 

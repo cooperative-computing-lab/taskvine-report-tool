@@ -80,7 +80,7 @@ class DashboardAPITest(unittest.TestCase):
         self.assertIn("TaskVine Report", page)
         self.assertIn("Task Explorer", page)
         self.assertIn("Compare runs", page)
-        self.assertIn("css/app.css') }}?v=5.8", Path("src/vine_report/templates/index.html").read_text())
+        self.assertIn("css/app.css') }}?v=5.9", Path("src/vine_report/templates/index.html").read_text())
 
     def test_v1_contract_matches_registered_routes(self):
         contract = json.loads(Path("docs/api-v1-contract.json").read_text(encoding="utf-8"))
@@ -106,6 +106,7 @@ class DashboardAPITest(unittest.TestCase):
         self.assertIn("source-backed-metrics-v1", health.json["data"]["capabilities"])
         self.assertIn("metric-registry-v1", health.json["data"]["capabilities"])
         self.assertIn("entity-explorers-v1", health.json["data"]["capabilities"])
+        self.assertIn("revision-watch-v1", health.json["data"]["capabilities"])
         self.assertEqual(health.json["data"]["runtime"]["request_threads"], 8)
 
         self.client.get("/api/v1/runs/run-a")
@@ -133,6 +134,26 @@ class DashboardAPITest(unittest.TestCase):
         self.assertEqual(data["axes"]["y"]["unit"], "bytes")
         self.assertEqual(max(point[1] for point in data["series"][0]["points"]), 30 * 2**20)
         self.assertEqual(data["contract"]["status"], "PARTIAL")
+
+    def test_run_watch_detects_source_change_without_publishing_early(self):
+        descriptor = self.client.get("/api/v1/runs/run-a").json["data"]
+        first_revision = descriptor["current_revision"]
+        first_token = descriptor["source_token"]
+        watch = self.client.get("/api/v1/runs/run-a/watch")
+        self.assertEqual(watch.status_code, 200)
+        self.assertEqual(watch.json["data"]["current_revision"], first_revision)
+        self.assertEqual(watch.json["data"]["source_token"], first_token)
+
+        metadata = self.root / "run-a" / "csv-files" / "metadata.csv"
+        time.sleep(0.01)
+        metadata.write_text(metadata.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+        changed = self.client.get("/api/v1/runs/run-a/watch").json["data"]
+        self.assertEqual(changed["current_revision"], first_revision)
+        self.assertNotEqual(changed["source_token"], first_token)
+
+        refreshed = self.client.post("/api/v1/runs/run-a/refresh").json["data"]
+        self.assertNotEqual(refreshed["current_revision"], first_revision)
+        self.assertEqual(refreshed["source_token"], changed["source_token"])
 
     def test_visual_tokens_keep_text_legible_and_hover_orange(self):
         css_response = self.client.get("/static/css/app.css")

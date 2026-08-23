@@ -109,6 +109,47 @@ test('source-backed metric renders only validated evidence', async ({ page }) =>
   expect(browserErrors).toEqual([]);
 });
 
+test('operational charts expose pressure, retries, occupancy, and worker loss reasons', async ({ page }) => {
+  await page.goto('/?run=run-a');
+  await expectRun(page, 'run-a');
+  await page.locator('.nav-item[data-view="tasks"]').click();
+  await expect(page.locator('[data-module="workflow-pressure"] path.workflow-pressure-metric-line').first()).toBeVisible();
+  await expect(page.locator('[data-module="retry-pressure"] path.retry-pressure-metric-line').first()).toBeVisible();
+
+  await page.locator('.nav-item[data-view="workers"]').click();
+  const occupancy = page.locator('[data-module="core-occupancy"]');
+  await expect(occupancy.locator('path.core-occupancy-metric-line')).toBeVisible();
+  await expect(occupancy.locator('.section-description')).toContainText('not CPU utilization');
+  const sessions = page.locator('[data-module="worker-churn"]');
+  await expect(sessions.locator('path.worker-churn-metric-line').first()).toBeVisible();
+  await expect(sessions.locator('.legend-container')).toContainText('EXIT');
+});
+
+test('live updates are revision-aware and can be paused', async ({ page }) => {
+  let refreshes = 0;
+  page.on('request', request => {
+    if (request.method() === 'POST' && request.url().endsWith('/refresh')) refreshes += 1;
+  });
+  await page.goto('/?run=run-a');
+  await expectRun(page, 'run-a');
+  const live = page.locator('#auto-refresh-button');
+  await expect(live).toHaveAttribute('aria-pressed', 'true');
+  await live.click();
+  await expect(live).toHaveAttribute('aria-pressed', 'false');
+
+  await page.route('**/api/v1/runs/run-a/watch', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      schema_version: 'report-api/v1', request_id: 'watch-test',
+      data: { run_id: 'run-a', current_revision: 'unchanged', source_token: 'changed-source' },
+    }),
+  }));
+  await live.click();
+  await expect(live).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => refreshes).toBe(1);
+  await expect(page.locator('#toast-region')).toContainText('New run data loaded.');
+});
+
 test('line grids inspect every visible series at the cursor x position', async ({ page }) => {
   await page.goto('/?run=run-a');
   await expectRun(page, 'run-a');

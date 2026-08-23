@@ -146,6 +146,11 @@ button { color: inherit; }
     text-overflow: ellipsis;
 }
 .topbar-actions { margin-left: auto; display: flex; gap: 8px; }
+.live-button[aria-pressed="true"] { border-color: #a7b9a9; background: #f3f8f3; color: #36583b; }
+.live-dot { width: 7px; height: 7px; border-radius: 99px; background: var(--ink-300); }
+.live-button[aria-pressed="true"] .live-dot { background: var(--green); box-shadow: 0 0 0 3px rgba(42,122,75,.12); }
+.live-button.is-checking .live-dot { animation: live-pulse 1s ease-in-out infinite; }
+@keyframes live-pulse { 50% { opacity: .35; transform: scale(.75); } }
 
 .button, .icon-button, .text-button {
     border: 0;

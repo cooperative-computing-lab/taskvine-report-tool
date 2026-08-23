@@ -24,7 +24,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/legend.css') }}?v=2.0">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/section.css') }}?v=2.0">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tables.css') }}?v=2.0">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=5.8">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=5.9">
 </head>
 <body>
     <div id="vine-tooltip" class="tooltip" role="tooltip"></div>
@@ -74,6 +74,9 @@
                 </select>
             </div>
             <div class="topbar-actions">
+                <button id="auto-refresh-button" class="button button-secondary live-button" type="button" aria-pressed="true" title="Automatic updates enabled">
+                    <span class="live-dot" aria-hidden="true"></span><span class="button-label">Live</span>
+                </button>
                 <button id="reload-button" class="button button-secondary" type="button" title="Reload current run">
                     <span class="button-icon" aria-hidden="true">
                         <svg viewBox="0 0 16 16" focusable="false">
@@ -217,6 +220,6 @@
 
     <div id="toast-region" class="toast-region" aria-live="polite"></div>
 
-    <script src="{{ url_for('static', filename='js/main.js') }}?v=6.1" type="module"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}?v=6.2" type="module"></script>
 </body>
 </html>

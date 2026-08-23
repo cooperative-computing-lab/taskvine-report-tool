@@ -91,18 +91,23 @@ def make_run(root: Path, run_id: str, scale: int):
     write_csv(csv_dir / "file_retention_time.csv", ["file_idx", "file_name", "retention_time"], [[1, "input-a", 4], [2, "output-b", 8], [3, "output-c", 12]])
     contract_header = ["metric_id", "semantics_version", "status", "source", "coverage", "unit", "inclusion", "exclusions", "caveat"]
     write_csv(csv_dir / "metric_contracts.csv", contract_header, [
+        ["workflow-pressure", 1, "PASS", "transactions+debug", 1, "attempts", "application states", "library,recovery", ""],
+        ["retry-pressure", 1, "PASS", "transactions+debug", 1, "attempts/second", "READY observations", "library,recovery", ""],
         ["task-throughput", 1, "PASS", "transactions", 1, "attempts/second", "application attempts", "library,recovery", ""],
         ["task-latency", 1, "PASS", "transactions+debug", 1, "seconds", "terminal application attempts", "library,recovery", ""],
         ["failure-timeline", 1, "PASS", "transactions+debug", 1, "attempts", "failed application attempts", "library,recovery", ""],
         ["worker-capacity", 1, "PASS", "performance", 1, "count", "all samples", "", ""],
+        ["core-occupancy", 1, "PASS", "performance", 1, "ratio", "committed/total", "zero capacity", ""],
         ["worker-churn", 1, "PASS", "transactions", 1, "workers", "worker sessions", "", ""],
         ["transfer-throughput", 1, "PASS", "transactions+performance", 1, "bytes/second", "payload bytes", "protocol overhead", ""],
     ])
+    write_csv(csv_dir / "metric_workflow_pressure.csv", ["time", "queued", "executing", "retrieving"], [[0, 3, 0, 0], [10, 1, 2, 0], [30, 0, 0, 0]])
+    write_csv(csv_dir / "metric_retry_pressure.csv", ["time", "bucket_seconds", "first_attempts", "retries", "first_attempt_rate_per_second", "retry_rate_per_second"], [[0, 10, 2, 0, 0.2, 0], [10, 10, 1, 1, 0.1, 0.1]])
     write_csv(csv_dir / "metric_task_throughput.csv", ["time", "bucket_seconds", "successful", "failed", "success_rate_per_second", "failure_rate_per_second"], [[0, 10, 1, 0, 0.1, 0], [10, 10, 2, 1, 0.2, 0.1]])
     write_csv(csv_dir / "metric_task_latency.csv", ["task_id", "attempt", "category", "outcome", "queue_seconds", "execution_seconds", "retrieval_seconds"], [[1, 1, "alpha", "SUCCESS", 1, 2, 0.2], [2, 1, "beta", "SUCCESS", 2, 5, 0.2], [3, 1, "gamma", "FAILED", 3, 8, 0.2]])
     write_csv(csv_dir / "metric_failure_timeline.csv", ["time", "status", "count"], [[11, "RESOURCE_EXHAUSTION", 1]])
-    write_csv(csv_dir / "metric_worker_capacity.csv", ["time", "total_cores", "committed_cores", "tasks_running"], [[0, 4, 0, 0], [10, 4, 2, 2], [30, 0, 0, 0]])
-    write_csv(csv_dir / "metric_worker_churn.csv", ["time", "connected", "disconnected", "active", "reason"], [[0, 1, 0, 1, "CONNECTED"], [30, 0, 1, 0, "EXIT"]])
+    write_csv(csv_dir / "metric_worker_capacity.csv", ["time", "active_workers", "tasks_running", "total_cores", "committed_cores", "core_occupancy_ratio"], [[0, 1, 0, 4, 0, 0], [10, 2, 2, 4, 2, 0.5], [30, 0, 0, 0, 0, ""]])
+    write_csv(csv_dir / "metric_worker_churn.csv", ["time", "bucket_seconds", "reason", "count", "events_per_second"], [[0, 10, "CONNECTED", 2, 0.2], [0, 10, "EXIT", 0, 0], [10, 10, "CONNECTED", 0, 0], [10, 10, "EXIT", 1, 0.1]])
     write_csv(csv_dir / "metric_transfer_throughput.csv", ["time", "bucket_seconds", "input_bytes", "output_bytes", "input_bytes_per_second", "output_bytes_per_second"], [[0, 10, 100, 0, 10, 0], [10, 10, 0, 200, 0, 20]])
 
 

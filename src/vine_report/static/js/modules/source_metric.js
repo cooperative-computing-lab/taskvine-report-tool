@@ -44,6 +44,9 @@ export class SourceMetricModule extends BaseModule {
         const xAxis = payload.axes?.x?.unit === 'seconds' ? durationAxisSpec(xDomain) : null;
         if (payload.kind === 'cdf') {
             yDomain[1] = 1;
+        } else if (payload.axes?.y?.unit === 'ratio') {
+            yDomain[0] = 0;
+            yDomain[1] = 1;
         } else {
             const span = Math.max(yDomain[1] - yDomain[0], Math.abs(yDomain[1]), 1);
             yDomain[1] += span * 0.05;
@@ -56,11 +59,11 @@ export class SourceMetricModule extends BaseModule {
             x_tick_values: xAxis?.tickValues || d3.ticks(xDomain[0], xDomain[1], 6),
             y_tick_values: d3.ticks(yDomain[0], yDomain[1], 6),
             x_tick_formatter: xAxis?.formatterExpression || '(d) => d3.format("~s")(d)',
-            y_tick_formatter: payload.kind === 'cdf'
+            y_tick_formatter: payload.kind === 'cdf' || payload.axes?.y?.unit === 'ratio'
                 ? '(d) => d3.format(".0%")(d)'
                 : payload.metric_id === 'transfer-throughput'
                     ? '(d) => d3.format("~s")(d) + "B/s"'
-                    : payload.metric_id === 'task-throughput'
+                    : ['task-throughput', 'retry-pressure'].includes(payload.metric_id)
                         ? '(d) => d3.format(".2~f")(d)'
                     : '(d) => d3.format("~s")(d)',
         };

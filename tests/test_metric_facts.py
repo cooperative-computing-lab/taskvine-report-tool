@@ -67,7 +67,15 @@ class MetricFactsTest(unittest.TestCase):
         self.assertEqual([int(row["count"]) for row in failures], [0, 1])
         with (self.run / "csv-files" / "metric_worker_churn.csv").open(newline="") as handle:
             churn = list(csv.DictReader(handle))
-        self.assertEqual((float(churn[0]["time"]), float(churn[-1]["time"])), (0.0, 2.0))
+        self.assertEqual({row["reason"] for row in churn}, {"CONNECTED", "EXPLICIT"})
+        self.assertEqual(sum(int(row["count"]) for row in churn), 2)
+        with (self.run / "csv-files" / "metric_workflow_pressure.csv").open(newline="") as handle:
+            pressure = list(csv.DictReader(handle))
+        self.assertEqual(max(int(row["executing"]) for row in pressure), 1)
+        with (self.run / "csv-files" / "metric_retry_pressure.csv").open(newline="") as handle:
+            retries = list(csv.DictReader(handle))
+        self.assertEqual(sum(int(float(row["first_attempts"])) for row in retries), 2)
+        self.assertEqual(sum(int(float(row["retries"])) for row in retries), 0)
 
     def test_incomplete_run_fails_closed(self):
         (self.run / "vine-logs" / "transactions").write_text(
@@ -79,6 +87,37 @@ class MetricFactsTest(unittest.TestCase):
         evidence = generate_metric_facts(str(self.run), dp)
         self.assertIn("metric_manager_end_missing", evidence["partial_reasons"])
         self.assertEqual(evidence["contracts"]["task-throughput"]["status"], "PARTIAL")
+        self.assertEqual(evidence["contracts"]["workflow-pressure"]["status"], "PASS")
+        self.assertEqual(evidence["contracts"]["retry-pressure"]["status"], "PASS")
+
+    def test_retry_identity_starts_after_internal_attempts_are_filtered(self):
+        (self.run / "vine-logs" / "transactions").write_text(
+            "1000000 7 MANAGER 7 START 0\n"
+            "1100000 7 TASK 1 READY library FIRST_RESOURCES 1 {}\n"
+            "1200000 7 TASK 1 RETRIEVED LIBRARY_EXIT {} {}\n"
+            "1300000 7 TASK 1 READY application FIRST_RESOURCES 1 {}\n"
+            "1400000 7 TASK 1 RETRIEVED SUCCESS {} {}\n"
+            "1500000 7 TASK 2 READY application FIRST_RESOURCES 1 {}\n"
+            "1600000 7 TASK 2 RETRIEVED WORKER_DISCONNECTED {} {}\n"
+            "1700000 7 TASK 2 READY application FIRST_RESOURCES 1 {}\n"
+            "1800000 7 TASK 2 RETRIEVED SUCCESS {} {}\n"
+            "2000000 7 MANAGER 7 END 1000000\n",
+            encoding="utf-8",
+        )
+        task = lambda library=False: SimpleNamespace(
+            is_recovery_task=False, is_library_task=library
+        )
+        dp = SimpleNamespace(tasks={
+            (1, 1): task(library=True), (1, 2): task(),
+            (2, 1): task(), (2, 2): task(),
+        })
+
+        generate_metric_facts(str(self.run), dp)
+
+        with (self.run / "csv-files" / "metric_retry_pressure.csv").open(newline="") as handle:
+            rows = list(csv.DictReader(handle))
+        self.assertEqual(sum(float(row["first_attempts"]) for row in rows), 2)
+        self.assertEqual(sum(float(row["retries"]) for row in rows), 1)
 
     def test_cross_source_mismatch_is_assigned_to_affected_metrics(self):
         (self.run / "vine-logs" / "transactions").write_text(
