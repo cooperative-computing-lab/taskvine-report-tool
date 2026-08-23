@@ -1984,7 +1984,6 @@ export class BaseModule {
         const {
             singleSelect = false,
             onToggle = () => {},
-            columnsPerRow = 6,
             checkboxName = 'legend-checkbox',
         } = options;
 
@@ -1992,78 +1991,50 @@ export class BaseModule {
         this.legendCheckboxName = checkboxName;
         this.legendSingleSelect = singleSelect;
 
-        const actualColumns = Math.min(columnsPerRow, items.length);
-        for (let i = 0; i < items.length; i += actualColumns) {
-            const rowItems = items.slice(i, i + actualColumns);
-            const row = this.legendContainer.append('div')
-                .attr('class', 'legend-row')
-                .style('display', 'grid')
-                .style('grid-template-columns', `repeat(${actualColumns}, 1fr)`)
-                .style('gap', '0px')
-                .style('margin-bottom', '5px')
-                .style('width', '100%');
-
-            rowItems.forEach(item => {
-                const uniquePrefix = (this.legendContainer && this.legendContainer.id) ? this.legendContainer.id : (this.id || 'legend');
-                const safeCheckboxId = `legend-checkbox-${uniquePrefix}-${item.id}`;
-                const legendItem = row.append('div')
-                    .attr('class', 'legend-item')
-                    .style('display', 'flex')
-                    .style('align-items', 'center')
-                    .style('box-sizing', 'border-box')
-                    .style('min-width', 0)
-                    .style('padding', '2px 0')
-                    .style('cursor', 'pointer')
-                    .on('click', function(e) {
-                        if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'LABEL') {
-                            const checkbox = this.querySelector('input[type="checkbox"]');
-                            if (checkbox) {
-                                checkbox.checked = !checkbox.checked;
-                                checkbox.dispatchEvent(new Event('change', { bubbles: true }));
-                            }
+        const row = this.legendContainer.append('div').attr('class', 'legend-row');
+        items.forEach(item => {
+            const uniquePrefix = (this.legendContainer && this.legendContainer.id) ? this.legendContainer.id : (this.id || 'legend');
+            const safeCheckboxId = `legend-checkbox-${uniquePrefix}-${item.id}`;
+            const legendItem = row.append('div')
+                .attr('class', 'legend-item')
+                .on('click', function(e) {
+                    if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'LABEL') {
+                        const checkbox = this.querySelector('input[type="checkbox"]');
+                        if (checkbox) {
+                            checkbox.checked = !checkbox.checked;
+                            checkbox.dispatchEvent(new Event('change', { bubbles: true }));
                         }
-                    });
+                    }
+                });
 
-                legendItem.append('input')
-                    .attr('type', 'checkbox')
-                    .attr('name', this.legendCheckboxName)
-                    .attr('id', item.id)
-                    .property('checked', item.checked !== false)    /* default checked unless this field is specified as false */
-                    .style('accent-color', item.color || '#666')
-                    .on('click', function(e) { e.stopPropagation(); })
-                    .on('change', (event) => {
-                        const checkbox = event.currentTarget;
-                        const visible = checkbox.checked;
-                        onToggle(item.id, visible);
+            legendItem.append('input')
+                .attr('type', 'checkbox')
+                .attr('name', this.legendCheckboxName)
+                .attr('id', item.id)
+                .property('checked', item.checked !== false)    /* default checked unless this field is specified as false */
+                .style('accent-color', item.color || '#666')
+                .on('click', function(e) { e.stopPropagation(); })
+                .on('change', (event) => {
+                    const checkbox = event.currentTarget;
+                    const visible = checkbox.checked;
+                    onToggle(item.id, visible);
                     
-                        if (this.legendSingleSelect && visible) {
-                            this._queryAllLegendCheckboxes()
-                                .each(function () {
-                                    if (this !== checkbox) {
-                                        this.checked = false;
-                                    }
-                                });
-                        }
-                    });   
+                    if (this.legendSingleSelect && visible) {
+                        this._queryAllLegendCheckboxes()
+                            .each(function () {
+                                if (this !== checkbox) {
+                                    this.checked = false;
+                                }
+                            });
+                    }
+                });
 
-                legendItem.append('label')
-                    .attr('for', item.id)
-                    .attr('class', 'legend-label')
-                    .text(item.label)
-                    .on('click', function(e) { e.stopPropagation(); });
-            });
-        }
-        setTimeout(() => {
-            const legendNode = this.legendContainer.node();
-            const items = legendNode.querySelectorAll('.legend-item');
-            let maxItemWidth = 0;
-            items.forEach(item => {
-                maxItemWidth = Math.max(maxItemWidth, item.scrollWidth);
-            });
-            const cellWidth = maxItemWidth + 20;
-            const minWidth = actualColumns * cellWidth;
-            this.legendContainer.selectAll('.legend-row').style('min-width', `${minWidth}px`);
-        }, 0);
+            legendItem.append('label')
+                .attr('for', item.id)
+                .attr('class', 'legend-label')
+                .text(item.label)
+                .on('click', function(e) { e.stopPropagation(); });
+        });
     }
 
     createLegendGroup(groups, options = {}) {

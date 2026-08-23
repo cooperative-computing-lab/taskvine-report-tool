@@ -1,4 +1,4 @@
-import { BaseModule } from './base.js?v=6.2';
+import { BaseModule } from './base.js?v=6.3';
 import { durationAxisSpec } from './time_format.js?v=1.0';
 import { metricContractDetails, metricContractError } from './metric_contract.js?v=1.0';
 
@@ -79,7 +79,6 @@ export class SourceMetricModule extends BaseModule {
         }));
         this.createLegendRow(items, {
             checkboxName: `${this.id}-series`,
-            columnsPerRow: Math.min(4, items.length),
             onToggle: (id, visible) => {
                 const index = Number(id.split('-').pop());
                 this.seriesVisibility.set(index, visible);

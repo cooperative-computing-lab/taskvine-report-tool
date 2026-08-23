@@ -1,4 +1,4 @@
-import { BaseModule } from './base.js?v=6.2';
+import { BaseModule } from './base.js?v=6.3';
 
 export class TaskSubgraphsModule extends BaseModule {
     constructor(id, title, api_url) {

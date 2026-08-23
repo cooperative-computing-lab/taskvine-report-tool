@@ -458,6 +458,27 @@ test('every visible chart section has a readable explanation', async ({ page }) 
   }
 });
 
+test('legends wrap compactly without horizontal scrolling', async ({ page }) => {
+  await page.setViewportSize({ width: 600, height: 900 });
+  await page.goto('/?run=run-a');
+  await expectRun(page, 'run-a');
+
+  for (const view of ['tasks', 'workers']) {
+    await page.locator('#mobile-menu').click();
+    await page.locator(`.nav-item[data-view="${view}"]`).click();
+    const firstLegend = page.locator(`#modules-${view} .legend-container`).filter({ has: page.locator('.legend-item') }).first();
+    await expect(firstLegend).toBeVisible();
+    const layout = await page.locator(`#modules-${view} .legend-container`).evaluateAll(containers => containers
+      .filter(container => container.querySelector('.legend-item'))
+      .map(container => ({
+        horizontalOverflow: container.scrollWidth - container.clientWidth,
+        rowsWrap: [...container.querySelectorAll('.legend-row')]
+          .every(row => getComputedStyle(row).display === 'flex' && getComputedStyle(row).flexWrap === 'wrap'),
+      })));
+    expect(layout.every(item => item.horizontalOverflow <= 1 && item.rowsWrap)).toBe(true);
+  }
+});
+
 test('new frontend blocks an older backend with one actionable message', async ({ page }) => {
   await page.route('**/api/v1/health', async route => {
     const response = await route.fetch();
