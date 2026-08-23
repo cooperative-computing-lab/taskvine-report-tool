@@ -224,8 +224,12 @@ test('points and bars pin one shared tooltip and charts expose zoom controls', a
   const zoom = scatter.locator('.chart-zoom-controls');
   await expect(zoom).toContainText('Ctrl/⌘ + scroll');
   await expect(zoom.getByRole('button', { name: 'Reset zoom' })).toHaveText('100%');
+  const zoomPosition = await zoom.boundingBox();
   await zoom.getByRole('button', { name: 'Zoom in' }).click();
   await expect(zoom.getByRole('button', { name: 'Reset zoom' })).toHaveText('120%');
+  const zoomedPosition = await zoom.boundingBox();
+  expect(Math.abs(zoomedPosition.x - zoomPosition.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(zoomedPosition.y - zoomPosition.y)).toBeLessThanOrEqual(1);
   await zoom.getByRole('button', { name: 'Reset zoom' }).click();
   await expect(zoom.getByRole('button', { name: 'Reset zoom' })).toHaveText('100%');
 

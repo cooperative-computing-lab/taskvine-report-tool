@@ -1,4 +1,4 @@
-import { BaseModule } from './base.js?v=5.8';
+import { BaseModule } from './base.js?v=5.9';
 import { getWorkerColor } from './utils.js?v=5.0';
 import { durationAxisSpec } from './time_format.js?v=1.0';
 import { metricContractDetails, metricContractError } from './metric_contract.js?v=1.0';

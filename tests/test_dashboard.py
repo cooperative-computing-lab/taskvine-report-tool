@@ -80,7 +80,7 @@ class DashboardAPITest(unittest.TestCase):
         self.assertIn("TaskVine Report", page)
         self.assertIn("Task Explorer", page)
         self.assertIn("Compare runs", page)
-        self.assertIn("css/app.css') }}?v=6.0", Path("src/vine_report/templates/index.html").read_text())
+        self.assertIn("css/app.css') }}?v=6.1", Path("src/vine_report/templates/index.html").read_text())
 
     def test_v1_contract_matches_registered_routes(self):
         contract = json.loads(Path("docs/api-v1-contract.json").read_text(encoding="utf-8"))

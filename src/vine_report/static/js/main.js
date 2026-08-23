@@ -1,4 +1,4 @@
-import { moduleClasses, enabledModuleConfigs, installMetricCatalog } from './modules/configs.js?v=6.2';
+import { moduleClasses, enabledModuleConfigs, installMetricCatalog } from './modules/configs.js?v=6.3';
 import { formatDuration } from './modules/time_format.js?v=1.0';
 
 const REQUIRED_SERVER_CAPABILITY = 'source-backed-metrics-v1';

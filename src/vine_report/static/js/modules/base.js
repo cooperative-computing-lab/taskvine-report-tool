@@ -864,7 +864,8 @@ export class BaseModule {
     }
 
     _ensureZoomControls() {
-        let controls = this.svgContainer.querySelector('.chart-zoom-controls');
+        const host = this.svgContainer.closest('.section-row.bottom') || this.svgContainer;
+        let controls = host.querySelector(':scope > .chart-zoom-controls');
         if (!controls) {
             controls = document.createElement('div');
             controls.className = 'chart-zoom-controls';
@@ -879,7 +880,7 @@ export class BaseModule {
                 else if (action === 'out') this._applyZoom(1 / 1.2);
                 else if (action === 'reset') this._resetZoom();
             });
-            this.svgContainer.appendChild(controls);
+            host.appendChild(controls);
         }
         this._zoomControls = controls;
         this._updateZoomControls();
