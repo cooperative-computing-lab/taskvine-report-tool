@@ -5,12 +5,13 @@ TaskVine log format should result in a new adapter, not conditionals spread
 through the report and UI layers.
 """
 
-from .debug_legacy import LegacyDebugSource, SourceRecord
+from .debug_legacy import LegacyDebugSource, SourceRecord, expand_task_descriptions
 from .transactions_legacy import LegacyTransactionSource, TransactionRecord
 
 __all__ = [
     "LegacyDebugSource",
     "LegacyTransactionSource",
     "SourceRecord",
+    "expand_task_descriptions",
     "TransactionRecord",
 ]

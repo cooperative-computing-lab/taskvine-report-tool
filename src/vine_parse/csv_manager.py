@@ -55,7 +55,7 @@ class CompletionIndex:
             cols = out.columns
             return out.select([time_col, out_col] + [c for c in cols if c not in (time_col, out_col)])
 
-        df2 = df.with_row_count('__row__')
+        df2 = df.with_row_index('__row__')
         df_sorted = df2.sort(time_col)
 
         joined = (
@@ -169,6 +169,7 @@ class CSVManager:
             progress.advance(task_id)
             
             self.generate_subgraphs_and_graph_metrics()
+            self.generate_transfer_class_metrics()
             progress.advance(task_id)
 
             # Operational metrics use source-specific facts and explicit quality
@@ -183,6 +184,29 @@ class CSVManager:
                 self.dp.diagnostics.data["status"] = "PARTIAL"
             self.dp.diagnostics.write()
             progress.advance(task_id)
+
+    def generate_transfer_class_metrics(self):
+        """Write completed transfers by class, and every vault checkpoint (vine-graph fork) on its own."""
+        import csv
+        summary = self.dp.diagnostics.data.get("transfer_summary") or {}
+        with open(os.path.join(self.csv_files_dir, 'transfer_classes.csv'), 'w', newline='') as handle:
+            writer = csv.writer(handle)
+            writer.writerow(['transfer_class', 'count', 'bytes'])
+            for name, entry in sorted(summary.items()):
+                writer.writerow([name, entry['count'], entry['bytes']])
+        checkpoints = getattr(self.dp.manager, 'checkpoints', None) or {}
+        with open(os.path.join(self.csv_files_dir, 'checkpoint_transfers.csv'), 'w', newline='') as handle:
+            writer = csv.writer(handle)
+            writer.writerow(['checkpoint_id', 'file_name', 'source', 'source_worker', 'size_bytes', 'inline',
+                             'required', 'urgent', 'connect_back', 'outcome', 'start_time', 'end_time'])
+            for checkpoint in checkpoints.values():
+                source_worker = ':'.join(map(str, checkpoint.source_worker_entry)) if checkpoint.source_worker_entry else ''
+                start = floor_decimal(checkpoint.time_start - self.MIN_TIME, 2)
+                end = '' if checkpoint.time_end is None else floor_decimal(checkpoint.time_end - self.MIN_TIME, 2)
+                writer.writerow([checkpoint.checkpoint_id, checkpoint.file_name, checkpoint.source, source_worker,
+                                 checkpoint.size_bytes, int(checkpoint.inline), int(checkpoint.required),
+                                 int(checkpoint.urgent), int(checkpoint.connect_back), checkpoint.outcome or '',
+                                 start, end])
 
     def generate_file_metrics(self):
         base_time = self.MIN_TIME

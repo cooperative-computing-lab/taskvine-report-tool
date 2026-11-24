@@ -27,6 +27,8 @@ class WorkerInfo:
         self.time_disconnected = []
         self.coremap = None
         self.is_checkpoint_worker = False
+        # True between a simulated loss request and the worker's answer (vine-graph fork).
+        self.losing = False
 
         # task info
         self.tasks_completed = []

@@ -29,7 +29,7 @@ requirements:
     - rich
     - flask
     - pytz
-    - polars
+    - polars >=0.20
     - pyarrow
     - numpy
     - matplotlib
@@ -42,7 +42,7 @@ requirements:
     - bitarray
     - pytz
     - python-graphviz
-    - polars
+    - polars >=0.20
     - pyarrow
     - numpy
     - matplotlib

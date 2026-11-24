@@ -69,7 +69,7 @@ setup(
         "pytz",
         "graphviz",
         "rich",
-        "polars",
+        "polars>=0.20",
         "numpy",
         "pyarrow",
         "matplotlib",

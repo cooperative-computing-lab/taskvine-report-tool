@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import subprocess
@@ -9,7 +10,7 @@ from pathlib import Path
 import cloudpickle
 from .worker_info import WorkerInfo
 from .task_info import TaskInfo
-from .file_info import FileInfo, IndexedTransferEvent, UnindexedTransferEvent
+from .file_info import CheckpointTransfer, FileInfo, IndexedTransferEvent, UnindexedTransferEvent
 from .manager_info import ManagerInfo
 from .diagnostics import (
     LogCompatibilityError,
@@ -17,7 +18,7 @@ from .diagnostics import (
     infer_timezone_offset,
     installed_tool_version,
 )
-from .sources import LegacyDebugSource
+from .sources import LegacyDebugSource, LegacyTransactionSource, expand_task_descriptions
 from .protocol import (
     CandidateClassifier,
     HANDLER_MASKS,
@@ -48,9 +49,66 @@ DEBUG_ACTION_ALIASES = {
     "added_dependency": "_handle_debug_line_ignored",
 }
 CHECKPOINT_FIELDS = ("workers", "files", "tasks", "manager", "subgraphs")
+# "tx to <host> (<ip:port>): <payload>": the address and the message sent.
+TX_PAYLOAD_RE = re.compile(r"vine: tx to \S+ \(([^()\s]*)\): (.*)$")
+TX_TASK_HEAD_RE = re.compile(r"^task (\d+)$")
+# "mini_task <remote name> <cache name> <cache level> <size> <mode>": a file the worker makes by running a task.
+TX_MINI_TASK_HEAD_RE = re.compile(r"^mini_task (\S+) (\S+) (\d+) (\d+) ([0-7]+)$")
+# Sources of a puturl: a URL TaskVine fetches itself, a peer worker's transfer
+# server, or the Manager's data-service vault (vine-graph fork).
+URL_SOURCE_SCHEMES = ("http://", "https://", "ftp://", "file://", "root://")
+CHECKPOINT_STARTED_RE = re.compile(
+    r"vine: checkpoint started: (\S+) from (\S+):(\d+) size=(\d+) required=(\d) urgent=(\d) "
+    r"connect_back=(\d) inline=(\d) vault_used=-?\d+ vault_reserved=-?\d+ vault_limit=-?\d+$"
+)
+CHECKPOINT_END_RE = re.compile(
+    r"vine: checkpoint (complete|failed|cancelled): (\S+) vault_used=-?\d+ vault_reserved=-?\d+ memory=\d memory_used=-?\d+$"
+)
+# Checkpoint lines that describe policy or a reason; every receive's end is
+# logged once more by CHECKPOINT_END_RE.
+CHECKPOINT_INFO_RE = re.compile(
+    r"vine: checkpoint (?:queued: (\S+) |withdrawn: |waits for readers: |connected back: |cut -?\d+ -> |of \S+ wait)"
+)
+# "checkpoint <name>: <reason>" explains why a receive of a known file failed or was retried.
+CHECKPOINT_NOTE_RE = re.compile(r"vine: checkpoint (\S+): ")
+LOSS_START_RE = re.compile(r"(?:vine|notice): Losing the state of worker \S+ \(([^()\s]*)\) on request$")
+TASK_LOST_WORKER_RE = re.compile(r"vine: task (\d+) lost worker \S+ \(([^()\s]*)\): \d+ of -?\d+ tries used$")
+# Final results as the transactions log names them, and their vine_result_t codes.
+TRANSACTION_RESULT_CODES = {
+    "SUCCESS": 0, "INPUT_MISSING": 1, "OUTPUT_MISSING": 2, "STDOUT_MISSING": 4, "SIGNAL": 1 << 3,
+    "RESOURCE_EXHAUSTION": 2 << 3, "MAX_END_TIME": 3 << 3, "UNKNOWN": 4 << 3, "FORSAKEN": 5 << 3,
+    "MAX_RETRIES": 6 << 3, "MAX_WALL_TIME": 7 << 3, "MONITOR_ERROR": 8 << 3, "OUTPUT_TRANSFER_ERROR": 9 << 3,
+    "LOCATION_MISSING": 10 << 3, "CANCELLED": 11 << 3, "LIBRARY_EXIT": 12 << 3, "SANDBOX_EXHAUSTION": 13 << 3,
+    "MISSING_LIBRARY": 14 << 3, "WORKER_DISCONNECTED": 15 << 3,
+}
+LOSS_END_RE = re.compile(r"vine: worker \S+ \(([^()\s]*)\) lost its state$")
+LOSS_MESSAGE_RE = re.compile(r"vine: (?:tx to|rx from) \S+ \(([^()\s]*)\): (lose|lost) (\d+)$")
+PUT_PAYLOAD_RE = re.compile(r"^put (\S+) (-?\d+) (\d+)$")
+# Notices about a put that did not happen; none starts a transfer.
+WRONG_PASSWORD_RE = re.compile(r"\bworker (\d+\.\d+\.\d+\.\d+:\d+) presented the wrong password$")
+PROBE_LINK_RE = re.compile(r"\bworker \S+ \((\d+\.\d+\.\d+\.\d+:\d+)\) opened its probe link from (\d+\.\d+\.\d+\.\d+:\d+)$")
+PUT_FAILED_RE = re.compile(r"(?:vine: Failed to put file - |vine: Could not put file |notice: cannot put mini_task )")
+# Leading keys of the fields of a task description (vine_manager_put.c).
+TASK_DESCRIPTION_KEYS = frozenset({
+    "task", "cmd", "needs_library", "function_slots", "provides_library", "func_exec_mode", "library_pool",
+    "category", "cores", "gpus", "memory", "disk", "end_time", "wall_time", "env", "infile", "outfile", "groupid",
+    "end",
+})
 TASK_STATE_TRANSITION_RE = re.compile(
     r"state change:\s+([A-Z_]+)\s+\(\d+\)\s+to\s+([A-Z_]+)\s+\(\d+\)"
 )
+
+
+def _allocated_cores(payload):
+    """Cores of a TASK RUNNING transaction's allocation, or None when it names none."""
+    start = payload.find("{")
+    if start < 0:
+        return None
+    try:
+        value = json.loads(payload[start:]).get("cores")
+    except ValueError:
+        return None
+    return value[0] if isinstance(value, list) and value else None
 
 
 def count_lines(file_name):
@@ -136,6 +194,9 @@ class DataParser:
         self._init_debug_handlers()
         self.debug_classifier = CandidateClassifier()
         self.sending_task_to_worker_entry = None
+        self.sending_task_description_worker = None
+        self.open_checkpoints = defaultdict(list)   # file name -> started, unfinished checkpoints
+        self.checkpoint_names = set()               # files queued or started for a checkpoint
 
     def _init_debug_handlers(self):
         self.debug_handlers = [
@@ -286,6 +347,40 @@ class DataParser:
         self.add_new_worker(ip, port, self.debug_current_timestamp)
         self.manager.set_when_first_worker_connect(self.debug_current_timestamp)
 
+    def _handle_debug_line_worker_rejected(self):
+        """A connection logged as "worker <addr> connected" that never becomes a worker session.
+
+        Upstream and the fork reject a worker with the wrong password, and the fork's timeout framework adopts a
+        second connection of a worker as its probe link.  Neither is a WORKER CONNECTION of the transactions log,
+        so the session opened for it is retracted.  A session that already holds state fails the parse.
+        """
+        line = self.debug_current_line.rstrip("\n")
+        match = WRONG_PASSWORD_RE.search(line)
+        address = match.group(1) if match else None
+        if match is None:
+            match = PROBE_LINK_RE.search(line)
+            if match is None:
+                raise ValueError(f"unrecognized rejected worker record: {line}")
+            address = match.group(2)
+        ip, port = WorkerInfo.extract_ip_port_from_string(address)
+        entry = self.get_current_worker_entry_by_ip_port(ip, port)
+        if entry is None:
+            raise ValueError(f"rejected connection {address} was never connected: {line}")
+        worker = self.workers[entry]
+        if worker.hash or worker.time_disconnected or worker.current_replicas or worker.tasks_running \
+                or worker.tasks_completed or worker.tasks_failed:
+            raise ValueError(f"rejected connection {address} already acts as a worker: {line}")
+        del self.workers[entry]
+        self.current_worker_connect_id[(ip, port)] -= 1
+        # Keep worker ids dense: later sessions move down by one.
+        for other in self.workers.values():
+            if other.id > worker.id:
+                other.id -= 1
+        for task in self.tasks.values():
+            if task.worker_id is not None and task.worker_id > worker.id:
+                task.worker_id -= 1
+        self.manager.retracted_connections += 1
+
     def _handle_debug_line_worker_removed(self):
         removed_idx = self.debug_current_parts.index("removed")
         ip, port = WorkerInfo.extract_ip_port_from_string(self.debug_current_parts[removed_idx - 1])
@@ -295,15 +390,30 @@ class DataParser:
 
         worker.add_disconnection(self.debug_current_timestamp)
         self.manager.update_when_last_worker_disconnect(self.debug_current_timestamp)
+        # The Manager forgets every replica of a removed worker at once.
+        self._end_worker_residencies(worker, "worker_removed")
+
+    def _end_worker_residencies(self, worker, reason):
+        for file_name in list(worker.current_replicas):
+            file = self.files.get(file_name)
+            if file is not None:
+                file.unlink(worker, self.debug_current_timestamp, reason=reason)
 
     def _handle_debug_line_put_file(self):
         timestamp = self.debug_current_timestamp
-        parts = self.debug_current_parts
+        line = self.debug_current_line
 
-        put_idx = parts.index("put")
-        file_name = parts[put_idx + 1]
-        file_size_mb = int(parts[put_idx + 3]) / 2**20
-        ip, port = WorkerInfo.extract_ip_port_from_string(parts[put_idx - 1])
+        match = TX_PAYLOAD_RE.search(line)
+        put = PUT_PAYLOAD_RE.match(match.group(2)) if match else None
+        if put is None:
+            if PUT_FAILED_RE.search(line):
+                # The failed send is reported again by the transfer's own end
+                # (a removed worker, or a checkpoint failure).
+                return
+            raise ValueError(f"unrecognized put record: {line}")
+        file_name = put.group(1)
+        file_size_mb = int(put.group(3)) / 2**20
+        ip, port = WorkerInfo.extract_ip_port_from_string(match.group(1))
         dest_worker_entry = self.get_current_worker_entry_by_ip_port(ip, port)
         worker = self.workers[dest_worker_entry]
 
@@ -311,6 +421,7 @@ class DataParser:
         new_transfer = UnindexedTransferEvent(
             file_name, dest_worker_entry, timestamp, size_mb=file_size_mb
         )
+        new_transfer.origin = "manager_put"
         file.unindexed_transfers[dest_worker_entry].append(new_transfer)
 
         worker.add_active_file_or_transfer(file_name)
@@ -351,20 +462,24 @@ class DataParser:
         dest_worker_entry = (dest_worker.ip, dest_worker.port, dest_worker.connect_id)
         # the source can be a url or an ip:port
         source = parts[puturl_id + 1]
-        if source.startswith('https://') or source.startswith('file://'):
-            file.indexed_transfers[transfer_id] = IndexedTransferEvent(
+        if source.startswith(URL_SOURCE_SCHEMES) or source.startswith('manager://'):
+            event = IndexedTransferEvent(
                 file_name, dest_worker_entry, timestamp, transfer_id, source,
                 size_mb=size_in_mb,
             )
+            event.origin = "manager_vault" if source.startswith('manager://') else "url"
+            file.indexed_transfers[transfer_id] = event
         elif source.startswith('workerip://'):
             source_ip, source_transfer_port = WorkerInfo.extract_ip_port_from_string(source)
             source_worker_port = self.map_ip_and_transfer_port_to_worker_port[(source_ip, source_transfer_port)]
             source_worker_entry = self.get_current_worker_entry_by_ip_port(source_ip, source_worker_port)
             assert source_worker_entry is not None
-            file.indexed_transfers[transfer_id] = IndexedTransferEvent(
+            event = IndexedTransferEvent(
                 file_name, dest_worker_entry, timestamp, transfer_id,
                 source_worker_entry, size_mb=size_in_mb,
             )
+            event.origin = "peer"
+            file.indexed_transfers[transfer_id] = event
         else:
             raise ValueError(f"unrecognized source: {source}, line: {self.debug_current_line}")
         
@@ -572,8 +687,11 @@ class DataParser:
                 # if it was committed to a worker
                 if task.worker_entry:
                     worker = self.workers[task.worker_entry]
+                    # a simulated loss forgets the worker's tasks as a disconnection does
+                    if getattr(worker, "losing", False):
+                        task.set_task_status(timestamp, 15 << 3)
                     # it could be that the worker disconnected
-                    if len(worker.time_connected) == len(worker.time_disconnected):
+                    elif len(worker.time_connected) == len(worker.time_disconnected):
                         task.set_task_status(worker.time_disconnected[-1], 15 << 3)
                     # it could be that its inputs are missing
                     elif task.input_files:
@@ -661,7 +779,11 @@ class DataParser:
         if worker_entry is None:
             return
         worker = self.workers[worker_entry]
-        
+        if getattr(worker, "losing", False):
+            # The Manager drops what a worker that is losing its state reports
+            # about earlier files ("dropped a stale message").
+            return
+
         file.cache_update(worker, timestamp, transfer_id, size_in_mb)
 
     def _handle_debug_line_cache_invalid(self):
@@ -684,6 +806,8 @@ class DataParser:
         if worker_entry is None:
             return
         worker = self.workers[worker_entry]
+        if getattr(worker, "losing", False):
+            return
 
         file = self.files[file_name]
         file.cache_invalid(worker, timestamp, transfer_id)
@@ -774,17 +898,153 @@ class DataParser:
             raise ValueError(f"worker {worker_ip}:{worker_port} is not found")
         self.sending_task_to_worker_entry = worker_entry
 
+    def _handle_debug_line_checkpoint(self):
+        """Receives of worker files into the Manager's vault (vine-graph fork)."""
+        line = self.debug_current_line
+        timestamp = self.debug_current_timestamp
+        match = CHECKPOINT_STARTED_RE.search(line)
+        if match:
+            name, host, port, size, required, urgent, connect_back, inline = match.groups()
+            worker_port = self.map_ip_and_transfer_port_to_worker_port.get((host, int(port)))
+            source_entry = None
+            if worker_port is not None:
+                source_entry = self.get_current_worker_entry_by_ip_port(host, worker_port)
+            checkpoint_id = len(self.manager.checkpoints) + 1
+            checkpoint = CheckpointTransfer(
+                checkpoint_id, name, f"{host}:{port}", source_entry, int(size), inline == "1",
+                required == "1", urgent == "1", connect_back == "1", timestamp,
+            )
+            self.manager.checkpoints[checkpoint_id] = checkpoint
+            self.open_checkpoints[name].append(checkpoint)
+            self.checkpoint_names.add(name)
+            return
+        match = CHECKPOINT_END_RE.search(line)
+        if match:
+            outcome, name = match.groups()
+            pending = self.open_checkpoints.get(name)
+            if not pending:
+                raise ValueError(f"checkpoint {outcome} for {name} without a started receive")
+            checkpoint = pending.pop(0)
+            checkpoint.outcome = outcome
+            checkpoint.time_end = timestamp
+            return
+        match = CHECKPOINT_INFO_RE.search(line)
+        if match:
+            if match.group(1):
+                self.checkpoint_names.add(match.group(1))
+            return
+        match = CHECKPOINT_NOTE_RE.search(line)
+        if match and match.group(1) in self.checkpoint_names:
+            return
+        raise ValueError(f"unrecognized checkpoint record: {line}")
+
+    def _handle_debug_line_simulated_loss(self):
+        """Manager.lose_worker(): the worker stays connected and forgets its state (vine-graph fork)."""
+        line = self.debug_current_line
+        timestamp = self.debug_current_timestamp
+        match = LOSS_START_RE.search(line)
+        if match:
+            ip, port = WorkerInfo.extract_ip_port_from_string(match.group(1))
+            worker = self.get_current_worker_by_ip_port(ip, port)
+            if worker is None:
+                raise ValueError(f"simulated loss of unknown worker {match.group(1)}")
+            worker.losing = True
+            self.manager.simulated_losses.append(
+                {"worker_entry": worker.worker_entry, "time_start": timestamp, "time_end": None, "sequence": None}
+            )
+            # The Manager forgets every replica on the worker at once.
+            self._end_worker_residencies(worker, "simulated_loss")
+            return
+        match = LOSS_MESSAGE_RE.search(line)
+        if match:
+            if match.group(2) == "lose":
+                ip, port = WorkerInfo.extract_ip_port_from_string(match.group(1))
+                entry = self.get_current_worker_entry_by_ip_port(ip, port)
+                for loss in reversed(self.manager.simulated_losses):
+                    if loss["worker_entry"] == entry:
+                        loss["sequence"] = int(match.group(3))
+                        break
+            return
+        match = LOSS_END_RE.search(line)
+        if match:
+            ip, port = WorkerInfo.extract_ip_port_from_string(match.group(1))
+            worker = self.get_current_worker_by_ip_port(ip, port)
+            if worker is not None:
+                worker.losing = False
+                for loss in reversed(self.manager.simulated_losses):
+                    if loss["worker_entry"] == worker.worker_entry and loss["time_end"] is None:
+                        loss["time_end"] = timestamp
+                        break
+            return
+        if " lost its state" in line or "): lost " in line or "): lose " in line or "Losing the state" in line:
+            raise ValueError(f"unrecognized simulated loss record: {line}")
+
+    def _handle_debug_line_task_lost_worker(self):
+        """vine-graph fork: "task N lost worker H (A): k of m tries used" precedes the retry or the final result."""
+        match = TASK_LOST_WORKER_RE.search(self.debug_current_line)
+        if not match:
+            raise ValueError(f"unrecognized lost worker record: {self.debug_current_line}")
+        task = self._get_current_task(int(match.group(1)))
+        if task is not None and task.task_status is None:
+            task.set_task_status(self.debug_current_timestamp, 15 << 3)
+
+    def _handle_debug_line_fork_info(self):
+        # Owned but not modeled: round summaries, connect-back requests, vault
+        # hits, and messages dropped from a losing worker.
+        pass
+
+    def _start_mini_task(self, address, payload, line, timestamp):
+        """A mini task makes a file on the worker; its cache-update ends that transfer (origin "mini_task")."""
+        match = TX_MINI_TASK_HEAD_RE.match(payload)
+        if match is None:
+            raise ValueError(f"unrecognized mini task record: {line}")
+        self.sending_task = None
+        cache_name, size_mb = match.group(2), int(match.group(4)) / 2**20
+        ip, port = WorkerInfo.extract_ip_port_from_string(address)
+        entry = self.get_current_worker_entry_by_ip_port(ip, port)
+        if entry is None:
+            raise ValueError(f"mini task for an unknown worker: {line}")
+        file = self.ensure_file_info_entry(cache_name, size_mb, timestamp)
+        transfer = UnindexedTransferEvent(cache_name, entry, timestamp, size_mb=size_mb)
+        transfer.origin = "mini_task"
+        file.unindexed_transfers[entry].append(transfer)
+        self.workers[entry].add_active_file_or_transfer(cache_name)
+        self.mini_task_transferring = address
+
     def _handle_debug_line_send_task_to_worker(self):
-        parts = self.debug_current_parts
         line = self.debug_current_line
         timestamp = self.debug_current_timestamp
 
-        if not self.sending_task:
-            task_idx = parts.index("task")
-            if self.count_elements_after_current_parts("task") != 1 or "tx to" not in line:
-                return
+        # A task description is the "tx to <host> (<addr>): task <id>" record
+        # followed by one "tx to ..." record per field up to "end".  Fields are
+        # recognized by their exact leading key, never by a substring.
+        match = TX_PAYLOAD_RE.search(line)
+        if not match:
+            return
+        address, payload = match.group(1), match.group(2)
+        key, _, value = payload.partition(" ")
 
-            task_id = int(parts[task_idx + 1])
+        if key == "mini_task":
+            self._start_mini_task(address, payload, line, timestamp)
+            return
+        if self.mini_task_transferring is not None:
+            if TX_TASK_HEAD_RE.match(payload) is None:
+                # The fields of a mini task describe how the worker makes the file, not a task of the Manager.
+                if address == self.mini_task_transferring and key == "end" and not value:
+                    self.mini_task_transferring = None
+                elif address == self.mini_task_transferring and key not in TASK_DESCRIPTION_KEYS:
+                    raise ValueError(f"unrecognized mini task field: {line}")
+                return
+            self.mini_task_transferring = None
+
+        head = TX_TASK_HEAD_RE.match(payload)
+        if not self.sending_task or head:
+            # A new head also replaces a description whose "end" was never
+            # logged, e.g. after a failed send.
+            self.sending_task = None
+            if not head:
+                return
+            task_id = int(head.group(1))
             if (task_id, self.current_try_id[task_id]) not in self.tasks:
                 # this is a library task
                 self.current_try_id[task_id] += 1
@@ -794,83 +1054,73 @@ class DataParser:
                 self.add_task(task)
 
             self.sending_task = self.tasks[(task_id, self.current_try_id[task_id])]
+            self.sending_task_description_worker = address
+            worker_ip, worker_port = WorkerInfo.extract_ip_port_from_string(address)
+            worker_entry = (worker_ip, worker_port, self.current_worker_connect_id[(worker_ip, worker_port)])
+            if not self.sending_task.worker_entry:
+                self.sending_task.set_worker_entry(worker_entry)
+            return
 
-            try:
-                worker_ip, worker_port = WorkerInfo.extract_ip_port_from_string(parts[task_idx - 1])
-                worker_entry = (worker_ip, worker_port, self.current_worker_connect_id[(worker_ip, worker_port)])
-                if not self.sending_task.worker_entry:
-                    self.sending_task.set_worker_entry(worker_entry)
-            except Exception:
-                raise
+        if address != self.sending_task_description_worker:
+            # A record to another worker cannot belong to this description.
+            return
+        task = self.sending_task
+        if key == "end" and not value:
+            self.sending_task = None
+        elif key == "cores":
+            cores_val = int(float(value))
+            # provides_library task is the library process itself; force 0 core
+            # so it never occupies worker core slots in visualization/accounting.
+            if getattr(task, "provides_library", False):
+                if not getattr(task, "is_library_task", False):
+                    raise ValueError(
+                        f"task {task.task_id} has provides_library but is_library_task is False"
+                    )
+                cores_val = 0
+            # needs_library tasks report cores 0 but should use 1 for coremap/display
+            if (
+                cores_val == 0
+                and getattr(task, 'needs_library', False)
+                and not getattr(task, "provides_library", False)
+            ):
+                cores_val = 1
+            task.set_cores_requested(cores_val)
+        elif key == "gpus":
+            task.set_gpus_requested(int(float(value)))
+        elif key == "memory":
+            task.set_memory_requested_mb(int(float(value)))
+        elif key == "disk":
+            task.set_disk_requested_mb(int(float(value)))
+        elif key == "needs_library":
+            task.needs_library = True
+        elif key == "provides_library":
+            task.provides_library = True
+            # Enforce library identity for provides_library tasks.
+            task.is_library_task = True
+            # If cores was parsed earlier, normalize it to 0.
+            if getattr(task, "cores_requested", None) not in (None, 0):
+                task.cores_requested = 0
+        elif key == "category":
+            task.set_category(value)
+        elif key == "infile":
+            file_name = value.split(" ", 1)[0]
+            file = self.ensure_file_info_entry(file_name, 0, timestamp)
+            if not file.is_consumer(task):
+                file.add_consumer(task)
+                task.add_input_file(file_name)
+        elif key == "outfile":
+            file_name = value.split(" ", 1)[0]
+            file = self.ensure_file_info_entry(file_name, 0, timestamp)
+            if not file.is_producer(task):
+                file.add_producer(task)
+                task.add_output_file(file_name)
+        elif key == "function_slots":
+            task.set_function_slots(int(value))
         else:
-            if "tx to" not in line:
-                return
-            if "end" in parts or "failed to send" in line:
-                self.sending_task = None
-            elif "cores" in parts:
-                cores_val = int(float(parts[parts.index("cores") + 1]))
-                # provides_library task is the library process itself; force 0 core
-                # so it never occupies worker core slots in visualization/accounting.
-                if getattr(self.sending_task, "provides_library", False):
-                    if not getattr(self.sending_task, "is_library_task", False):
-                        raise ValueError(
-                            f"task {self.sending_task.task_id} has provides_library but is_library_task is False"
-                        )
-                    cores_val = 0
-                # needs_library tasks report cores 0 but should use 1 for coremap/display
-                if (
-                    cores_val == 0
-                    and getattr(self.sending_task, 'needs_library', False)
-                    and not getattr(self.sending_task, "provides_library", False)
-                ):
-                    cores_val = 1
-                self.sending_task.set_cores_requested(cores_val)
-            elif "gpus" in parts:
-                self.sending_task.set_gpus_requested(
-                    int(float(parts[parts.index("gpus") + 1])))
-            elif "memory" in parts:
-                self.sending_task.set_memory_requested_mb(
-                    int(float(parts[parts.index("memory") + 1])))
-            elif "disk" in parts:
-                self.sending_task.set_disk_requested_mb(
-                    int(float(parts[parts.index("disk") + 1])))
-            elif "needs_library" in parts:
-                self.sending_task.needs_library = True
-            elif "provides_library" in parts:
-                self.sending_task.provides_library = True
-                # Enforce library identity for provides_library tasks.
-                self.sending_task.is_library_task = True
-                # If cores was parsed earlier, normalize it to 0.
-                if getattr(self.sending_task, "cores_requested", None) not in (None, 0):
-                    self.sending_task.cores_requested = 0
-            elif "category" in parts:
-                self.sending_task.set_category(
-                    parts[parts.index("category") + 1])
-            elif "needs file" in line and "as infile" in line:
-                pass
-            elif "infile" in parts:
-                file_name = parts[parts.index("infile") + 1]
-                file = self.ensure_file_info_entry(file_name, 0, timestamp)
-                if not file.is_consumer(self.sending_task):
-                    file.add_consumer(self.sending_task)
-                    self.sending_task.add_input_file(file_name)
-            elif "outfile" in parts:
-                file_name = parts[parts.index("outfile") + 1]
-                file = self.ensure_file_info_entry(file_name, 0, timestamp)
-                if not file.is_producer(self.sending_task):
-                    file.add_producer(self.sending_task)
-                    self.sending_task.add_output_file(file_name)
-            elif "function_slots" in parts:
-                function_slots = int(parts[parts.index("function_slots") + 1])
-                self.sending_task.set_function_slots(function_slots)
-            elif "cmd" in parts:
-                pass
-            elif "python3" in parts:
-                pass
-            elif "env" in parts:
-                pass
-            else:
-                pass
+            # cmd, env, end_time, wall_time, func_exec_mode, library_pool,
+            # groupid, and the put/file records of input files carry nothing
+            # the report models.
+            pass
 
     def _resort_debug_handlers(self):
         # sort handlers in-place by descending hit count
@@ -883,6 +1133,16 @@ class DataParser:
         parts = self.debug_current_parts
         timestamp = self.debug_current_timestamp
         self.manager.set_current_max_time(timestamp)
+
+        if (self.sending_task is not None or self.mini_task_transferring is not None) and "tx to" in line:
+            # Fields of an open task description belong to it alone, even when
+            # a field value (a file named "stdout" or "put") looks like another
+            # message family.
+            match = TX_PAYLOAD_RE.search(line)
+            if match and match.group(2).partition(" ")[0] in TASK_DESCRIPTION_KEYS:
+                return self._execute_debug_handler(
+                    "send_task_to_worker", self._handle_debug_line_send_task_to_worker
+                )
 
         if candidate_mask == 0 and not self.receiving_resources_from_worker:
             return None
@@ -913,7 +1173,8 @@ class DataParser:
                     if handler_name == "worker_resources":
                         matched = matched or bool(self.receiving_resources_from_worker)
                     elif handler_name == "send_task_to_worker":
-                        matched = matched and ("task" in parts or bool(self.sending_task))
+                        matched = matched and ("task" in parts or "mini_task" in parts or bool(self.sending_task)
+                                               or self.mini_task_transferring is not None)
                 except Exception as exc:
                     raise ValueError(
                         "Failed while matching handler {}: {}".format(handler_name, exc)
@@ -1040,7 +1301,9 @@ class DataParser:
             resort_debug_handlers_interval = 10000
             progress_pending = 0
             source = LegacyDebugSource(debug_file_to_use)
-            classified_records = self.debug_classifier.classified_records(source.records())
+            classified_records = self.debug_classifier.classified_records(
+                expand_task_descriptions(source.records())
+            )
             for record, candidate_mask in classified_records:
                 progress_pending += 1
                 if progress_pending >= 1024:
@@ -1103,12 +1366,167 @@ class DataParser:
                 hits = stats.get("hits", 0)
                 print(f"{name:<20} {hits:>10}")
 
+    def apply_transaction_results(self):
+        """Take each retrieval's final result from the transactions log.
+
+        The debug log states a result only when the worker reports one
+        ("complete"); a cancelled task, a task out of retries, or one the
+        Manager fails itself is just retrieved.  The transactions log names
+        the result of every retrieval, so the n-th RETRIEVED record of a task
+        sets the result of its n-th retrieved attempt.  Library instances keep
+        the parser's library-exit label.
+        """
+        path = Path(self.vine_logs_dir) / "transactions"
+        if not path.is_file():
+            return
+        results = defaultdict(list)
+        for record in LegacyTransactionSource(str(path)).records():
+            if record.error or record.entity is None:
+                continue
+            fields = record.payload.split()
+            if record.entity == "MANAGER" and len(fields) >= 2 and fields[1] == "START":
+                results = defaultdict(list)
+            elif record.entity == "TASK" and len(fields) >= 3 and fields[1] == "RETRIEVED":
+                results[int(fields[0])].append(fields[2])
+        retrieved = defaultdict(list)
+        for (task_id, try_id), task in sorted(self.tasks.items()):
+            if task.when_retrieved is not None:
+                retrieved[task_id].append(task)
+        applied = unmatched = 0
+        for task_id, names in results.items():
+            attempts = retrieved.get(task_id, [])
+            if len(attempts) != len(names):
+                unmatched += 1
+                continue
+            for task, name in zip(attempts, names):
+                code = TRANSACTION_RESULT_CODES.get(name)
+                if code is None:
+                    raise ValueError(f"unknown transaction result {name} for task {task_id}")
+                if task.is_library_task:
+                    continue
+                if task.task_status != code:
+                    task.set_task_status(task.when_retrieved, code)
+                    if code == 0:
+                        task.when_failure_happens = None
+                    applied += 1
+        self.diagnostics.data["transaction_results"] = {"applied": applied, "unmatched_tasks": unmatched}
+        if unmatched:
+            self.diagnostics.note_partial("reconcile_retrievals_mismatch")
+
+    def reconcile_with_transactions(self):
+        """Cross-check the debug model with the transactions log of the same run.
+
+        The transactions log records each dispatch (TASK RUNNING with the
+        worker id), each final result (TASK DONE), each worker connection, and
+        each cache update.  A parse that loses any of them, e.g. because a task
+        description was not understood, must never be PASS.  Only records
+        after the last MANAGER START are compared, as for the debug log.
+        """
+        path = Path(self.vine_logs_dir) / "transactions"
+        result = {"available": path.is_file(), "checks": {}}
+        self.diagnostics.data["reconciliation"] = result
+        if not result["available"]:
+            return
+        running = defaultdict(list)
+        allocated = defaultdict(list)
+        done = set()
+        connections = []
+        cache_updates = 0
+        for record in LegacyTransactionSource(str(path)).records():
+            if record.error or record.entity is None:
+                continue
+            fields = record.payload.split()
+            if record.entity == "MANAGER" and len(fields) >= 2 and fields[1] == "START":
+                running, done, connections, cache_updates = defaultdict(list), set(), [], 0
+                allocated = defaultdict(list)
+            elif record.entity == "TASK" and len(fields) >= 2:
+                if fields[1] == "RUNNING" and len(fields) >= 3:
+                    running[int(fields[0])].append(fields[2])
+                    allocated[int(fields[0])].append(_allocated_cores(record.payload))
+                elif fields[1] == "DONE":
+                    done.add(int(fields[0]))
+            elif record.entity == "WORKER" and len(fields) >= 2:
+                if fields[1] == "CONNECTION":
+                    connections.append(fields[0])
+                elif fields[1] == "CACHE_UPDATE":
+                    cache_updates += 1
+
+        parsed_running = defaultdict(list)
+        parsed_done = set()
+        for (task_id, _), task in self.tasks.items():
+            if task.when_running is not None and task.worker_entry is not None:
+                worker = self.workers.get(tuple(task.worker_entry))
+                parsed_running[task_id].append(worker.hash if worker is not None else None)
+            if task.when_done is not None:
+                parsed_done.add(task_id)
+        stage_ins = sum(
+            1 for file in self.files.values() for transfer in file.get_flattened_transfers()
+            if transfer.time_stage_in is not None
+        )
+        misattributed = sorted(
+            task_id for task_id in set(running) | set(parsed_running)
+            if sorted(running.get(task_id, [])) != sorted(h or "" for h in parsed_running.get(task_id, []))
+        )
+        # The k-th dispatch of a standard task requested the cores TaskVine
+        # allocated to its k-th RUNNING record.  Libraries and function calls
+        # are excluded: the report models their cores by convention.
+        wrong_cores = []
+        attempts = defaultdict(list)
+        for (task_id, try_id), task in sorted(self.tasks.items()):
+            if task.when_running is not None and task.worker_entry is not None:
+                attempts[task_id].append(task)
+        for task_id, tasks in attempts.items():
+            for task, cores in zip(tasks, allocated.get(task_id, [])):
+                if task.is_library_task or task.needs_library or cores is None:
+                    continue
+                if task.cores_requested is None or float(task.cores_requested) != float(cores):
+                    wrong_cores.append(task_id)
+        dispatches = (sum(map(len, running.values())), sum(map(len, parsed_running.values())))
+        checks = {
+            "dispatches": dispatches + (dispatches[0] == dispatches[1],),
+            "dispatch_attribution": (0, len(misattributed), not misattributed),
+            "dispatch_cores": (0, len(wrong_cores), not wrong_cores),
+            "done_tasks": (len(done), len(parsed_done), done == parsed_done),
+            "worker_connections": (len(connections), len(self.workers), len(connections) == len(self.workers)),
+            "cache_updates": (cache_updates, stage_ins, cache_updates == stage_ins),
+        }
+        for name, (expected, observed, ok) in checks.items():
+            result["checks"][name] = {"transactions": expected, "debug": observed, "ok": ok}
+            if not ok:
+                self.diagnostics.note_partial(f"reconcile_{name}_mismatch")
+        if misattributed:
+            result["checks"]["dispatch_attribution"]["examples"] = misattributed[:10]
+
+    def summarize_transfers(self):
+        """Count completed transfers by class; checkpoints move worker data to the Manager and stand apart."""
+        classes = defaultdict(lambda: {"count": 0, "bytes": 0})
+        for file in self.files.values():
+            for transfer in file.get_flattened_transfers():
+                if transfer.time_stage_in is None:
+                    continue
+                entry = classes[getattr(transfer, "origin", None) or "unknown"]
+                entry["count"] += 1
+                entry["bytes"] += int(round(float(transfer.size_mb or file.size_mb or 0) * 2**20))
+        for checkpoint in self.manager.checkpoints.values():
+            if checkpoint.outcome != "complete":
+                continue
+            entry = classes["checkpoint_inline" if checkpoint.inline else "checkpoint"]
+            entry["count"] += 1
+            entry["bytes"] += checkpoint.size_bytes
+        self.diagnostics.data["transfer_summary"] = dict(sorted(classes.items()))
+
     def parse_logs(self):
         try:
             self.parse_debug()
             if self.manager.time_end is None:
                 self.diagnostics.note_partial("manager_end_missing_or_log_truncated")
+            unfinished = sum(len(v) for v in self.open_checkpoints.values())
+            if unfinished and self.manager.time_end is not None:
+                self.diagnostics.note_partial("checkpoint_without_end")
+            self.apply_transaction_results()
+            self.reconcile_with_transactions()
             self.postprocess_debug()
+            self.summarize_transfers()
 
             # checkpoint pkl files so that later analysis can be done without re-parsing the debug file
             if self.enablee_checkpoint_pkl_files:

@@ -1,0 +1,168 @@
+2026/11/23 18:34:43.60 vine_manager[2587022]vine: TaskVine version 8.0.0 DEVELOPMENT (released 2026-11-23 18:03:31 -0500)
+2026/11/23 18:34:43.60 vine_manager[2587022]vine: Built by user@worker.example on 2026-11-23 18:03:31 -0500
+2026/11/23 18:34:43.60 vine_manager[2587022]vine: System: Linux worker.example 5.14.0-741.24.1.el9_9.x86_64 #1 SMP PREEMPT_DYNAMIC Tue Nov 17 17:44:18 EST 2026 x86_64 x86_64 x86_64 GNU/Linux
+2026/11/23 18:34:43.60 vine_manager[2587022]vine: Configuration: --prefix /opt/cctools --with-base-dir /home/user/miniconda/envs/vine-graph
+2026/11/23 18:34:43.60 vine_manager[2587022]vine: manager timezone at startup: local_time=2026-11-23 18:34:43 tz_abbr=EST tz_offset=-0500
+2026/11/23 18:34:43.60 vine_manager[2587022]tcp: listening on port 9714
+2026/11/23 18:34:43.60 vine_manager[2587022]vine: manager start
+2026/11/23 18:34:43.60 vine_manager[2587022]vine: Using default disconnect slow workers factor for 'default'.
+2026/11/23 18:34:43.60 vine_manager[2587022]vine: workers connections -- known: 0, connecting: 0
+2026/11/23 18:34:43.60 vine_manager[2587022]vine: log enabled and is being written to performance
+2026/11/23 18:34:43.60 vine_manager[2587022]vine: transactions log enabled and is being written to transactions
+2026/11/23 18:34:43.60 vine_manager[2587022]vine: graph log enabled and is being written to taskgraph
+2026/11/23 18:34:43.60 vine_manager[2587022]vine: workers connections -- known: 0, connecting: 0
+2026/11/23 18:34:43.60 vine_manager[2587022]vine: Manager is listening on port 9714.
+2026/11/23 18:34:43.60 vine_manager[2587022]vine: Task 1 state change: INITIAL (0) to READY (1)
+2026/11/23 18:34:43.60 vine_manager[2587022]vine: Task 2 state change: INITIAL (0) to READY (1)
+2026/11/23 18:34:43.60 vine_manager[2587022]vine: Task 3 state change: INITIAL (0) to READY (1)
+2026/11/23 18:34:43.60 vine_manager[2587022]vine: Task 4 state change: INITIAL (0) to READY (1)
+2026/11/23 18:34:43.60 vine_manager[2587022]vine: Task 5 state change: INITIAL (0) to READY (1)
+2026/11/23 18:34:43.60 vine_manager[2587022]vine: Task 6 state change: INITIAL (0) to READY (1)
+2026/11/23 18:34:43.60 vine_manager[2587022]debug: warning: using plain-text when communicating with workers.
+2026/11/23 18:34:43.60 vine_manager[2587022]debug: warning: use encryption with a key and cert when creating the manager.
+2026/11/23 18:34:43.61 vine_manager[2587022]tcp: accepted connection from 127.0.0.1 port 39772
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: worker 127.0.0.1:39772 connected
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: rx from unknown (127.0.0.1:39772): taskvine 13 worker.example Linux x86_64 8.0.0
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: 1 workers are connected in total now
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: worker.example (127.0.0.1:39772) running CCTools version 8.0.0 on Linux (operating system) with architecture x86_64 is ready
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: rx from worker.example (127.0.0.1:39772): info worker-id worker-47f2330490d35ca8df32c2403e9484e7
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: rx from worker.example (127.0.0.1:39772): transfer-port 1024
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: rx from worker.example (127.0.0.1:39772): info worker-end-time 0
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: rx from worker.example (127.0.0.1:39772): alive
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: rx from worker.example (127.0.0.1:39772): resources
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: cores 2.000000
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: memory 2000.000000
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: disk 8000.000000
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: gpus 0.000000
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: workers 1.000000
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: tag 0
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: end
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): task 1
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): cmd 6
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: exit 0
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): category default
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): cores 2.000
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): gpus 0
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): memory 2000
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): disk 6000
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): end
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: worker.example (127.0.0.1:39772) busy on 'exit 0'
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: Task 1 state change: READY (1) to RUNNING (2)
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: rx from worker.example (127.0.0.1:39772): info tasks_running 1
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: rx from worker.example (127.0.0.1:39772): complete 0 0 0 0 1795476883615995 1795476883617787 0 1
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: Task 1 state change: RUNNING (2) to WAITING_RETRIEVAL (3)
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): kill 1
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: Task 1 state change: WAITING_RETRIEVAL (3) to RETRIEVED (4)
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: worker.example (127.0.0.1:39772) done in 0.00s total tasks 1 average 0.00s
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: Task 1 state change: RETRIEVED (4) to DONE (5)
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: workers connections -- known: 1, connecting: 0
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): task 2
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): cmd 6
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: exit 1
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): category default
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): cores 2.000
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): gpus 0
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): memory 2000
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): disk 6000
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): end
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: worker.example (127.0.0.1:39772) busy on 'exit 1'
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: Task 2 state change: READY (1) to RUNNING (2)
+2026/11/23 18:34:43.61 vine_manager[2587022]vine: rx from worker.example (127.0.0.1:39772): info tasks_running 1
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: rx from worker.example (127.0.0.1:39772): complete 0 1 0 0 1795476883618390 1795476883620152 0 2
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: Task 2 state change: RUNNING (2) to WAITING_RETRIEVAL (3)
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): kill 2
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: Task 2 state change: WAITING_RETRIEVAL (3) to RETRIEVED (4)
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: worker.example (127.0.0.1:39772) done in 0.00s total tasks 2 average 0.00s
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: Task 2 state change: RETRIEVED (4) to DONE (5)
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: workers connections -- known: 1, connecting: 0
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): task 3
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): cmd 6
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: exit 3
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): category default
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): cores 2.000
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): gpus 0
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): memory 2000
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): disk 6000
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): end
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: worker.example (127.0.0.1:39772) busy on 'exit 3'
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: Task 3 state change: READY (1) to RUNNING (2)
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: rx from worker.example (127.0.0.1:39772): info tasks_running 1
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: rx from worker.example (127.0.0.1:39772): complete 0 3 0 0 1795476883620664 1795476883622422 0 3
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: Task 3 state change: RUNNING (2) to WAITING_RETRIEVAL (3)
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): kill 3
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: Task 3 state change: WAITING_RETRIEVAL (3) to RETRIEVED (4)
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: worker.example (127.0.0.1:39772) done in 0.00s total tasks 3 average 0.00s
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: Task 3 state change: RETRIEVED (4) to DONE (5)
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: workers connections -- known: 1, connecting: 0
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): task 4
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): cmd 7
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: exit 42
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): category default
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): cores 2.000
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): gpus 0
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): memory 2000
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): disk 6000
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): end
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: worker.example (127.0.0.1:39772) busy on 'exit 42'
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: Task 4 state change: READY (1) to RUNNING (2)
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: rx from worker.example (127.0.0.1:39772): info tasks_running 1
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: rx from worker.example (127.0.0.1:39772): complete 0 42 0 0 1795476883622908 1795476883624664 0 4
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: Task 4 state change: RUNNING (2) to WAITING_RETRIEVAL (3)
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): kill 4
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: Task 4 state change: WAITING_RETRIEVAL (3) to RETRIEVED (4)
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: worker.example (127.0.0.1:39772) done in 0.00s total tasks 4 average 0.00s
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: Task 4 state change: RETRIEVED (4) to DONE (5)
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: workers connections -- known: 1, connecting: 0
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): task 5
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): cmd 8
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: exit 255
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): category default
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): cores 2.000
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): gpus 0
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): memory 2000
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): disk 6000
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): end
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: worker.example (127.0.0.1:39772) busy on 'exit 255'
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: Task 5 state change: READY (1) to RUNNING (2)
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: rx from worker.example (127.0.0.1:39772): info tasks_running 1
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: rx from worker.example (127.0.0.1:39772): complete 0 255 0 0 1795476883625218 1795476883626961 0 5
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: Task 5 state change: RUNNING (2) to WAITING_RETRIEVAL (3)
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): kill 5
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: Task 5 state change: WAITING_RETRIEVAL (3) to RETRIEVED (4)
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: worker.example (127.0.0.1:39772) done in 0.00s total tasks 5 average 0.00s
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: Task 5 state change: RETRIEVED (4) to DONE (5)
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: workers connections -- known: 1, connecting: 0
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): task 6
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): cmd 10
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: kill -9 $$
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): category default
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): cores 2.000
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): gpus 0
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): memory 2000
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): disk 6000
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): end
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: worker.example (127.0.0.1:39772) busy on 'kill -9 $$'
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: Task 6 state change: READY (1) to RUNNING (2)
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: rx from worker.example (127.0.0.1:39772): info tasks_running 1
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: rx from worker.example (127.0.0.1:39772): complete 0 9 0 0 1795476883627464 1795476883629217 0 6
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: Task 6 state change: RUNNING (2) to WAITING_RETRIEVAL (3)
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): kill 6
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: Task 6 state change: WAITING_RETRIEVAL (3) to RETRIEVED (4)
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: worker.example (127.0.0.1:39772) done in 0.00s total tasks 6 average 0.00s
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: Task 6 state change: RETRIEVED (4) to DONE (5)
+2026/11/23 18:34:43.62 vine_manager[2587022]vine: workers connections -- known: 1, connecting: 0
+2026/11/23 18:34:43.64 vine_manager[2587022]vine: tx to worker.example (127.0.0.1:39772): release
+2026/11/23 18:34:43.64 vine_manager[2587022]vine: worker worker.example (127.0.0.1:39772) removed
+2026/11/23 18:34:43.64 vine_manager[2587022]vine: Removing instances of worker from transfer table
+2026/11/23 18:34:43.64 vine_manager[2587022]tcp: disconnected from 127.0.0.1 port 39772
+2026/11/23 18:34:43.64 vine_manager[2587022]vine: 0 workers connected in total now
+2026/11/23 18:34:43.64 vine_manager[2587022]vine: workers connections -- known: 0, connecting: 0
+2026/11/23 18:34:43.64 vine_manager[2587022]vine: deleting /tmp/run/staging
+2026/11/23 18:34:43.64 vine_manager[2587022]vine:   object  created   ref_added  deleted
+2026/11/23 18:34:43.64 vine_manager[2587022]vine: -----------------------------------
+2026/11/23 18:34:43.64 vine_manager[2587022]vine:    tasks        6        6       12 ok
+2026/11/23 18:34:43.64 vine_manager[2587022]vine:   mounts        0        0        0 ok
+2026/11/23 18:34:43.64 vine_manager[2587022]vine:    files        0        0        0 ok
+2026/11/23 18:34:43.64 vine_manager[2587022]vine: replicas        0        0        0 ok
+2026/11/23 18:34:43.64 vine_manager[2587022]vine:  workers        1        0        1 ok
+2026/11/23 18:34:43.64 vine_manager[2587022]vine: manager end

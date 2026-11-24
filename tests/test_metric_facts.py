@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
+from src.vine_parse.file_info import FileInfo, UnindexedTransferEvent
 from src.vine_parse.metric_facts import generate_metric_facts
 
 
@@ -167,6 +168,51 @@ class MetricFactsTest(unittest.TestCase):
         self.assertEqual(evidence["contracts"]["transfer-throughput"]["status"], "PARTIAL")
         self.assertEqual(evidence["contracts"]["worker-churn"]["status"], "PARTIAL")
         self.assertEqual(evidence["contracts"]["worker-capacity"]["status"], "PASS")
+
+    def test_cache_reconciliation_matches_manager_accounting(self):
+        """inuse_cache is ceil(MB) and counts direct puts that lack cache-update."""
+        (self.run / "vine-logs" / "transactions").write_text(
+            "1000000 7 MANAGER 7 START 0\n"
+            "1000000 7 WORKER worker-a CONNECTION 127.0.0.1:9000\n"
+            "4000000 7 WORKER worker-a DISCONNECTION EXPLICIT\n"
+            "4000000 7 MANAGER 7 END 0\n",
+            encoding="utf-8",
+        )
+        (self.run / "vine-logs" / "performance").write_text(
+            "# timestamp workers_connected inuse_cache\n"
+            "2500000 1 3\n",
+            encoding="utf-8",
+        )
+        worker = ("127.0.0.1", 9000, 1)
+        produced = FileInfo("file-a", 1.5, 2.0)
+        produced.add_producer(SimpleNamespace(task_id=1, task_try_id=1))
+        observed = UnindexedTransferEvent("file-a", worker, 2.0, size_mb=1.5)
+        observed.cache_update(2.0, size_mb=1.5)
+        observed.unlink(3.0)
+        produced.unindexed_transfers[worker].append(observed)
+        # TaskVine 7.16 sends no cache-update after a direct put.
+        put_only = FileInfo("file-b", 0.6, 1.5)
+        legacy_put = UnindexedTransferEvent("file-b", worker, 1.5, size_mb=0.6)
+        legacy_put.unlink(3.0)
+        put_only.unindexed_transfers[worker].append(legacy_put)
+        for index, file in enumerate((produced, put_only)):
+            file.file_idx = index
+        dp = SimpleNamespace(
+            tasks={},
+            manager_end_observed=True,
+            files={"file-a": produced, "file-b": put_only},
+            manager=SimpleNamespace(get_min_max_time=lambda: (1.0, 4.0)),
+        )
+
+        evidence = generate_metric_facts(str(self.run), dp)
+
+        contract = evidence["contracts"]["worker-cache-occupancy"]
+        self.assertEqual(contract["status"], "PASS", contract)
+        with (self.run / "csv-files" / "metric_worker_cache_occupancy.csv").open(newline="") as handle:
+            rows = list(csv.DictReader(handle))
+        starts = {row["file_name"]: row for row in rows if int(row["delta_bytes"]) > 0}
+        self.assertEqual(starts["file-b"]["evidence"], "inferred")
+        self.assertEqual(starts["file-a"]["evidence"], "observed")
 
 
 if __name__ == "__main__":

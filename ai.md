@@ -129,6 +129,18 @@ If quota is exhausted again, write test output to `/tmp` and do not modify
 source until a small write-and-restore check succeeds. Do not delete or relocate
 raw logs, parsed CSVs, or user data merely to make room.
 
+## Producer compatibility
+
+Both upstream cctools master and the vine-graph fork are supported. The fork's
+joined task descriptions are expanded in `sources/debug_legacy.py`; fork message
+families (checkpoint, simulated_loss, task_lost_worker, fork_info, manager://)
+are in `protocol.py` (RULESET_VERSION 2, mirrored in `native/debug_native.c`).
+Final results come from transactions RETRIEVED records, and
+`reconcile_with_transactions()` makes any lost dispatch, attribution, cores,
+DONE, connection, or cache update PARTIAL. Tests:
+`tests/test_producer_compatibility.py` (fixtures in
+`tests/fixtures/producer-logs`) and `scripts/run_examples.py --producer both`.
+
 ## Known OPEN items
 
 These were observed during review but were not part of the latest legend task:

@@ -94,11 +94,20 @@ class FileInfo():
     def cache_update(self, worker, time_stage_in, transfer_id, size_mb):
         worker_entry = worker.worker_entry
         if transfer_id == 'X':
-            if len(self.producers) > 0:
+            # A put (or mini task) to this worker that is still in flight is what this cache-update completes,
+            # also for a file some task produced: a task output later put to another worker is one residency there,
+            # not a put plus a new task output.
+            pending = [t for t in self.unindexed_transfers[worker_entry]
+                       if t.time_stage_in is None and t.time_stage_out is None]
+            if pending:
+                for transfer in pending:
+                    transfer.cache_update(time_stage_in, size_mb=size_mb)
+            elif len(self.producers) > 0:
                 new_transfer = UnindexedTransferEvent(
                     self.filename, worker_entry, time_stage_in, size_mb=size_mb
                 )
                 new_transfer.cache_update(time_stage_in, size_mb=size_mb)
+                new_transfer.origin = "task_output"
                 self.unindexed_transfers[worker_entry].append(new_transfer)
             else:
                 for transfer in self.unindexed_transfers[worker_entry]:
@@ -129,14 +138,14 @@ class FileInfo():
 
         worker.remove_active_file_or_transfer(self.filename)
 
-    def unlink(self, worker, time_stage_out):
+    def unlink(self, worker, time_stage_out, reason="unlink"):
         worker_entry = worker.worker_entry
 
         for transfer in self.unindexed_transfers[worker_entry]:
-            transfer.unlink(time_stage_out)
+            transfer.unlink(time_stage_out, reason=reason)
         for transfer in self.indexed_transfers.values():
             if transfer.dest_worker_entry == worker_entry:
-                transfer.unlink(time_stage_out)
+                transfer.unlink(time_stage_out, reason=reason)
 
         worker.remove_active_file_or_transfer(self.filename)
 
@@ -158,3 +167,27 @@ class FileInfo():
         print(f"producers: {self.producers}")
         print(f"penalty: {self.penalty}")
         print("\n")
+
+
+class CheckpointTransfer:
+    """One receive of a worker's file into the Manager's data-service vault (vine-graph fork).
+
+    Checkpoints are a transfer class of their own: they move data from a
+    worker to the Manager, never into a worker cache, so they are counted
+    apart from worker-bound transfers and never form a cache residency.
+    """
+
+    def __init__(self, checkpoint_id, file_name, source, source_worker_entry, size_bytes, inline, required, urgent,
+                 connect_back, time_start):
+        self.checkpoint_id = checkpoint_id
+        self.file_name = file_name
+        self.source = source                            # "<transfer host>:<transfer port>" as logged
+        self.source_worker_entry = source_worker_entry  # None when the address names no known worker
+        self.size_bytes = size_bytes
+        self.inline = inline                            # received over the control link, not a connection
+        self.required = required
+        self.urgent = urgent
+        self.connect_back = connect_back
+        self.time_start = time_start
+        self.time_end = None
+        self.outcome = None                             # complete, failed, or cancelled

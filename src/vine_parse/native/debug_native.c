@@ -11,7 +11,8 @@ static const char *handler_names[] = {
     "cache_invalid", "worker_resources", "stdout", "recovery_task", "put_file",
     "failed_to_send_task", "transfer_port", "exhausted_resources", "listening",
     "worker_connected", "manager_end", "remove_instances", "kill_task",
-    "added_dependency", "send_task_to_worker"
+    "added_dependency", "checkpoint", "simulated_loss", "task_lost_worker", "fork_info",
+    "send_task_to_worker", "worker_rejected"
 };
 
 #define TOKEN_PUTURL       BIT(0)
@@ -86,6 +87,11 @@ static uint32_t scan_tokens(const char *text, Py_ssize_t text_len)
 #define PHRASE_KILL             BIT(8)
 #define PHRASE_DEPENDENCY       BIT(9)
 #define PHRASE_TX_TO            BIT(10)
+#define PHRASE_CHECKPOINT       BIT(11)
+#define PHRASE_SIMULATED_LOSS   BIT(12)
+#define PHRASE_FORK_INFO        BIT(13)
+#define PHRASE_LOST_WORKER      BIT(14)
+#define PHRASE_WORKER_REJECTED  BIT(15)
 
 #define MATCH_AT(value) \
     (i + (Py_ssize_t)(sizeof(value) - 1) <= text_len && \
@@ -100,16 +106,31 @@ static uint32_t scan_phrases(const char *text, Py_ssize_t text_len)
         case ' ':
             if (!(flags & PHRASE_INFO) && MATCH_AT(" info ")) flags |= PHRASE_INFO;
             if (!(flags & PHRASE_KILL) && MATCH_AT(" kill ")) flags |= PHRASE_KILL;
+            if (!(flags & PHRASE_SIMULATED_LOSS) && MATCH_AT(" lost its state")) flags |= PHRASE_SIMULATED_LOSS;
+            if (!(flags & PHRASE_LOST_WORKER) && MATCH_AT(" lost worker ")) flags |= PHRASE_LOST_WORKER;
             break;
+        case ')':
+            if (!(flags & PHRASE_SIMULATED_LOSS) && (MATCH_AT("): lose ") || MATCH_AT("): lost "))) flags |= PHRASE_SIMULATED_LOSS;
+            if (!(flags & PHRASE_FORK_INFO) && MATCH_AT("): connect-back ")) flags |= PHRASE_FORK_INFO;
+            break;
+        case 'L': if (!(flags & PHRASE_SIMULATED_LOSS) && MATCH_AT("Losing the state of worker")) flags |= PHRASE_SIMULATED_LOSS; break;
+        case 'd': if (!(flags & PHRASE_FORK_INFO) && MATCH_AT("dropped a stale message")) flags |= PHRASE_FORK_INFO; break;
+        case 'r': if (!(flags & PHRASE_FORK_INFO) && MATCH_AT("round summary:")) flags |= PHRASE_FORK_INFO; break;
         case 'F': if (!(flags & PHRASE_FAILED_SEND) && MATCH_AT("Failed to send task")) flags |= PHRASE_FAILED_SEND; break;
         case 'R': if (!(flags & PHRASE_REMOVE_INSTANCES) && MATCH_AT("Removing instances of worker")) flags |= PHRASE_REMOVE_INSTANCES; break;
         case 'S': if (!(flags & PHRASE_RECOVERY_TASK) && MATCH_AT("Submitted recovery task")) flags |= PHRASE_RECOVERY_TASK; break;
         case 'a': if (!(flags & PHRASE_DEPENDENCY) && MATCH_AT("added dependency")) flags |= PHRASE_DEPENDENCY; break;
         case 'b': if (!(flags & PHRASE_BUSY_ON) && MATCH_AT("busy on")) flags |= PHRASE_BUSY_ON; break;
         case 'l': if (!(flags & PHRASE_LISTENING) && MATCH_AT("listening on port")) flags |= PHRASE_LISTENING; break;
+        case 'o': if (!(flags & PHRASE_WORKER_REJECTED) && MATCH_AT("opened its probe link from")) flags |= PHRASE_WORKER_REJECTED; break;
+        case 'p': if (!(flags & PHRASE_WORKER_REJECTED) && MATCH_AT("presented the wrong password")) flags |= PHRASE_WORKER_REJECTED; break;
         case 'm': if (!(flags & PHRASE_MANAGER_END) && MATCH_AT("manager end")) flags |= PHRASE_MANAGER_END; break;
         case 's': if (!(flags & PHRASE_STATE_CHANGE) && MATCH_AT("state change:")) flags |= PHRASE_STATE_CHANGE; break;
         case 't': if (!(flags & PHRASE_TX_TO) && MATCH_AT("tx to")) flags |= PHRASE_TX_TO; break;
+        case 'v':
+            if (!(flags & PHRASE_CHECKPOINT) && MATCH_AT("vine: checkpoint ")) flags |= PHRASE_CHECKPOINT;
+            if (!(flags & PHRASE_FORK_INFO) && MATCH_AT("vault hit: ")) flags |= PHRASE_FORK_INFO;
+            break;
         default: break;
         }
     }
@@ -147,7 +168,12 @@ static uint32_t classify(const char *line, Py_ssize_t length)
     if (phrases & PHRASE_REMOVE_INSTANCES) mask |= BIT(20);
     if (phrases & PHRASE_KILL) mask |= BIT(21);
     if (phrases & PHRASE_DEPENDENCY) mask |= BIT(22);
-    if (phrases & PHRASE_TX_TO) mask |= BIT(23);
+    if (phrases & PHRASE_CHECKPOINT) mask |= BIT(23);
+    if (phrases & PHRASE_SIMULATED_LOSS) mask |= BIT(24);
+    if (phrases & PHRASE_LOST_WORKER) mask |= BIT(25);
+    if (phrases & PHRASE_FORK_INFO) mask |= BIT(26);
+    if (phrases & PHRASE_TX_TO) mask |= BIT(27);
+    if (phrases & PHRASE_WORKER_REJECTED) mask |= BIT(28);
     return mask;
 }
 
@@ -225,7 +251,7 @@ PyMODINIT_FUNC PyInit__debug_native(void)
         PyTuple_SET_ITEM(names, i, name);
     }
     if (PyModule_AddObject(result, "HANDLER_NAMES", names) < 0 ||
-        PyModule_AddIntConstant(result, "RULESET_VERSION", 1) < 0) {
+        PyModule_AddIntConstant(result, "RULESET_VERSION", 3) < 0) {
         Py_DECREF(result);
         return NULL;
     }

@@ -8,6 +8,7 @@ No chart is allowed to invent a missing terminal event or resource sample.
 
 from __future__ import annotations
 
+import bisect
 import csv
 import json
 import math
@@ -16,6 +17,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from .diagnostics import sha256_file
+from .file_info import UnindexedTransferEvent
 from .sources import LegacyTransactionSource
 
 
@@ -163,6 +165,46 @@ def _worker_event_rows(events, start_epoch, end_epoch):
         for index in range(bucket_count)
         for reason in reasons
     ]
+
+
+DEBUG_TIME_RESOLUTION = 0.01
+
+
+def _step_function(deltas):
+    """Return (times, totals) of the running sum of ``deltas``, floored at zero."""
+    times = sorted(deltas)
+    totals = []
+    current = 0.0
+    for timestamp in times:
+        current = max(0.0, current + deltas[timestamp])
+        totals.append(current)
+    return times, totals
+
+
+def _value_at(step, x):
+    times, totals = step
+    index = bisect.bisect_right(times, x) - 1
+    return totals[index] if index >= 0 else 0.0
+
+
+def _window_bound(step, signed, start, end, side):
+    """Bound the step function over the ambiguous window (start, end].
+
+    Events inside the window may have happened in any order, so the lowest
+    reachable value is the value at ``start`` plus every decrease in the
+    window, and the highest is that value plus every increase.
+    """
+    times = signed[0]
+    low = bisect.bisect_right(times, start)
+    high = bisect.bisect_right(times, end)
+    index = 0 if side == "low" else 1
+    return max(0.0, _value_at(step, start) + sum(signed[1][i][index] for i in range(low, high)))
+
+
+def _signed_deltas(pairs):
+    """Return (times, [(decrease, increase)]) from {time: [decrease, increase]}."""
+    times = sorted(pairs)
+    return times, [tuple(pairs[t]) for t in times]
 
 
 class MetricFactBuilder:
@@ -335,9 +377,24 @@ class MetricFactBuilder:
         events = []
         eligible = projected = censored = 0
         aggregate_deltas = defaultdict(float)
+        inflight_deltas = defaultdict(float)
+        cached_signed = defaultdict(lambda: [0.0, 0.0])
+        inflight_signed = defaultdict(lambda: [0.0, 0.0])
         for file in self.dp.files.values():
             for index, transfer in enumerate(file.get_flattened_transfers(), start=1):
-                if transfer.time_stage_in is None:
+                stage_in = transfer.time_stage_in
+                start_inferred = False
+                if (
+                    stage_in is None
+                    and isinstance(transfer, UnindexedTransferEvent)
+                    and transfer.end_reason != "cache_invalid"
+                    and transfer.time_start_stage_in is not None
+                ):
+                    # Older TaskVine (e.g. 7.16) sends no cache-update after a
+                    # direct put; the manager counts the replica once it is sent.
+                    stage_in = transfer.time_start_stage_in
+                    start_inferred = True
+                if stage_in is None:
                     continue
                 eligible += 1
                 size_mb = getattr(transfer, "size_mb", None)
@@ -355,14 +412,15 @@ class MetricFactBuilder:
                 size_bytes = int(round(float(size_mb) * 2**20))
                 worker_id = ":".join(map(str, transfer.dest_worker_entry))
                 residency_id = f"{file.file_idx}:{index}"
-                start = max(0.0, float(transfer.time_stage_in) - base_time)
+                start = max(0.0, float(stage_in) - base_time)
                 end = max(start, float(transfer.time_stage_out) - base_time)
                 events.extend((
                     {
                         "time": start, "worker_id": worker_id,
                         "delta_bytes": size_bytes, "file_id": file.file_idx,
                         "file_name": file.filename, "residency_id": residency_id,
-                        "reason": "cache_update", "evidence": "observed",
+                        "reason": "put" if start_inferred else "cache_update",
+                        "evidence": "inferred" if start_inferred else "observed",
                     },
                     {
                         "time": end, "worker_id": worker_id,
@@ -374,6 +432,16 @@ class MetricFactBuilder:
                 ))
                 aggregate_deltas[start] += float(size_mb)
                 aggregate_deltas[end] -= float(size_mb)
+                cached_signed[start][1] += float(size_mb)
+                cached_signed[end][0] -= float(size_mb)
+                # TaskVine counts a replica from the moment its transfer
+                # starts; the projection counts it once it is cached.
+                started = getattr(transfer, "time_start_stage_in", None)
+                inflight_start = start if started is None else min(start, max(0.0, float(started) - base_time))
+                inflight_deltas[inflight_start] += float(size_mb)
+                inflight_deltas[end] -= float(size_mb)
+                inflight_signed[inflight_start][1] += float(size_mb)
+                inflight_signed[end][0] -= float(size_mb)
         events.sort(key=lambda row: (row["time"], row["worker_id"], row["residency_id"], -row["delta_bytes"]))
         _write_csv(self.csv_dir / "metric_worker_cache_occupancy.csv", fields, events)
 
@@ -386,25 +454,39 @@ class MetricFactBuilder:
             row for row in (performance_rows or [])
             if "timestamp" in row and "inuse_cache" in row and base_time is not None
         ]
-        if comparable and aggregate_deltas:
-            event_times = sorted(aggregate_deltas)
-            totals = []
-            current = 0.0
-            for timestamp in event_times:
-                current = max(0.0, current + aggregate_deltas[timestamp])
-                totals.append(current)
+        if comparable and not aggregate_deltas:
+            # No cache residency at all: the evidence agrees only if TaskVine
+            # never reported cache payload either.
+            observed = [float(row["inuse_cache"]) for row in comparable]
+            performance_samples = len(observed)
+            median_relative_error = peak_relative_error = max(observed, default=0.0)
+            reconciliation_ok = all(value == 0 for value in observed)
+        elif comparable:
+            cached = _step_function(aggregate_deltas)
+            inflight = _step_function(inflight_deltas)
+            cached_bounds = _signed_deltas(cached_signed)
+            inflight_bounds = _signed_deltas(inflight_signed)
+            first_event, last_event = cached[0][0], cached[0][-1]
             observed = []
             expected = []
-            cursor = -1
+            consistent = 0
             for row in comparable:
                 relative = row["timestamp"] / 1e6 - base_time
-                if relative < event_times[0] or relative > event_times[-1]:
+                if relative < first_event or relative > last_event:
                     continue
-                while cursor + 1 < len(event_times) and event_times[cursor + 1] <= relative:
-                    cursor += 1
-                if cursor >= 0:
-                    expected.append(totals[cursor])
-                    observed.append(float(row["inuse_cache"]))
+                # Debug timestamps are floored to 10 ms, so an event logged at
+                # d happened in [d, d + 0.01): events logged in (t - 0.01, t]
+                # may or may not precede the sample, in any order.  The value
+                # TaskVine reports lies between the cached-only total and the
+                # total that also counts transfers in flight, over that window.
+                window = relative - DEBUG_TIME_RESOLUTION
+                low = _window_bound(cached, cached_bounds, window, relative, "low")
+                high = _window_bound(inflight, inflight_bounds, window, relative, "high")
+                value = float(row["inuse_cache"])
+                # TaskVine reports inuse_cache as ceil(bytes / 2**20).
+                expected.append(float(math.ceil(_value_at(cached, relative) - 1e-9)))
+                observed.append(value)
+                consistent += math.ceil(low - 1e-9) <= value <= math.ceil(high - 1e-9)
             performance_samples = len(observed)
             if observed:
                 relative_errors = sorted(
@@ -417,7 +499,14 @@ class MetricFactBuilder:
                     else (relative_errors[middle - 1] + relative_errors[middle]) / 2
                 )
                 peak_relative_error = abs(max(expected) - max(observed)) / max(max(observed), 1.0)
-                reconciliation_ok = median_relative_error <= 0.01 and peak_relative_error <= 0.02
+                # Agreement is shown either by the original tolerance on the
+                # point estimate (long runs) or by nearly every sample lying in
+                # the envelope that 10 ms debug resolution leaves (short runs,
+                # where several events share one timestamp).
+                reconciliation_ok = (
+                    (median_relative_error <= 0.01 and peak_relative_error <= 0.02)
+                    or consistent >= 0.99 * len(observed)
+                )
 
         quality = {
             "eligible_residencies": eligible,
@@ -442,7 +531,9 @@ class MetricFactBuilder:
             status_reasons.append("Manager END is missing; cache residency completeness cannot be verified.")
         if censored:
             caveats.append(f"{censored} right-censored residencies")
-        if not comparable:
+        if not comparable or not performance_samples:
+            # Short runs may log no performance sample inside the residency
+            # window; that is missing evidence, not a disagreement.
             status_reasons.append("Performance inuse_cache evidence is unavailable.")
         elif not reconciliation_ok:
             status_reasons.append("Performance inuse_cache reconciliation is outside tolerance.")
@@ -672,7 +763,8 @@ class MetricFactBuilder:
         _write_csv(self.csv_dir / "metric_transfer_throughput.csv", ["time", "bucket_seconds", "input_bytes", "output_bytes", "input_bytes_per_second", "output_bytes_per_second"], transfer_rows)
 
         total_attempts = len(app_attempts)
-        classification_coverage = classified_attempts / len(attempts) if attempts else 0
+        # A run without task attempts has nothing left unclassified.
+        classification_coverage = classified_attempts / len(attempts) if attempts else 1.0
         if classification_coverage < 0.995:
             self.partial_reasons.append("metric_task_classification_incomplete")
             source_status = "PARTIAL"

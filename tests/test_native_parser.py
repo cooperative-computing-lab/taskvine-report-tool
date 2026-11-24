@@ -21,6 +21,15 @@ SAMPLES = [
     "2026/08/19 12:00:00.00 vine_manager[1]vine: manager end",
     "ordinary debug text with no recognized protocol family",
     "embedded\x00worker connected",
+    "2026/08/19 12:00:00.00 vine_manager[1]vine: checkpoint started: temp-a from 10.0.0.1:9 size=5 required=0 urgent=0 connect_back=0 inline=1 vault_used=0 vault_reserved=5 vault_limit=9",
+    "2026/08/19 12:00:00.00 vine_manager[1]notice: Losing the state of worker h (10.0.0.1:1) on request",
+    "2026/08/19 12:00:00.00 vine_manager[1]vine: tx to h (10.0.0.1:1): lose 1",
+    "2026/08/19 12:00:00.00 vine_manager[1]vine: rx from h (10.0.0.1:1): lost 1",
+    "2026/08/19 12:00:00.00 vine_manager[1]vine: worker h (10.0.0.1:1) lost its state",
+    "2026/08/19 12:00:00.00 vine_manager[1]vine: task 3 lost worker h (10.0.0.1:1): 1 of 5 tries used",
+    "2026/08/19 12:00:00.00 vine_manager[1]vine: round summary: seconds=60.0 rounds=10 round_max_us=5 step=x step_us=1",
+    "2026/08/19 12:00:00.00 vine_manager[1]vine: tx to h (10.0.0.1:1): connect-back 77",
+    "2026/08/19 12:00:00.00 vine_manager[1]vine: vault hit: task 3 file temp-a",
 ]
 
 
@@ -50,7 +59,12 @@ class NativeParserTest(unittest.TestCase):
             "remove_instances": "x Removing instances of worker y",
             "kill_task": "x kill y",
             "added_dependency": "x added dependency y",
+            "checkpoint": "x vine: checkpoint started: y",
+            "simulated_loss": "x Losing the state of worker y",
+            "task_lost_worker": "x task 3 lost worker y",
+            "fork_info": "x round summary: y",
             "send_task_to_worker": "x tx to y",
+            "worker_rejected": "notice: worker 1.2.3.4:5 presented the wrong password",
         }
         self.assertEqual(tuple(examples), HANDLER_NAMES)
         for name, line in examples.items():
@@ -73,6 +87,8 @@ class NativeParserTest(unittest.TestCase):
             "worker connected", "worker removed", "resources exhausted",
             "puturl_now", "cache-update", "state change:", "tx to",
             "Submitted recovery task", "manager end", "x\x00y", "café",
+            "vine: checkpoint ", "Losing the state of worker", " lost its state", "): lose ", "): lost ",
+            " lost worker ", "round summary:", "): connect-back ", "vault hit: ", "dropped a stale message",
         )
         lines = [
             "prefix {} {} suffix".format(left, right)

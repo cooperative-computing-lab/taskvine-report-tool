@@ -30,7 +30,22 @@ HANDLER_RULES = (
     ("remove_instances", lambda line, parts: "Removing instances of worker" in line),
     ("kill_task", lambda line, parts: " kill " in line),
     ("added_dependency", lambda line, parts: "added dependency" in line),
+    # Families of the vine-graph fork (data service vault, simulated loss).
+    ("checkpoint", lambda line, parts: "vine: checkpoint " in line),
+    ("simulated_loss", lambda line, parts: (
+        "Losing the state of worker" in line or " lost its state" in line
+        or "): lose " in line or "): lost " in line
+    )),
+    ("task_lost_worker", lambda line, parts: " lost worker " in line),
+    ("fork_info", lambda line, parts: (
+        "round summary:" in line or "): connect-back " in line or "vault hit: " in line
+        or "dropped a stale message" in line
+    )),
     ("send_task_to_worker", lambda line, parts: "tx to" in line),
+    # A connection that never becomes a worker session: a wrong password, or the fork's probe link.
+    ("worker_rejected", lambda line, parts: (
+        "presented the wrong password" in line or "opened its probe link from" in line
+    )),
 )
 HANDLER_NAMES = tuple(name for name, _ in HANDLER_RULES)
 HANDLER_MASKS = {name: 1 << index for index, name in enumerate(HANDLER_NAMES)}
@@ -46,6 +61,9 @@ PROTOCOL_DIAGNOSTIC_RULES = (
     (("busy_on",), r"busy on"),
     (("send_task_to_worker",), r"tx to.*\btask\b"),
     (("manager_end",), r"manager end"),
+    (("checkpoint",), r"vine: checkpoint (?:started|complete|failed|cancelled):"),
+    (("simulated_loss",), r"Losing the state of worker|\): lose \d+$"),
+    (("worker_rejected",), r"presented the wrong password|opened its probe link from"),
 )
 PROTOCOL_CANDIDATE_NAMES = frozenset(
     name for names, _ in PROTOCOL_DIAGNOSTIC_RULES for name in names
@@ -55,7 +73,7 @@ PROTOCOL_CANDIDATE_RE = re.compile(
     "|".join(pattern for _, pattern in PROTOCOL_DIAGNOSTIC_RULES),
     re.IGNORECASE,
 )
-RULESET_VERSION = 1
+RULESET_VERSION = 3
 
 
 def reference_candidate_mask(line: str, parts: list[str]) -> int:

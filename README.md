@@ -364,6 +364,35 @@ vine-run-info/
 
 As long as `vine-logs` contains the files above, the other directories are managed by the tool.
 
+## Producer compatibility suite
+
+The parser supports logs from upstream cctools master and the vine-graph fork
+(see `docs/log-compatibility.md`). `scripts/run_examples.py` runs the
+workloads in `examples/workloads` (54 small TaskVine and vine_graph programs,
+21 of them `opt_*` workloads that turn on unusual Manager options such as SSL,
+passwords, monitoring, categories, mini tasks, many `tune()` knobs, and odd
+commands and outputs; files marked `# producers: vine-graph` run only on the
+fork), parses each run,
+and checks the result against ground truth from the transactions log and the
+program itself: parse status, dispatch counts and worker attribution, cores,
+final results and exit codes, workers, libraries and function calls, recovery
+tasks, worker-loss attempts, cache updates, transfer sources, checkpoints, and
+simulated losses.
+
+```bash
+cd /tmp
+python /path/to/taskvine-report-tool/scripts/run_examples.py --producer both \
+    --upstream-prefix /path/to/upstream-install --fork-root /path/to/vine-graph \
+    --jobs 3 --out /tmp/taskvine-report-examples
+```
+
+Ports 9700 and up are used, workers run in their own sessions and are killed
+at the end. Results are in `<out>/summary.json`. `manager_killed` is an
+expected `PARTIAL` (the Manager is killed). After changing
+`protocol.py`, rebuild the native classifier with
+`python setup.py build_ext --inplace`; a mismatch of `RULESET_VERSION`
+disables it (fail closed).
+
 ## Important Notes
 
 1. Ensure correct log folder structure with the required `vine-logs` subdirectory
