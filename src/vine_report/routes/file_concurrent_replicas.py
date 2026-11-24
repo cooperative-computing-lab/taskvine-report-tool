@@ -1,3 +1,4 @@
+from src.vine_report.request_context import get_run_snapshot
 from src.utils import *
 from flask import Blueprint, jsonify, current_app
 
@@ -7,7 +8,7 @@ file_concurrent_replicas_bp = Blueprint('file_concurrent_replicas', __name__, ur
 @check_and_reload_data()
 def get_file_concurrent_replicas():
     try:
-        df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_file_concurrent_replicas)
+        df = read_csv_frame(get_run_snapshot().csv_file_file_concurrent_replicas)
         points = extract_points_from_df(df, 'file_idx', 'max_simul_replicas')
 
         x_domain = extract_x_range_from_points(points)
@@ -25,5 +26,5 @@ def get_file_concurrent_replicas():
         })
 
     except Exception as e:
-        current_app.config["RUNTIME_STATE"].log_error(f"Error in /file-concurrent-replicas: {e}")
+        get_run_snapshot().log_error(f"Error in /file-concurrent-replicas: {e}")
         return jsonify({'error': str(e)}), 500

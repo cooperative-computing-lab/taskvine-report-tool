@@ -6,7 +6,7 @@ import os
 
 from src.utils import (
     ensure_dir,
-    read_csv_to_fd,
+    read_csv_frame,
     compute_linear_tick_values,
     compute_discrete_tick_values,
 )
@@ -75,7 +75,7 @@ def set_discrete_ticks(ax, values, axis="x", tick_count=DEFAULT_DISCRETE_TICK_CO
 
 def load_csv(csv_files_dir, filename):
     path = os.path.join(csv_files_dir, filename)
-    return read_csv_to_fd(path)
+    return read_csv_frame(path)
 
 
 def save_plot(fig, plt, png_files_dir, filename, dpi):

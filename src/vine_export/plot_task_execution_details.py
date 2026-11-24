@@ -6,14 +6,15 @@ Same data processing as vine_report (shared utils, config).
 """
 
 import os
-import pandas as pd
+import polars as pl
 
 from src.utils import (
-    read_csv_to_fd,
+    read_csv_frame,
     ensure_dir,
     task_execution_safe_int,
     task_execution_safe_float,
     parse_worker_time_list,
+    is_missing_value,
     get_time_domain_from_csv,
     compute_task_execution_x_domain,
     compute_linear_tick_values,
@@ -100,24 +101,26 @@ def load_task_execution_data(csv_files_dir):
     if not os.path.exists(csv_path):
         raise FileNotFoundError(f"task_execution_details.csv not found: {csv_path}")
 
-    df = read_csv_to_fd(csv_path)
+    df = read_csv_frame(csv_path)
     successful_tasks = []
     unsuccessful_tasks = []
     workers = []
 
-    task_rows = df[df["record_type"].isin(["successful_tasks", "unsuccessful_tasks"])]
-    for _, row in task_rows.iterrows():
-        if pd.isna(row["task_id"]):
+    task_rows = df.filter(
+        pl.col("record_type").is_in(["successful_tasks", "unsuccessful_tasks"])
+    )
+    for row in task_rows.iter_rows(named=True):
+        if is_missing_value(row["task_id"]):
             continue
 
         base_task_data = {
             "task_id": int(row["task_id"]),
             "try_id": int(row["task_try_id"]),
-            "worker_entry": str(row["worker_entry"]) if pd.notna(row["worker_entry"]) else "",
+            "worker_entry": str(row["worker_entry"]) if not is_missing_value(row["worker_entry"]) else "",
             "worker_id": task_execution_safe_int(row, "worker_id"),
             "core_id": task_execution_safe_int(row, "core_id"),
             "cores_requested": task_execution_safe_int(row, "cores_requested"),
-            "is_recovery_task": bool(row["is_recovery_task"]) if pd.notna(row["is_recovery_task"]) else False,
+            "is_recovery_task": bool(row["is_recovery_task"]) if not is_missing_value(row["is_recovery_task"]) else False,
         }
 
         if row["record_type"] == "successful_tasks":
@@ -143,15 +146,15 @@ def load_task_execution_data(csv_files_dir):
                     "when_failure_happens": wf,
                     "execution_time": (wf - wr) if (wr is not None and wf is not None) else None,
                     "unsuccessful_checkbox_name": str(row["unsuccessful_checkbox_name"])
-                    if pd.notna(row["unsuccessful_checkbox_name"])
+                    if not is_missing_value(row["unsuccessful_checkbox_name"])
                     else "unsuccessful-unknown",
                 }
             )
             unsuccessful_tasks.append(base_task_data)
 
-    worker_rows = df[df["record_type"] == "worker"]
-    for _, row in worker_rows.iterrows():
-        if pd.isna(row["worker_id"]):
+    worker_rows = df.filter(pl.col("record_type") == "worker")
+    for row in worker_rows.iter_rows(named=True):
+        if is_missing_value(row["worker_id"]):
             continue
 
         time_connected = parse_worker_time_list(row["time_connected"])
@@ -160,10 +163,10 @@ def load_task_execution_data(csv_files_dir):
         workers.append(
             {
                 "id": int(row["worker_id"]),
-                "worker_entry": str(row["worker_entry"]) if pd.notna(row["worker_entry"]) else "",
+                "worker_entry": str(row["worker_entry"]) if not is_missing_value(row["worker_entry"]) else "",
                 "time_connected": time_connected,
                 "time_disconnected": time_disconnected,
-                "cores": int(row["cores"]) if pd.notna(row["cores"]) else 1,
+                "cores": int(row["cores"]) if not is_missing_value(row["cores"]) else 1,
             }
         )
 

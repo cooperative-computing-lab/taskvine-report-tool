@@ -1,4 +1,4 @@
-from src.utils import TASK_STATUS_NAMES
+from src.runtime_utils import TASK_STATUS_NAMES
 
 class TaskInfo:
     def __init__(self, task_id: int, task_try_id: int):

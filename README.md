@@ -59,6 +59,12 @@ vine_parse --logs-dir /path/to/logs --templates experiment1
 
 # Parse directories matching patterns in a specific directory
 vine_parse --logs-dir /home/user/logs --templates workflow_* test_*
+
+# Check compatibility before parsing a large run
+vine_parse --doctor /home/user/logs/workflow_001
+
+# Supply timezone evidence only when debug metadata and transactions cannot
+vine_parse --logs-dir /home/user/logs --templates workflow_001 --timezone-offset -0500
 ```
 
 **Default Behavior:**
@@ -66,6 +72,19 @@ vine_parse --logs-dir /home/user/logs --templates workflow_* test_*
 - The `--templates` parameter is **required** - the command will fail without it
 - Patterns support shell glob expansion (*, ?, [])
 - Automatically filters out directories that don't contain `vine-logs` subdirectory
+
+**Compatibility evidence:** every parse writes
+`vine-logs/parse-diagnostics.json` and `csv-files/parse-manifest.json`.
+`vine_parse` exits `0` for complete data, `2` for usable but partial data, and
+`1` for incompatible or failed data. The dashboard surfaces the same quality
+state. See [the log compatibility contract](docs/log-compatibility.md) for the
+maintenance and release gates.
+
+Source-backed operational metrics are emitted with an explicit PASS, PARTIAL,
+or UNAVAILABLE contract. The dashboard only plots PASS data; incomplete or
+unreconciled evidence is shown as unavailable instead of being estimated. See
+[the source-backed metrics contract](docs/source-backed-metrics.md) for exact
+sources, units, inclusion rules, and acceptance thresholds.
 
 #### `vine_report` - Start Web Server
 
@@ -76,6 +95,7 @@ vine_parse --logs-dir /home/user/logs --templates workflow_* test_*
 - `--logs-dir`: Directory containing log folders (default: current directory)
 - `--port`: Port number for the web server (default: 9122)
 - `--host`: Host address to bind to (default: 0.0.0.0)
+- `--threads`: Maximum concurrent HTTP request threads (default: 8; range: 1-64)
 
 **Usage Examples:**
 
@@ -91,6 +111,9 @@ vine_report --host 127.0.0.1 --port 9122
 
 # Allow remote access (default behavior)
 vine_report --host 0.0.0.0 --port 9122
+
+# Login-node-safe bounded request concurrency
+vine_report --host 127.0.0.1 --port 9122 --threads 8
 ```
 
 **Default Behavior:**
@@ -98,6 +121,73 @@ vine_report --host 0.0.0.0 --port 9122
 - Starts server on port 9122
 - Binds to all interfaces (0.0.0.0) allowing remote access
 - Displays all available IP addresses where the server can be accessed
+
+**Report workspace:**
+
+The web application opens with a run overview instead of loading every plot at
+once. It provides run-health KPIs, rule-based findings, grouped task /
+worker / transfer / file workspaces, linked time-window controls, task search
+and detail inspection, and side-by-side comparison for up to four runs. Plot
+data is loaded only when its workspace is opened.
+
+The **Share view** action copies a URL that preserves the selected run,
+workspace, linked time window, comparison set, and open task detail. Anyone
+opening that URL must still have network access to the same `vine_report`
+server and its log directory.
+
+**Dashboard API contract:** every data request names a run and immutable
+revision. There is no server-wide "current run", so tabs and users cannot
+change one another's data source.
+
+- `GET /api/v1/runs`
+- `GET /api/v1/health`
+- `GET /api/v1/diagnostics`
+- `GET /api/v1/runs/<run_id>`
+- `POST /api/v1/runs/<run_id>/refresh`
+- `GET /api/v1/runs/<run_id>/revisions/<revision>/summary`
+- `GET /api/v1/runs/<run_id>/revisions/<revision>/tasks`
+- `GET /api/v1/runs/<run_id>/revisions/<revision>/charts/<chart_id>`
+- `GET /api/v1/runs/<run_id>/revisions/<revision>/metrics/<metric_id>`
+- `GET /api/v1/runs/<run_id>/revisions/<revision>/exports/<export_id>.csv`
+- `GET /api/v1/compare?runs=<baseline>,<candidate>`
+
+Successful responses carry `run_id`, `revision`, `request_id`, and
+`schema_version` in the JSON envelope, plus matching identity headers. The
+browser aborts obsolete requests and rejects responses whose identity no longer
+matches its selected run. See [the stateless report API](docs/stateless-report-api.md)
+for invariants and operational details.
+
+Errors use a stable JSON shape:
+
+```json
+{
+  "schema_version": "report-api/v1",
+  "request_id": "...",
+  "error": {"code": "run_not_found", "message": "run 'example' was not found"}
+}
+```
+
+Invalid parameters return 400, unknown runs return 404, and unreadable or
+incomplete parsed data returns 422.
+
+**Snapshot maintenance:** inspection is dry-run by default. Collection takes an
+exclusive logs-directory lease and refuses to run while any `vine_report`
+process is serving that directory.
+
+```bash
+# Show what would be removed; retain the three most recently used revisions
+vine_report gc --logs-dir /path/to/logs --keep 3 --dry-run
+
+# Apply the same policy after stopping report servers
+vine_report gc --logs-dir /path/to/logs --keep 3 --apply
+```
+
+Health is intentionally lightweight:
+
+```bash
+curl http://127.0.0.1:9122/api/v1/health
+curl http://127.0.0.1:9122/api/v1/diagnostics
+```
 
 **HPC Environment Note:**
 - `vine_report` needs permission to bind a listening port.
@@ -273,6 +363,35 @@ vine-run-info/
 ```
 
 As long as `vine-logs` contains the files above, the other directories are managed by the tool.
+
+## Producer compatibility suite
+
+The parser supports logs from upstream cctools master and the vine-graph fork
+(see `docs/log-compatibility.md`). `scripts/run_examples.py` runs the
+workloads in `examples/workloads` (54 small TaskVine and vine_graph programs,
+21 of them `opt_*` workloads that turn on unusual Manager options such as SSL,
+passwords, monitoring, categories, mini tasks, many `tune()` knobs, and odd
+commands and outputs; files marked `# producers: vine-graph` run only on the
+fork), parses each run,
+and checks the result against ground truth from the transactions log and the
+program itself: parse status, dispatch counts and worker attribution, cores,
+final results and exit codes, workers, libraries and function calls, recovery
+tasks, worker-loss attempts, cache updates, transfer sources, checkpoints, and
+simulated losses.
+
+```bash
+cd /tmp
+python /path/to/taskvine-report-tool/scripts/run_examples.py --producer both \
+    --upstream-prefix /path/to/upstream-install --fork-root /path/to/vine-graph \
+    --jobs 3 --out /tmp/taskvine-report-examples
+```
+
+Ports 9700 and up are used, workers run in their own sessions and are killed
+at the end. Results are in `<out>/summary.json`. `manager_killed` is an
+expected `PARTIAL` (the Manager is killed). After changing
+`protocol.py`, rebuild the native classifier with
+`python setup.py build_ext --inplace`; a mismatch of `RULESET_VERSION`
+disables it (fail closed).
 
 ## Important Notes
 

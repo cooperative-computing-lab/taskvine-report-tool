@@ -1,5 +1,7 @@
+from src.vine_report.request_context import get_run_snapshot
 from src.utils import *
 from flask import Blueprint, jsonify, current_app, request
+import polars as pl
 
 worker_storage_consumption_bp = Blueprint(
     'worker_storage_consumption', __name__, url_prefix='/api'
@@ -25,16 +27,24 @@ def _sanitize_worker_storage_df(df):
     worker_cols = [col for col in df.columns if _is_worker_storage_column(col)]
     kept_columns = ["time"] + worker_cols
     dropped_columns = [col for col in df.columns if col not in kept_columns]
-    return df[kept_columns], dropped_columns
+    return df.select(kept_columns), dropped_columns
 
 def aggregate_storage_data(df):
-    if len(df.columns) <= 1:
+    worker_columns = [column for column in df.columns if column != 'time']
+    if not worker_columns:
         return []
-    df_indexed = df.set_index('time')
-    df_filled = df_indexed.ffill().fillna(0)
-    aggregated_series = df_filled.sum(axis=1)
-    aggregated = aggregated_series.reset_index()
-    aggregated.columns = ['time', 'total_storage']
+    aggregated = (
+        df.with_columns(
+            pl.col(worker_columns)
+            .cast(pl.Float64, strict=False)
+            .forward_fill()
+            .fill_null(0)
+        )
+        .select(
+            'time',
+            pl.sum_horizontal(worker_columns).alias('total_storage'),
+        )
+    )
     return extract_points_from_df(aggregated, 'time', 'total_storage')
 
 @worker_storage_consumption_bp.route('/worker-storage-consumption')
@@ -43,10 +53,10 @@ def get_worker_storage_consumption():
     try:
         accumulated = request.args.get('accumulated', 'false').lower() == 'true'
         
-        raw_df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_worker_storage_consumption)
+        raw_df = read_csv_frame(get_run_snapshot().csv_file_worker_storage_consumption)
         df, dropped_columns = _sanitize_worker_storage_df(raw_df)
         if dropped_columns:
-            current_app.config["RUNTIME_STATE"].log_info(
+            get_run_snapshot().log_info(
                 f"Ignoring non-worker storage columns: {dropped_columns}"
             )
         x_domain = get_current_time_domain()
@@ -87,5 +97,5 @@ def get_worker_storage_consumption():
             })
 
     except Exception as e:
-        current_app.config["RUNTIME_STATE"].log_error(f"Error in get_worker_storage_consumption: {e}")
+        get_run_snapshot().log_error(f"Error in get_worker_storage_consumption: {e}")
         return jsonify({'error': str(e)}), 500

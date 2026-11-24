@@ -1,7 +1,11 @@
-import { Toolbox } from './toolbox.js';
+import { Toolbox } from './toolbox.js?v=5.0';
+import { LineCursor } from './line_cursor.js?v=1.4';
+import { durationAxisSpec } from './time_format.js?v=1.0';
+import { hasPinnedTooltip, pinTooltip, unpinTooltip } from './tooltip_pin.js?v=1.1';
 
 let jsPDF = null;
 let svg2pdf = null;
+const MAX_ZOOM_SCALE = 20;
 
 async function ensurePdfDependencies() {
     if (!jsPDF) {
@@ -31,6 +35,7 @@ function _setupHoverSafetyNet() {
     if (_hoverSafetyNetBound) return;
     _hoverSafetyNetBound = true;
     document.addEventListener('mousemove', (event) => {
+        if (hasPinnedTooltip()) return;
         const tooltip = document.getElementById('vine-tooltip');
         if (!tooltip || tooltip.style.visibility !== 'visible') return;
         const el = document.elementFromPoint(event.clientX, event.clientY);
@@ -44,8 +49,14 @@ export class BaseModule {
         this.id = id;
         this.title = title;
         this.api_url = api_url;
+        this.endpointKind = 'charts';
 
         this._folder = null;
+        this._revision = null;
+        this._runGeneration = 0;
+        this._requestSequence = 0;
+        this._renderSequence = 0;
+        this._abortController = null;
         this._fetchDataParams = {}; // Parameters for fetchData calls
 
         this.svgContainer = null;
@@ -58,11 +69,11 @@ export class BaseModule {
         
         this.tooltip = null;
 
-        this.tickFontSize = 12;
-        this.padding = 40;
-        this.highlightColor = 'orange';
-        this.highlightRadius = 6;
-        this.highlightStrokeWidth = 3;
+        this.tickFontSize = '14px';
+        this.padding = 48;
+        this.highlightColor = '#d96f24';
+        this.highlightRadius = 5;
+        this.highlightStrokeWidth = 2;
 
         /* plotting parameters */
         this.svg = null;
@@ -110,10 +121,20 @@ export class BaseModule {
 
         this._hasScatterPlot = false;
         this._cdfMode = false;
+        this._lineCursor = null;
+        this._pinnedMark = null;
+        this._markInteractions = new WeakMap();
+        this._markEventsBound = false;
+        this._plotClipId = null;
     }
 
-    switchFolder(folder) {
+    switchFolder(folder, revision = null, generation = 0) {
+        this._abortController?.abort();
         this._folder = folder;
+        this._revision = revision;
+        this._runGeneration = generation;
+        this._requestSequence += 1;
+        this._renderSequence += 1;
         this._cdfMode = false;
         /* if the folder is switched, clear the plot */
         this.clearPlot();
@@ -127,19 +148,18 @@ export class BaseModule {
         section.innerHTML = `
         <div class="section-header" id="${this.id}-header">
             <h2 class="section-title">${this.title}</h2>
+            <div id="${this.id}-toolbox-container" class="toolbox-container"></div>
         </div>
       
         <div class="section-content">
             <div class="section-row top">
                 <div class="legend-container" id="${this.id}-legend"></div>
-                <div class="legend-placeholder"></div>
             </div>
       
             <div class="section-row bottom">
                 <div class="plotting-container" id="${this.id}-container">
                     <svg id="${this.id}-d3-svg" xmlns="http://www.w3.org/2000/svg"></svg>
                 </div>
-                <div id="${this.id}-toolbox-container" class="toolbox-container"></div>
             </div>
         </div>
       `;
@@ -174,11 +194,14 @@ export class BaseModule {
             return;
         }
         this.toolbox = new Toolbox({ id: `${this.id}-toolbox` });
+        this._bindMarkDelegation();
         _hoverInstances.add(this);
         _setupHoverSafetyNet();
     }
 
     _resetHoverState() {
+        if (hasPinnedTooltip()) return;
+        this._lineCursor?.hide();
         const tooltip = document.getElementById('vine-tooltip');
         if (tooltip) tooltip.style.visibility = 'hidden';
         if (!this.svgNode) return;
@@ -200,22 +223,79 @@ export class BaseModule {
     }
 
     async fetchDataAndPlot() {
+        const renderSequence = ++this._renderSequence;
+        this._clearModuleState();
         this.clearSVG();
         this.plotSpinner();
         try {
             const isReadyToPlot = await this.fetchData();
-            if (!isReadyToPlot) {
+            if (!isReadyToPlot || renderSequence !== this._renderSequence) {
                 return;
             }
             this._invokePlot();
+            if (this._globalTimeWindow) {
+                this.applyGlobalTimeWindow(...this._globalTimeWindow);
+            }
         } catch (error) {
+            if (error?.name === 'AbortError') return;
+            if (renderSequence !== this._renderSequence) return;
             console.error(`Error fetching data for module ${this.id}:`, error);
+            this._showModuleState('This chart could not be loaded. Retry or reload the run.', 'error');
         } finally {
             const existingSpinner = document.getElementById(`${this.id}-spinner`);
-            if (existingSpinner) {
+            if (existingSpinner && renderSequence === this._renderSequence) {
                 existingSpinner.remove();
             }
         }
+    }
+
+    _clearModuleState() {
+        document.getElementById(`${this.id}-module-state`)?.remove();
+    }
+
+    _showModuleState(message, kind = 'empty') {
+        this._clearModuleState();
+        const content = document.querySelector(`#${this.id} .section-content`);
+        if (!content) return;
+        const state = document.createElement('div');
+        state.id = `${this.id}-module-state`;
+        state.className = `module-state ${kind}`;
+        state.textContent = message;
+        content.appendChild(state);
+    }
+
+    _setDurationBottomAxis(domain, tickCount = 6) {
+        if (this.data?.axes?.x?.unit !== 'seconds') return false;
+        const axis = durationAxisSpec(domain, tickCount);
+        this.setBottomTickValues(axis.tickValues);
+        this.setBottomFormatter(axis.formatter);
+        return true;
+    }
+
+    applyGlobalTimeWindow(startPercent = 0, endPercent = 100) {
+        this._globalTimeWindow = [startPercent, endPercent];
+        const fullDomain = this.data?.x_domain;
+        if (!Array.isArray(fullDomain) || fullDomain.length !== 2 || this.bottomScaleType !== 'linear') {
+            return false;
+        }
+        const [fullMin, fullMax] = fullDomain.map(Number);
+        if (!Number.isFinite(fullMin) || !Number.isFinite(fullMax) || fullMax <= fullMin) {
+            return false;
+        }
+        const start = Math.max(0, Math.min(95, Number(startPercent))) / 100;
+        const end = Math.max(start + 0.01, Math.min(100, Number(endPercent))) / 100;
+        const span = fullMax - fullMin;
+        const domain = [fullMin + span * start, fullMin + span * end];
+        this.setBottomDomain(domain);
+        if (!this._setDurationBottomAxis(domain)) {
+            this.setBottomTickValues(this._dedupeTicksByFormatter(
+                this._computeLinearTicks(domain, 6), this.bottomFormatter
+            ));
+        }
+        this.clearSVG();
+        this._plotAxes();
+        this._invokePlot();
+        return true;
     }
 
     createToolboxItemDownloadSVG() {
@@ -281,6 +361,13 @@ export class BaseModule {
         }
     
         this.setBottomDomain([newMin, newMax]);
+
+        if (this._setDurationBottomAxis([newMin, newMax])) {
+            this.clearSVG();
+            this._plotAxes();
+            this._invokePlot();
+            return;
+        }
     
         const oldTicks = this.bottomTickValues;
     
@@ -518,6 +605,9 @@ export class BaseModule {
     }
 
     clearSVG() {
+        this.releasePinnedTooltip();
+        this._lineCursor?.destroy();
+        this._lineCursor = null;
         /* remove the node from the DOM */
         while (this.svgNode.firstChild) {
             this.svgNode.removeChild(this.svgNode.firstChild);
@@ -629,10 +719,15 @@ export class BaseModule {
         // Merge module params with any extra params (extra params take precedence)
         const allParams = { ...moduleParams, ...extraParams };
         
-        // Build query parameters starting with folder
-        const params = new URLSearchParams({
-            folder: this._folder
-        });
+        const requestFolder = this._folder;
+        const requestRevision = this._revision;
+        const requestGeneration = this._runGeneration;
+        const requestSequence = ++this._requestSequence;
+        this._abortController?.abort();
+        const controller = new AbortController();
+        this._abortController = controller;
+
+        const params = new URLSearchParams();
         
         // Add any extra parameters passed by subclasses
         // Support both simple key-value pairs and JSON-style objects
@@ -653,17 +748,34 @@ export class BaseModule {
             }
         });
         
-        const response = await fetch(`${this.api_url}?${params.toString()}`);
-        const data = await response.json();
+        const baseURL = requestRevision
+            ? `/api/v1/runs/${encodeURIComponent(requestFolder)}/revisions/${encodeURIComponent(requestRevision)}/${this.endpointKind}/${encodeURIComponent(this.id)}`
+            : this.api_url;
+        if (!requestRevision) params.set('folder', requestFolder);
+        const response = await fetch(`${baseURL}?${params.toString()}`, { signal: controller.signal });
+        const payload = await response.json();
+        const apiError = typeof payload?.error === 'object' ? payload.error.message : payload?.error;
+        const rawData = payload?.schema_version === 'report-api/v1' ? payload.data : payload;
+
+        const stale = controller.signal.aborted
+            || requestFolder !== this._folder
+            || requestRevision !== this._revision
+            || requestGeneration !== this._runGeneration
+            || requestSequence !== this._requestSequence
+            || (payload?.run_id && payload.run_id !== requestFolder)
+            || (payload?.revision && payload.revision !== requestRevision);
+        if (stale) return false;
+        const data = this.transformFetchedData(rawData);
         
-        if (!response.ok || !data || data.error) {
+        if (!response.ok || !data || apiError || data.error) {
             console.warn(
                 `Skipping plot for ${this.id} due to invalid backend response from ${this.api_url}`,
-                data
+                payload
             );
             this.clearLegend();
             this.clearToolbox();
             this.clearSVG();
+            this._showModuleState(apiError || data?.error || 'No compatible data is available for this chart.', 'empty');
             return false;
         }
 
@@ -684,6 +796,10 @@ export class BaseModule {
         return true;
     }
 
+    transformFetchedData(data) {
+        return data;
+    }
+
     plot() {}
 
     _initZoomTrackingAfterRender() {
@@ -700,6 +816,7 @@ export class BaseModule {
     
     _setupZoomAndScroll() {
         this._initZoomTrackingAfterRender();
+        this._ensureZoomControls();
         
         /* do not bind the handler multiple times */
         if (this._zoomHandlerInitialized) return;
@@ -709,46 +826,77 @@ export class BaseModule {
         this.svgNode.removeAttribute('height');
     
         this.svgContainer.addEventListener('wheel', (event) => {
-            if (event.ctrlKey) {
+            if (event.ctrlKey || event.metaKey) {
                 event.preventDefault();
-    
-                const zoomFactor = event.deltaY < 0 ? 1.05 : 0.95;
-                let newWidth = this.currentWidth * zoomFactor;
-                let newHeight = this.currentHeight * zoomFactor;
-
-                if (zoomFactor < 1 && (this.currentWidth <= this.originalWidth || this.currentHeight <= this.originalHeight)) {
-                    return;
-                }
-                
-                if (newWidth <= this.originalWidth || newHeight <= this.originalHeight) {
-                    newWidth = this.originalWidth;
-                    newHeight = this.originalHeight;
-                }                
-    
                 const rect = this.svgNode.getBoundingClientRect();
-                const mouseX = event.clientX - rect.left;
-                const mouseY = event.clientY - rect.top;
-                const scaleX = mouseX / rect.width;
-                const scaleY = mouseY / rect.height;
-    
-                this.svgNode.style.width = `${Math.round(newWidth)}px`;
-                this.svgNode.style.height = `${Math.round(newHeight)}px`;
-    
-                const newRect = this.svgNode.getBoundingClientRect();
-                const targetX = scaleX * newRect.width;
-                const targetY = scaleY * newRect.height;
-    
-                const offsetX = targetX - mouseX;
-                const offsetY = targetY - mouseY;
-    
-                this.svgContainer.scrollLeft += offsetX;
-                this.svgContainer.scrollTop += offsetY;
-    
-                this.currentWidth = newRect.width;
-                this.currentHeight = newRect.height;
-                  
+                this._applyZoom(event.deltaY < 0 ? 1.08 : 0.92, {
+                    x: event.clientX - rect.left,
+                    y: event.clientY - rect.top,
+                });
             }
         });
+    }
+
+    _applyZoom(factor, anchor = null) {
+        if (!this.svgNode || !this.originalWidth || !this.originalHeight) return;
+        const rect = this.svgNode.getBoundingClientRect();
+        const point = anchor || { x: rect.width / 2, y: rect.height / 2 };
+        const scaleX = rect.width ? point.x / rect.width : 0.5;
+        const scaleY = rect.height ? point.y / rect.height : 0.5;
+        const width = Math.min(this.originalWidth * MAX_ZOOM_SCALE, Math.max(this.originalWidth, this.currentWidth * factor));
+        const height = Math.min(this.originalHeight * MAX_ZOOM_SCALE, Math.max(this.originalHeight, this.currentHeight * factor));
+        if (width === this.currentWidth && height === this.currentHeight) return;
+
+        this.svgNode.style.width = `${Math.round(width)}px`;
+        this.svgNode.style.height = `${Math.round(height)}px`;
+        const next = this.svgNode.getBoundingClientRect();
+        this.svgContainer.scrollLeft += scaleX * next.width - point.x;
+        this.svgContainer.scrollTop += scaleY * next.height - point.y;
+        this.currentWidth = next.width;
+        this.currentHeight = next.height;
+        this._updateZoomControls();
+    }
+
+    _resetZoom() {
+        if (!this.svgNode) return;
+        this.svgNode.style.width = `${this.originalWidth}px`;
+        this.svgNode.style.height = `${this.originalHeight}px`;
+        this.svgContainer.scrollTo({ left: 0, top: 0 });
+        this.currentWidth = this.originalWidth;
+        this.currentHeight = this.originalHeight;
+        this._updateZoomControls();
+    }
+
+    _ensureZoomControls() {
+        const host = this.svgContainer.closest('.section-row.bottom') || this.svgContainer;
+        let controls = host.querySelector(':scope > .chart-zoom-controls');
+        if (!controls) {
+            controls = document.createElement('div');
+            controls.className = 'chart-zoom-controls';
+            controls.innerHTML = `
+                <span class="chart-zoom-hint">Ctrl/⌘ + scroll</span>
+                <button type="button" data-zoom="out" aria-label="Zoom out">−</button>
+                <button type="button" data-zoom="reset" aria-label="Reset zoom">100%</button>
+                <button type="button" data-zoom="in" aria-label="Zoom in">+</button>`;
+            controls.addEventListener('click', event => {
+                const action = event.target.closest('button')?.dataset.zoom;
+                if (action === 'in') this._applyZoom(1.2);
+                else if (action === 'out') this._applyZoom(1 / 1.2);
+                else if (action === 'reset') this._resetZoom();
+            });
+            host.appendChild(controls);
+        }
+        this._zoomControls = controls;
+        this._updateZoomControls();
+    }
+
+    _updateZoomControls() {
+        if (!this._zoomControls || !this.originalWidth) return;
+        const percent = Math.round(100 * this.currentWidth / this.originalWidth);
+        const reset = this._zoomControls.querySelector('[data-zoom="reset"]');
+        const out = this._zoomControls.querySelector('[data-zoom="out"]');
+        if (reset) reset.textContent = `${percent}%`;
+        if (out) out.disabled = percent <= 100;
     }
     
     
@@ -949,6 +1097,13 @@ export class BaseModule {
             .attr('preserveAspectRatio', 'xMidYMid meet')
             .append('g')
             .attr('transform', `translate(${margin.left}, ${margin.top})`);
+        this._plotClipId = `${this.id.replace(/[^a-zA-Z0-9_-]/g, '-')}-plot-clip-${this._renderSequence}`;
+        this.svg.append('defs')
+            .append('clipPath')
+            .attr('id', this._plotClipId)
+            .append('rect')
+            .attr('width', svgWidth)
+            .attr('height', svgHeight);
         
         /* plot the axes */
         if (this.topScaleType) {
@@ -982,11 +1137,6 @@ export class BaseModule {
     }
 
     plotPath(points, options = {}) {
-        const [xmin, xmax] = this.bottomDomain ?? [0, Infinity];
-        const [ymin, ymax] = this.leftDomain ?? [0, Infinity];
-
-        const filteredPoints = this._clipLineToRect(points, xmin, xmax, ymin, ymax);
-
         const {
             stroke = '#2077B4',
             strokeWidth = 1.5,
@@ -1007,7 +1157,7 @@ export class BaseModule {
             .curve(curveType);
 
         const pathElement = this.svg.append('path')
-            .datum(filteredPoints)
+            .datum(points)
             .attr('fill', 'none')
             .attr('stroke', stroke)
             .attr('stroke-width', strokeWidth)
@@ -1015,7 +1165,8 @@ export class BaseModule {
             .attr('data-original-stroke', stroke)
             .attr('data-original-stroke-width', strokeWidth)
             .attr('class', `${className} ${className}-${id}`)
-            .attr('id', id);
+            .attr('id', id)
+            .attr('clip-path', this._plotClipId ? `url(#${this._plotClipId})` : null);
 
         if (!disableHover) {
             pathElement
@@ -1054,9 +1205,133 @@ export class BaseModule {
         }
     }
 
-    plotHorizontalRect(x_start, x_width, y_start, y_height, fill, opacity, tooltipInnerHTML, className = '') {
+    installLineCursor(series, options = {}) {
+        this._lineCursor?.destroy();
+        this._lineCursor = new LineCursor({
+            svg: this.svg,
+            xScale: this.bottomScale,
+            yScale: this.leftScale,
+            series,
+            tooltip: document.getElementById('vine-tooltip'),
+            ...options,
+        });
+        this._lineCursor.mount();
+    }
+
+    _positionMarkTooltip(event) {
         const tooltip = document.getElementById('vine-tooltip');
-    
+        if (!tooltip) return;
+        const gap = 12;
+        const bounds = tooltip.getBoundingClientRect();
+        let left = event.clientX + gap;
+        if (left + bounds.width > window.innerWidth - 10) left = event.clientX - bounds.width - gap;
+        const top = Math.max(10, Math.min(event.clientY + gap, window.innerHeight - bounds.height - 10));
+        tooltip.style.left = `${Math.max(10, left)}px`;
+        tooltip.style.top = `${top}px`;
+    }
+
+    _showMarkTooltip(event, html, pinned = false) {
+        const tooltip = document.getElementById('vine-tooltip');
+        if (!tooltip || html == null) return;
+        tooltip.classList.remove('line-cursor-tooltip');
+        tooltip.classList.toggle('cursor-pinned', pinned);
+        tooltip.innerHTML = `${html}<div class="mark-tooltip-status">${pinned ? 'Pinned · Press Esc to release' : 'Click to pin'}</div>`;
+        tooltip.style.visibility = 'visible';
+        this._positionMarkTooltip(event);
+    }
+
+    _bindPinnableMark(selection, { tooltipHTML, highlight, restore, label }) {
+        selection
+            .attr('tabindex', 0)
+            .attr('role', 'button')
+            .attr('aria-pressed', 'false')
+            .attr('aria-label', label)
+            .attr('data-vine-mark', '')
+            .each((datum, index, nodes) => {
+                this._markInteractions.set(nodes[index], { tooltipHTML, highlight, restore });
+            });
+        return selection;
+    }
+
+    _bindMarkDelegation() {
+        if (this._markEventsBound || !this.svgNode) return;
+        this._markEventsBound = true;
+        const markAt = event => {
+            const node = event.target.closest?.('[data-vine-mark]');
+            if (!node || !this.svgNode.contains(node)) return null;
+            const interaction = this._markInteractions.get(node);
+            return interaction ? { node, interaction } : null;
+        };
+        const show = (event, node, interaction, pinned = false) => {
+            interaction.highlight(node);
+            this._showMarkTooltip(event, interaction.tooltipHTML(node.__data__), pinned);
+        };
+        const toggle = (event, node, interaction, position = event) => {
+            event.stopPropagation();
+            node.focus();
+            if (this._pinnedMark?.node === node) {
+                this.releasePinnedTooltip();
+                return;
+            }
+            if (this._pinnedMark) {
+                this._pinnedMark.restore(this._pinnedMark.node);
+                d3.select(this._pinnedMark.node).attr('aria-pressed', 'false').classed('is-pinned', false);
+            }
+            pinTooltip(this);
+            this._pinnedMark = { node, restore: interaction.restore };
+            d3.select(node).attr('aria-pressed', 'true').classed('is-pinned', true);
+            show(position, node, interaction, true);
+        };
+
+        this.svgNode.addEventListener('pointerover', event => {
+            const mark = markAt(event);
+            if (mark && !hasPinnedTooltip()) show(event, mark.node, mark.interaction);
+        });
+        this.svgNode.addEventListener('pointermove', event => {
+            if (markAt(event) && !hasPinnedTooltip()) this._positionMarkTooltip(event);
+        });
+        this.svgNode.addEventListener('pointerout', event => {
+            const mark = markAt(event);
+            if (!mark || hasPinnedTooltip()) return;
+            mark.interaction.restore(mark.node);
+            const tooltip = document.getElementById('vine-tooltip');
+            if (tooltip) tooltip.style.visibility = 'hidden';
+        });
+        this.svgNode.addEventListener('click', event => {
+            const mark = markAt(event);
+            if (mark) toggle(event, mark.node, mark.interaction);
+        });
+        this.svgNode.addEventListener('keydown', event => {
+            const mark = markAt(event);
+            if (!mark) return;
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                const bounds = mark.node.getBoundingClientRect();
+                toggle(event, mark.node, mark.interaction, {
+                    clientX: bounds.left + bounds.width / 2,
+                    clientY: bounds.top + bounds.height / 2,
+                });
+            } else if (event.key === 'Escape') {
+                this.releasePinnedTooltip();
+            }
+        });
+    }
+
+    releasePinnedTooltip() {
+        if (!this._pinnedMark) return;
+        const { node, restore } = this._pinnedMark;
+        this._pinnedMark = null;
+        restore(node);
+        d3.select(node).attr('aria-pressed', 'false').classed('is-pinned', false);
+        unpinTooltip(this);
+        const tooltip = document.getElementById('vine-tooltip');
+        if (tooltip) {
+            tooltip.style.visibility = 'hidden';
+            tooltip.classList.remove('cursor-pinned');
+        }
+    }
+
+    plotHorizontalRect(x_start, x_width, y_start, y_height, fill, opacity, tooltipInnerHTML, className = '') {
         const [xmin, xmax] = this.bottomDomain ?? [null, null];
         const [ymin, ymax] = this.leftDomain ?? [null, null];
     
@@ -1080,7 +1355,7 @@ export class BaseModule {
 
         if (y === undefined || Number.isNaN(y) || width <= 0 || height <= 0) return;
     
-        this.svg.append('rect')
+        const rect = this.svg.append('rect')
             .attr('x', x)
             .attr('y', y)
             .attr('width', width)
@@ -1089,26 +1364,16 @@ export class BaseModule {
             .attr('opacity', opacity)
             .attr('data-original-fill', fill)
             .attr('data-original-opacity', opacity)
-            .attr('class', className)
-            .on('mouseover', (event) => {
-                d3.select(event.currentTarget)
-                    .attr('fill', this.highlightColor);
-                tooltip.innerHTML = tooltipInnerHTML;
-                tooltip.style.visibility = 'visible';
-                tooltip.style.top = (event.pageY + 10) + 'px';
-                tooltip.style.left = (event.pageX + 10) + 'px';
-            })
-            .on('mouseout', (event) => {
-                d3.select(event.currentTarget)
-                    .attr('fill', fill)
-                    .attr('opacity', opacity);
-                tooltip.style.visibility = 'hidden';
-            });
+            .attr('class', className);
+        this._bindPinnableMark(rect, {
+            tooltipHTML: () => tooltipInnerHTML,
+            highlight: node => d3.select(node).attr('fill', this.highlightColor),
+            restore: node => d3.select(node).attr('fill', fill).attr('opacity', opacity),
+            label: 'Task bar; click to pin details',
+        });
     }
 
     plotVerticalRect(xStart, xWidth, yHeight, fill = 'steelblue', opacity = 1, tooltipInnerHTML = null, className = '') {
-        const tooltip = document.getElementById('vine-tooltip');
-    
         const [ymin, ymax] = this.leftDomain ?? [null, null];
         if (ymin === null || ymax === null) {
             console.error('Domain values (ymin, ymax) not set, skipping rectangle plot');
@@ -1129,7 +1394,7 @@ export class BaseModule {
             height = this.leftScale(yHeight) - this.leftScale(ymin);
         }
 
-        this.svg.append('rect')
+        const rect = this.svg.append('rect')
             .attr('x', x)
             .attr('y', y)
             .attr('width', width)
@@ -1138,21 +1403,13 @@ export class BaseModule {
             .attr('opacity', opacity)
             .attr('data-original-fill', fill)
             .attr('data-original-opacity', opacity)
-            .attr('class', className)
-            .on('mouseover', (event) => {
-                d3.select(event.currentTarget)
-                    .attr('fill', this.highlightColor);
-                tooltip.innerHTML = tooltipInnerHTML;
-                tooltip.style.visibility = 'visible';
-                tooltip.style.top = (event.pageY + 10) + 'px';
-                tooltip.style.left = (event.pageX + 10) + 'px';
-            })
-            .on('mouseout', (event) => {
-                d3.select(event.currentTarget)
-                    .attr('fill', fill)
-                    .attr('opacity', opacity);
-                tooltip.style.visibility = 'hidden';
-            });
+            .attr('class', className);
+        this._bindPinnableMark(rect, {
+            tooltipHTML: () => tooltipInnerHTML,
+            highlight: node => d3.select(node).attr('fill', this.highlightColor),
+            restore: node => d3.select(node).attr('fill', fill).attr('opacity', opacity),
+            label: 'Bar; click to pin details',
+        });
     }
     
     /* calculate the margin for each axis */
@@ -1409,7 +1666,9 @@ export class BaseModule {
         }
     
         const link = document.createElement('a');
-        link.href = `${this.api_url}/export-csv`;
+        link.href = this._revision
+            ? `/api/v1/runs/${encodeURIComponent(this._folder)}/revisions/${encodeURIComponent(this._revision)}/exports/${encodeURIComponent(this.id)}.csv`
+            : `${this.api_url}/export-csv?folder=${encodeURIComponent(this._folder)}`;
         link.download = filename;
         document.body.appendChild(link);
         link.click();
@@ -1420,8 +1679,17 @@ export class BaseModule {
         if (this._boundResize) {
             window.removeEventListener('resize', this._boundResize);
         }
-        this._boundResize = _.debounce(() => this._invokePlot(), 300);
+        this._boundResize = _.debounce(() => this.resizePlot(), 300);
         window.addEventListener('resize', this._boundResize);
+    }
+
+    resizePlot() {
+        if (!this.data || !this.svgContainer?.isConnected) return;
+        this.clearSVG();
+        this._setAxesFromFetchedData();
+        this._plotAxes();
+        this._setupZoomAndScroll();
+        this._invokePlot();
     }
 
 
@@ -1437,45 +1705,6 @@ export class BaseModule {
     }
 
     initLegend() {}
-
-    /**
-     * Clip line points to rect [xmin,xmax] x [ymin,ymax], adding interpolated boundary
-     * points when segments cross any edge so the line extends to the visible edges.
-     */
-    _clipLineToRect(points, xmin, xmax, ymin, ymax) {
-        if (!points || points.length < 2) return points || [];
-        if (xmin == null || xmax == null || ymin == null || ymax == null) return points;
-        const result = [];
-        const inside = (x, y) => x >= xmin && x <= xmax && y >= ymin && y <= ymax;
-        const valid = (p) => Array.isArray(p) && p.length >= 2 && typeof p[0] === 'number' &&
-            typeof p[1] === 'number' && !Number.isNaN(p[0]) && !Number.isNaN(p[1]) && p[1] !== null;
-        for (let i = 0; i < points.length; i++) {
-            const p = points[i];
-            if (valid(p) && inside(p[0], p[1])) result.push([p[0], p[1]]);
-        }
-        for (let i = 0; i < points.length - 1; i++) {
-            const [x1, y1] = points[i];
-            const [x2, y2] = points[i + 1];
-            if (!valid(points[i]) || !valid(points[i + 1])) continue;
-            const dx = x2 - x1, dy = y2 - y1;
-            const addAtT = (t) => {
-                if (t > 1e-9 && t < 1 - 1e-9) {
-                    const x = x1 + t * dx, y = y1 + t * dy;
-                    if (x >= xmin && x <= xmax && y >= ymin && y <= ymax) result.push([x, y]);
-                }
-            };
-            if (Math.abs(dx) > 1e-12) {
-                addAtT((xmin - x1) / dx);
-                addAtT((xmax - x1) / dx);
-            }
-            if (Math.abs(dy) > 1e-12) {
-                addAtT((ymin - y1) / dy);
-                addAtT((ymax - y1) / dy);
-            }
-        }
-        const sorted = result.sort((a, b) => a[0] - b[0]);
-        return sorted.filter((p, i) => i === 0 || Math.abs(p[0] - sorted[i - 1][0]) > 1e-9 || Math.abs(p[1] - sorted[i - 1][1]) > 1e-9);
-    }
 
     _filterPoints(points) {
         const [xmin, xmax] = this.bottomDomain ?? [null, null];
@@ -1497,8 +1726,6 @@ export class BaseModule {
             className = 'data-point'
         } = options;
     
-        const tooltip = document.getElementById('vine-tooltip');
-    
         /** get xmin and xmax */
         const [xmin, xmax] = this.bottomDomain ?? [null, null];
         const [ymin, ymax] = this.leftDomain ?? [null, null];
@@ -1511,7 +1738,7 @@ export class BaseModule {
 
         const filteredPoints = this._filterPoints(points);
     
-        this.svg.selectAll(`circle.${className}`)
+        const circles = this.svg.selectAll(`circle.${className}`)
             .data(filteredPoints)
             .enter()
             .append('circle')
@@ -1521,30 +1748,15 @@ export class BaseModule {
             .attr('r', radius)
             .attr('fill', color)
             .attr('data-original-fill', color)
-            .attr('data-original-r', radius)
-            .on('mouseover', (event, d) => {
-                d3.select(event.currentTarget)
-                    .attr('fill', this.highlightColor)
-                    .attr('r', radius * 4);
-    
-                if (tooltipFormatter) {
-                    tooltip.innerHTML = tooltipFormatter(d);
-                    tooltip.style.visibility = 'visible';
-                    tooltip.style.top = (event.pageY + 10) + 'px';
-                    tooltip.style.left = (event.pageX + 10) + 'px';
-                }
-            })
-            .on('mousemove', (event) => {
-                tooltip.style.top = (event.pageY + 10) + 'px';
-                tooltip.style.left = (event.pageX + 10) + 'px';
-            })
-            .on('mouseout', (event) => {
-                d3.select(event.currentTarget)
-                    .attr('fill', color)
-                    .attr('r', radius);
-    
-                tooltip.style.visibility = 'hidden';
+            .attr('data-original-r', radius);
+        if (tooltipFormatter) {
+            this._bindPinnableMark(circles, {
+                tooltipHTML: tooltipFormatter,
+                highlight: node => d3.select(node).attr('fill', this.highlightColor).attr('r', radius * 4),
+                restore: node => d3.select(node).attr('fill', color).attr('r', radius),
+                label: 'Data point; click to pin details',
             });
+        }
     }
     
     _queryAllLegendCheckboxes() {
@@ -1583,8 +1795,9 @@ export class BaseModule {
     }
 
     _getPointsForCdf() {
-        const pts = this.data?.['points'] ?? this.data?.points;
-        return Array.isArray(pts) ? pts : [];
+        if (Array.isArray(this.data?.points)) return this.data.points;
+        if (!Array.isArray(this.data?.series)) return [];
+        return this.data.series.flatMap(series => Array.isArray(series.points) ? series.points : []);
     }
 
     _transformToCdfPoints(points, numPercentiles = 100) {
@@ -1609,13 +1822,14 @@ export class BaseModule {
         const xMax = Math.max(...xs);
         const xDomain = xMin === xMax ? [xMin - 0.5, xMax + 0.5] : [xMin, xMax];
         this.setBottomDomain(xDomain);
-        const numTicks = 5;
-        const tickValues = uniqueXs.length <= numTicks
-            ? uniqueXs
-            : this._computeLinearTicks(xDomain, numTicks);
-        this.setBottomTickValues(tickValues);
         const origYFormatter = this.data?.['y_tick_formatter'] ? eval(this.data['y_tick_formatter']) : (d => String(d));
-        this.setBottomFormatter(origYFormatter);
+        const isDuration = this.data?.axes?.y?.unit === 'seconds';
+        const durationAxis = isDuration ? durationAxisSpec(xDomain, 5) : null;
+        const tickValues = durationAxis?.tickValues || (uniqueXs.length <= 5
+            ? uniqueXs
+            : this._computeLinearTicks(xDomain, 5));
+        this.setBottomTickValues(tickValues);
+        this.setBottomFormatter(durationAxis?.formatter || origYFormatter);
         this.setLeftDomain([0, 1]);
         this.setLeftTickValues([0, 0.25, 0.5, 0.75, 1]);
         this.setLeftFormatter(d => (d * 100).toFixed(0) + '%');
@@ -1645,6 +1859,18 @@ export class BaseModule {
             color: 'steelblue',
             className: 'cdf-point',
             tooltipFormatter: d => `Value: ${origYFormatter(d[0])}<br>CDF: ${(d[1] * 100).toFixed(0)}%`,
+        });
+        this.installLineCursor([{
+            id: `${this.id}-cdf`,
+            name: 'CDF',
+            color: 'steelblue',
+            points: cdfPts,
+        }], {
+            interpolation: 'linear',
+            xFormatter: origYFormatter,
+            yFormatter: d => `${(d * 100).toFixed(0)}%`,
+            xLabel: this.data?.axes?.y?.label || 'Value',
+            xUnit: this.data?.axes?.y?.unit,
         });
     }
 
@@ -1758,7 +1984,6 @@ export class BaseModule {
         const {
             singleSelect = false,
             onToggle = () => {},
-            columnsPerRow = 6,
             checkboxName = 'legend-checkbox',
         } = options;
 
@@ -1766,78 +1991,50 @@ export class BaseModule {
         this.legendCheckboxName = checkboxName;
         this.legendSingleSelect = singleSelect;
 
-        const actualColumns = Math.min(columnsPerRow, items.length);
-        for (let i = 0; i < items.length; i += actualColumns) {
-            const rowItems = items.slice(i, i + actualColumns);
-            const row = this.legendContainer.append('div')
-                .attr('class', 'legend-row')
-                .style('display', 'grid')
-                .style('grid-template-columns', `repeat(${actualColumns}, 1fr)`)
-                .style('gap', '0px')
-                .style('margin-bottom', '5px')
-                .style('width', '100%');
-
-            rowItems.forEach(item => {
-                const uniquePrefix = (this.legendContainer && this.legendContainer.id) ? this.legendContainer.id : (this.id || 'legend');
-                const safeCheckboxId = `legend-checkbox-${uniquePrefix}-${item.id}`;
-                const legendItem = row.append('div')
-                    .attr('class', 'legend-item')
-                    .style('display', 'flex')
-                    .style('align-items', 'center')
-                    .style('box-sizing', 'border-box')
-                    .style('min-width', 0)
-                    .style('padding', '2px 0')
-                    .style('cursor', 'pointer')
-                    .on('click', function(e) {
-                        if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'LABEL') {
-                            const checkbox = this.querySelector('input[type="checkbox"]');
-                            if (checkbox) {
-                                checkbox.checked = !checkbox.checked;
-                                checkbox.dispatchEvent(new Event('change', { bubbles: true }));
-                            }
+        const row = this.legendContainer.append('div').attr('class', 'legend-row');
+        items.forEach(item => {
+            const uniquePrefix = (this.legendContainer && this.legendContainer.id) ? this.legendContainer.id : (this.id || 'legend');
+            const safeCheckboxId = `legend-checkbox-${uniquePrefix}-${item.id}`;
+            const legendItem = row.append('div')
+                .attr('class', 'legend-item')
+                .on('click', function(e) {
+                    if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'LABEL') {
+                        const checkbox = this.querySelector('input[type="checkbox"]');
+                        if (checkbox) {
+                            checkbox.checked = !checkbox.checked;
+                            checkbox.dispatchEvent(new Event('change', { bubbles: true }));
                         }
-                    });
+                    }
+                });
 
-                legendItem.append('input')
-                    .attr('type', 'checkbox')
-                    .attr('name', this.legendCheckboxName)
-                    .attr('id', item.id)
-                    .property('checked', item.checked !== false)    /* default checked unless this field is specified as false */
-                    .style('accent-color', item.color || '#666')
-                    .on('click', function(e) { e.stopPropagation(); })
-                    .on('change', (event) => {
-                        const checkbox = event.currentTarget;
-                        const visible = checkbox.checked;
-                        onToggle(item.id, visible);
+            legendItem.append('input')
+                .attr('type', 'checkbox')
+                .attr('name', this.legendCheckboxName)
+                .attr('id', item.id)
+                .property('checked', item.checked !== false)    /* default checked unless this field is specified as false */
+                .style('accent-color', item.color || '#666')
+                .on('click', function(e) { e.stopPropagation(); })
+                .on('change', (event) => {
+                    const checkbox = event.currentTarget;
+                    const visible = checkbox.checked;
+                    onToggle(item.id, visible);
                     
-                        if (this.legendSingleSelect && visible) {
-                            this._queryAllLegendCheckboxes()
-                                .each(function () {
-                                    if (this !== checkbox) {
-                                        this.checked = false;
-                                    }
-                                });
-                        }
-                    });   
+                    if (this.legendSingleSelect && visible) {
+                        this._queryAllLegendCheckboxes()
+                            .each(function () {
+                                if (this !== checkbox) {
+                                    this.checked = false;
+                                }
+                            });
+                    }
+                });
 
-                legendItem.append('label')
-                    .attr('for', item.id)
-                    .attr('class', 'legend-label')
-                    .text(item.label)
-                    .on('click', function(e) { e.stopPropagation(); });
-            });
-        }
-        setTimeout(() => {
-            const legendNode = this.legendContainer.node();
-            const items = legendNode.querySelectorAll('.legend-item');
-            let maxItemWidth = 0;
-            items.forEach(item => {
-                maxItemWidth = Math.max(maxItemWidth, item.scrollWidth);
-            });
-            const cellWidth = maxItemWidth + 20;
-            const minWidth = actualColumns * cellWidth;
-            this.legendContainer.selectAll('.legend-row').style('min-width', `${minWidth}px`);
-        }, 0);
+            legendItem.append('label')
+                .attr('for', item.id)
+                .attr('class', 'legend-label')
+                .text(item.label)
+                .on('click', function(e) { e.stopPropagation(); });
+        });
     }
 
     createLegendGroup(groups, options = {}) {

@@ -1,4 +1,7 @@
 import re
+
+
+IP_PORT_RE = re.compile(r"(\d+\.\d+\.\d+\.\d+):(\d+)")
 import json
 from bitarray import bitarray
 
@@ -24,6 +27,8 @@ class WorkerInfo:
         self.time_disconnected = []
         self.coremap = None
         self.is_checkpoint_worker = False
+        # True between a simulated loss request and the worker's answer (vine-graph fork).
+        self.losing = False
 
         # task info
         self.tasks_completed = []
@@ -164,8 +169,7 @@ class WorkerInfo:
 
     @staticmethod
     def extract_ip_port_from_string(string):
-        IP_PORT_PATTERN = re.compile(r"(\d+\.\d+\.\d+\.\d+):(\d+)")
-        match = IP_PORT_PATTERN.search(string)
+        match = IP_PORT_RE.search(string)
         if match:
             return match.group(1), int(match.group(2))
         return None, None

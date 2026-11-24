@@ -1,82 +1,225 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TaskVine Report Tool</title>
-
-    <!-- icon -->
+    <meta name="theme-color" content="#f6f6f4">
+    <title>TaskVine Report</title>
     <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
-    
-    <!-- import d3.js -->
+
     <script src="https://d3js.org/d3.v7.min.js"></script>
-    
-    <!-- import jquery -->
     <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
-    
-    <!-- import datatables -->
     <script src="https://cdn.datatables.net/2.0.8/js/dataTables.min.js"></script>
     <script src="https://cdn.datatables.net/fixedheader/4.0.1/js/dataTables.fixedHeader.js"></script>
     <script src="https://cdn.datatables.net/fixedcolumns/5.0.1/js/dataTables.fixedColumns.js"></script>
-    
-    <!-- import axios -->
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-    
-    <!-- import lodash -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
-
-    <!-- parse csv files -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
-    
-    <!-- import css files -->
-    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/2.0.8/css/dataTables.dataTables.min.css">
-    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/fixedheader/4.0.1/css/fixedHeader.bootstrap.css">
-    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/fixedcolumns/5.0.1/css/fixedColumns.bootstrap.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/sidebar.css') }}?v=1.0">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/content.css') }}?v=1.0">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/report.css') }}?v=1.0">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/toolbox.css') }}?v=1.0">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/legend.css') }}?v=1.0">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/section.css') }}?v=1.0">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/support.css') }}?v=1.0">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/tables.css') }}?v=1.0">        
 
-    <!-- import js modules -->
-    <script src="{{ url_for('static', filename='js/modules/base.js') }}" type="module"></script>
-    <script src="{{ url_for('static', filename='js/modules/configs.js') }}" type="module"></script>
-    <script src="{{ url_for('static', filename='js/modules/log_manager.js') }}" type="module"></script>
-    <script src="{{ url_for('static', filename='js/main.js') }}" type="module"></script>
-
+    <link rel="stylesheet" href="https://cdn.datatables.net/2.0.8/css/dataTables.dataTables.min.css">
+    <link rel="stylesheet" href="https://cdn.datatables.net/fixedheader/4.0.1/css/fixedHeader.bootstrap.css">
+    <link rel="stylesheet" href="https://cdn.datatables.net/fixedcolumns/5.0.1/css/fixedColumns.bootstrap.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/report.css') }}?v=2.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/toolbox.css') }}?v=2.1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/legend.css') }}?v=2.2">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/section.css') }}?v=2.1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tables.css') }}?v=2.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=6.3">
 </head>
 <body>
-    <div id="vine-tooltip" class="tooltip"></div>  
-    <div id="sidebar">
-        <div id="sidebar-logo-container">
-            <img src="../static/imgs/taskvine_icon.svg" alt="Logo" id="sidebar-logo">
-            <div id="sidebar-logo-descripiton">
-                <p id="taskvine-text">TaskVine</p>
-                <p id="taskvine-version">V8.0.0</p>
-            </div>
-        </div>
+    <div id="vine-tooltip" class="tooltip" role="tooltip"></div>
 
-        <div id="log-selector-div">
-            <select id="log-selector">
-                {% for folder in log_folders %}
-                    <option value="{{ folder }}">{{ folder }}</option>
-                {% endfor %}
-            </select>
-            <button id="reload-button" class="reload-button" title="Reload current log">
-                <svg viewBox="0 0 24 24" width="24" height="24">
-                    <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
-                </svg>
+    <aside class="app-sidebar" id="app-sidebar">
+        <a class="brand" href="#overview" aria-label="TaskVine Report home">
+            <span class="brand-mark"><img src="{{ url_for('static', filename='imgs/taskvine_icon.svg') }}" alt=""></span>
+            <span class="brand-copy">
+                <strong>TaskVine</strong>
+            </span>
+        </a>
+
+        <nav class="primary-nav" aria-label="Report sections">
+            <button class="nav-item active" data-view="overview" type="button">
+                <span class="nav-icon">⌂</span><span>Overview</span>
             </button>
+            <button class="nav-item" data-view="tasks" type="button">
+                <span class="nav-icon">▤</span><span>Tasks</span>
+            </button>
+            <button class="nav-item" data-view="workers" type="button">
+                <span class="nav-icon">◇</span><span>Workers</span>
+            </button>
+            <button class="nav-item" data-view="transfers" type="button">
+                <span class="nav-icon">⇄</span><span>Transfers</span>
+            </button>
+            <button class="nav-item" data-view="files" type="button">
+                <span class="nav-icon">▱</span><span>Files</span>
+            </button>
+
+            <button class="nav-item nav-separated" data-view="explorer" type="button">
+                <span class="nav-icon">⌕</span><span>Explorer</span>
+            </button>
+        </nav>
+
+    </aside>
+
+    <main class="app-main">
+        <header class="topbar">
+            <button id="mobile-menu" class="icon-button mobile-only" type="button" aria-label="Toggle menu">☰</button>
+            <div class="run-control">
+                <label for="log-selector">Active run</label>
+                <select id="log-selector" aria-label="Select active run">
+                    <option value="">Select a run</option>
+                    {% for folder in log_folders %}
+                    <option value="{{ folder }}">{{ folder }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="topbar-actions">
+                <button id="auto-refresh-button" class="button button-secondary live-button" type="button" aria-pressed="true" title="Automatic updates enabled">
+                    <span class="live-dot" aria-hidden="true"></span><span class="button-label">Live</span>
+                </button>
+                <button id="reload-button" class="button button-secondary" type="button" title="Reload current run">
+                    <span class="button-icon" aria-hidden="true">
+                        <svg viewBox="0 0 16 16" focusable="false">
+                            <path d="M13.2 5.3A5.5 5.5 0 1 0 13 11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            <path d="M10.4 5.3h2.8V2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </span><span class="button-label">Reload</span>
+                </button>
+                <button id="share-button" class="button button-secondary" type="button">
+                    <span class="button-icon">↗</span><span class="button-label">Share view</span>
+                </button>
+                <button id="compare-button" class="button button-primary" type="button">Compare runs</button>
+            </div>
+        </header>
+
+        <div id="global-progress" class="global-progress" aria-hidden="true"><span></span></div>
+        <div id="app-banner" class="app-banner hidden" role="status"></div>
+
+        <div id="content" class="workspace">
+            <section id="view-overview" class="app-view active" data-view="overview">
+                <div class="page-heading">
+                    <div>
+                        <h1 id="overview-title">Choose a run to begin</h1>
+                        <p id="overview-subtitle">Select a run to view its key metrics.</p>
+                    </div>
+                    <div class="health-badge neutral" id="health-badge"><span></span><strong>No run selected</strong></div>
+                </div>
+
+                <div id="overview-empty" class="empty-hero">
+                    <div class="empty-orbit"><span>⌁</span></div>
+                    <h2>Select a workflow run</h2>
+                    <p>Choose a parsed TaskVine run to review health, bottlenecks, and runtime details.</p>
+                </div>
+
+                <div id="overview-dashboard" class="overview-dashboard hidden">
+                    <div class="kpi-grid" id="kpi-grid">
+                        <article class="kpi-card"><div class="kpi-top">Application tasks</div><strong id="kpi-tasks">—</strong><small id="kpi-throughput">—</small></article>
+                        <article class="kpi-card"><div class="kpi-top">Success rate</div><strong id="kpi-success">—</strong><small id="kpi-failures">—</small></article>
+                        <article class="kpi-card"><div class="kpi-top">Wall time</div><strong id="kpi-duration">—</strong><small id="kpi-execution">—</small></article>
+                        <article class="kpi-card"><div class="kpi-top">Peak workers</div><strong id="kpi-workers">—</strong><small id="kpi-worker-total">—</small></article>
+                        <article class="kpi-card"><div class="kpi-top">Data moved</div><strong id="kpi-transfer">—</strong><small id="kpi-files">—</small></article>
+                        <article class="kpi-card"><div class="kpi-top">Peak storage</div><strong id="kpi-storage">—</strong><small id="kpi-created">—</small></article>
+                    </div>
+
+                    <div class="overview-grid">
+                        <article class="panel panel-findings">
+                            <div class="panel-heading"><h2>What needs attention</h2></div>
+                            <div id="findings-list" class="findings-list"></div>
+                        </article>
+                    </div>
+
+                    <div class="overview-grid overview-grid-lower">
+                        <article class="panel">
+                            <div class="panel-heading"><h2>Execution distribution</h2><button class="text-button" data-view-target="tasks">View tasks →</button></div>
+                            <div id="latency-bars" class="latency-bars"></div>
+                        </article>
+                        <article class="panel">
+                            <div class="panel-heading"><h2>Slowest tasks</h2><button class="text-button" data-view-target="explorer">View all →</button></div>
+                            <div id="slow-task-list" class="compact-task-list"></div>
+                        </article>
+                    </div>
+                </div>
+            </section>
+
+            <section id="view-tasks" class="app-view analytics-view" data-view="tasks">
+                <div class="page-heading compact"><h1>Tasks</h1></div>
+                <div class="time-filter" data-time-filter>
+                    <div><strong>Time range</strong></div>
+                    <label>Start <input class="time-start" type="range" min="0" max="95" value="0"></label>
+                    <label>End <input class="time-end" type="range" min="5" max="100" value="100"></label>
+                    <output class="time-output">0% — 100%</output>
+                    <button class="button button-tertiary time-reset" type="button">Reset</button>
+                </div>
+                <div class="module-grid" id="modules-tasks"></div>
+            </section>
+
+            <section id="view-workers" class="app-view analytics-view" data-view="workers">
+                <div class="page-heading compact"><h1>Workers</h1></div>
+                <div class="time-filter" data-time-filter></div>
+                <div class="module-grid" id="modules-workers"></div>
+            </section>
+
+            <section id="view-transfers" class="app-view analytics-view" data-view="transfers">
+                <div class="page-heading compact"><h1>Transfers</h1></div>
+                <div class="time-filter" data-time-filter></div>
+                <div class="module-grid" id="modules-transfers"></div>
+            </section>
+
+            <section id="view-files" class="app-view analytics-view" data-view="files">
+                <div class="page-heading compact"><h1>Files</h1></div>
+                <div class="module-grid" id="modules-files"></div>
+            </section>
+
+            <section id="view-explorer" class="app-view" data-view="explorer">
+                <div class="page-heading compact explorer-heading">
+                    <h1 id="explorer-title">Task Explorer</h1>
+                    <div class="explorer-tabs" role="tablist" aria-label="Explorer entity">
+                        <button class="active" data-explorer="tasks" role="tab" aria-selected="true" type="button">Tasks</button>
+                        <button data-explorer="files" role="tab" aria-selected="false" type="button">Files</button>
+                        <button data-explorer="workers" role="tab" aria-selected="false" type="button">Workers</button>
+                    </div>
+                </div>
+                <div class="explorer-toolbar panel">
+                    <div class="search-box"><span>⌕</span><input id="explorer-search" type="search" placeholder="Search task ID, worker, category, or file…"></div>
+                    <select id="explorer-filter" aria-label="Filter explorer results"></select>
+                    <button id="explorer-search-button" class="button button-primary" type="button">Search</button>
+                    <span id="explorer-result-count" class="result-count"></span>
+                </div>
+                <div class="panel table-panel">
+                    <div id="explorer-table-state" class="inline-state">Select a run to inspect entities.</div>
+                    <div class="table-scroll">
+                        <table class="task-table" id="explorer-table">
+                            <thead></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                    <div class="explorer-pagination">
+                        <button id="explorer-prev" class="button button-tertiary" type="button">Previous</button>
+                        <span id="explorer-page"></span>
+                        <button id="explorer-next" class="button button-tertiary" type="button">Next</button>
+                    </div>
+                </div>
+            </section>
+
         </div>
+    </main>
 
-    </div>
- 
-    <div id="content">
+    <div id="modal-backdrop" class="modal-backdrop hidden"></div>
+    <section id="compare-drawer" class="side-drawer compare-drawer" aria-hidden="true">
+        <div class="drawer-header"><h2>Compare runs</h2><button class="icon-button drawer-close" type="button" aria-label="Close">×</button></div>
+        <p class="drawer-intro">Choose up to four runs. The active run is the baseline.</p>
+        <div id="compare-run-options" class="compare-run-options"></div>
+        <button id="run-comparison" class="button button-primary button-full" type="button">Run comparison</button>
+        <div id="comparison-results" class="comparison-results"></div>
+    </section>
 
-    </div>
+    <section id="entity-drawer" class="side-drawer entity-drawer" aria-hidden="true">
+        <div class="drawer-header"><h2 id="entity-drawer-title">Details</h2><button class="icon-button drawer-close" type="button" aria-label="Close">×</button></div>
+        <div id="entity-drawer-body" class="task-detail-body"></div>
+    </section>
 
+    <div id="toast-region" class="toast-region" aria-live="polite"></div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}?v=7.0" type="module"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-import { BaseModule } from './base.js';
+import { BaseModule } from './base.js?v=6.3';
 
 export class TaskSubgraphsModule extends BaseModule {
     constructor(id, title, api_url) {
@@ -62,11 +62,12 @@ export class TaskSubgraphsModule extends BaseModule {
 
         try {
             const params = this.buildSearchParams({ subgraph_id: 0, filename: filename.trim() });
-            const response = await fetch(`${this.api_url}?${params.toString()}`);
-            const data = await response.json();
+            const response = await fetch(`${this.searchAPIURL()}?${params.toString()}`);
+            const payload = await response.json();
+            const data = payload?.schema_version === 'report-api/v1' ? payload.data : payload;
             
             if (!response.ok) {
-                const errorMsg = data.error || `HTTP ${response.status}: ${response.statusText}`;
+                const errorMsg = payload?.error?.message || data?.error || `HTTP ${response.status}: ${response.statusText}`;
                 alert(`Error: ${errorMsg}`);
                 return;
             }
@@ -104,11 +105,12 @@ export class TaskSubgraphsModule extends BaseModule {
 
         try {
             const params = this.buildSearchParams({ subgraph_id: 0, task_id: numericTaskId.toString() });
-            const response = await fetch(`${this.api_url}?${params.toString()}`);
-            const data = await response.json();
+            const response = await fetch(`${this.searchAPIURL()}?${params.toString()}`);
+            const payload = await response.json();
+            const data = payload?.schema_version === 'report-api/v1' ? payload.data : payload;
             
             if (!response.ok) {
-                const errorMsg = data.error || `HTTP ${response.status}: ${response.statusText}`;
+                const errorMsg = payload?.error?.message || data?.error || `HTTP ${response.status}: ${response.statusText}`;
                 alert(`Error: ${errorMsg}`);
                 return;
             }
@@ -187,12 +189,19 @@ export class TaskSubgraphsModule extends BaseModule {
     
     buildSearchParams(extraParams = {}) {
         const params = new URLSearchParams({
-            folder: this._folder,
             show_failed_count: this._fetchDataParams.show_failed_count,
             ...this._fetchDataParams,
             ...extraParams
         });
+        if (!this._revision) params.set('folder', this._folder);
         return params;
+    }
+
+    searchAPIURL() {
+        if (!this._revision) {
+            return this.api_url;
+        }
+        return `/api/v1/runs/${encodeURIComponent(this._folder)}/revisions/${encodeURIComponent(this._revision)}/charts/${encodeURIComponent(this.id)}`;
     }
 
     resetPlot() {
@@ -261,4 +270,4 @@ export class TaskSubgraphsModule extends BaseModule {
     _setupZoomAndScroll() {
         // do nothing, we don't support zoom and scroll for task subgraphs
     }
-} 
+}

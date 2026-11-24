@@ -1,5 +1,5 @@
 {% set name = "taskvine-report-tool" %}
-{% set version = "3.2.7.1" %}
+{% set version = "2026.8.0" %}
 
 package:
   name: {{ name|lower }}
@@ -19,27 +19,33 @@ build:
 
 requirements:
   host:
-    - python >=3.7
+    - python >=3.10
     - pip
     - setuptools
     - python-graphviz
     - tqdm
     - bitarray
-    - pandas
     - cloudpickle
     - rich
     - flask
     - pytz
+    - polars >=0.20
+    - pyarrow
+    - numpy
+    - matplotlib
   run:
-    - python >=3.7
+    - python >=3.10
     - flask
-    - pandas
     - cloudpickle
     - rich
     - tqdm
     - bitarray
     - pytz
     - python-graphviz
+    - polars >=0.20
+    - pyarrow
+    - numpy
+    - matplotlib
 
 test:
   imports:
@@ -57,7 +63,7 @@ about:
   home: https://github.com/cooperative-computing-lab/taskvine-report-tool
   license: MIT
   license_family: MIT
-  license_file: LICENSE
+  license_file: COPYING
   summary: "Visualization and analysis tool for TaskVine execution logs"
   description: |
     TaskVine Report Tool provides visualization and analysis capabilities
@@ -68,4 +74,4 @@ about:
 
 extra:
   recipe-maintainers:
-    - jzhou24 
+    - jzhou24

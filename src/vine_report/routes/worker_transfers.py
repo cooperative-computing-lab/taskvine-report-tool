@@ -1,3 +1,4 @@
+from src.vine_report.request_context import get_run_snapshot
 from src.utils import *
 from flask import Blueprint, jsonify, current_app
 
@@ -6,7 +7,7 @@ worker_transfers_bp = Blueprint('worker_transfers', __name__, url_prefix='/api')
 def _get_worker_transfer_data(role):
     try:
         csv_attr = "csv_file_worker_incoming_transfers" if role == "incoming" else "csv_file_worker_outgoing_transfers"
-        df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].__getattribute__(csv_attr))
+        df = read_csv_frame(get_run_snapshot().__getattribute__(csv_attr))
 
         data = extract_series_points_dict(df, 'time')
 
@@ -23,7 +24,7 @@ def _get_worker_transfer_data(role):
             'y_tick_formatter': d3_int_formatter(),
         })
     except Exception as e:
-        current_app.config["RUNTIME_STATE"].log_error(f"Error in get_worker_{role}_transfers: {e}")
+        get_run_snapshot().log_error(f"Error in get_worker_{role}_transfers: {e}")
         return jsonify({'error': str(e)}), 500
 
 

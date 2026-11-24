@@ -1,0 +1,63 @@
+# time manager_pid MANAGER manager_pid START|END time_from_origin
+# time manager_pid WORKER worker_id CONNECTION host:port
+# time manager_pid WORKER worker_id DISCONNECTION (UNKNOWN|IDLE_OUT|FAST_ABORT|FAILURE|STATUS_WORKER|EXPLICIT|XFER_ERRORS)
+# time manager_pid WORKER worker_id RESOURCES {resources}
+# time manager_pid WORKER worker_id CACHE_UPDATE filename size_in_mb wall_time_us start_time_us
+# time manager_pid WORKER worker_id TRANSFER (INPUT|OUTPUT) filename size_in_mb wall_time_us start_time_us
+# time manager_pid CATEGORY name MAX {resources_max_per_task}
+# time manager_pid CATEGORY name MIN {resources_min_per_task_per_worker}
+# time manager_pid CATEGORY name FIRST (FIXED|MAX|MIN_WASTE|MAX_THROUGHPUT) {resources_requested}
+# time manager_pid TASK task_id WAITING category_name (FIRST_RESOURCES|MAX_RESOURCES) attempt_number {resources_requested}
+# time manager_pid TASK task_id RUNNING worker_id (FIRST_RESOURCES|MAX_RESOURCES) {resources_allocated}
+# time manager_pid TASK task_id WAITING_RETRIEVAL worker_id
+# time manager_pid TASK task_id RETRIEVED (SUCCESS|UNKNOWN|INPUT_MISSING|OUTPUT_MISSING|STDOUT_MISSING|SIGNAL|RESOURCE_EXHAUSTION|MAX_RETRIES|MAX_END_TIME|MAX_WALL_TIME|FORSAKEN) {limits_exceeded} {resources_measured}
+# time manager_pid TASK task_id DONE (SUCCESS|UNKNOWN|INPUT_MISSING|OUTPUT_MISSING|STDOUT_MISSING|SIGNAL|RESOURCE_EXHAUSTION|MAX_RETRIES|MAX_END_TIME|MAX_WALL_TIME|FORSAKEN) exit_code
+# time manager_pid LIBRARY library_id (WAITING|SENT|STARTED|FAILURE) worker_id
+# time manager_pid APPLICATION message*
+1795476917346414 2590730 MANAGER 2590730 START 0
+1795476917348302 2590730 TASK 1 READY default FIRST_RESOURCES 1 {"disk":[0,"MB"],"cores":[1,"cores"]}
+1795476917348330 2590730 TASK 2 READY default FIRST_RESOURCES 1 {"disk":[0,"MB"],"cores":[1,"cores"]}
+1795476917348348 2590730 TASK 3 READY default FIRST_RESOURCES 1 {"disk":[0,"MB"],"cores":[1,"cores"]}
+1795476917348364 2590730 TASK 4 READY default FIRST_RESOURCES 1 {"disk":[0,"MB"],"cores":[1,"cores"]}
+1795476917348381 2590730 TASK 5 READY default FIRST_RESOURCES 1 {"disk":[0,"MB"],"cores":[64,"cores"]}
+1795476917356492 2590730 WORKER worker-4d22627a2fdfe1ebaae700917cde9c4f CONNECTION 127.0.0.1:34776
+1795476917356547 2590730 WORKER worker-4d22627a2fdfe1ebaae700917cde9c4f RESOURCES {"memory":[2000,"MB"],"disk":[8000,"MB"],"cores":[4,"cores"]}
+1795476917356594 2590730 TASK 1 RUNNING worker-4d22627a2fdfe1ebaae700917cde9c4f  FIRST_RESOURCES {"time_commit_start":[1795476917.356558,"s"],"time_commit_end":[1795476917.356587,"s"],"time_input_mgr":[2.9e-05,"s"],"size_input_mgr":[0,"MB"],"memory":[500,"MB"],"disk":[1500,"MB"],"gpus":[0,"gpus"],"cores":[1,"cores"]}
+1795476917356622 2590730 TASK 2 RUNNING worker-4d22627a2fdfe1ebaae700917cde9c4f  FIRST_RESOURCES {"time_commit_start":[1795476917.356602,"s"],"time_commit_end":[1795476917.356616,"s"],"time_input_mgr":[1.4e-05,"s"],"size_input_mgr":[0,"MB"],"memory":[500,"MB"],"disk":[1500,"MB"],"gpus":[0,"gpus"],"cores":[1,"cores"]}
+1795476917356649 2590730 TASK 3 RUNNING worker-4d22627a2fdfe1ebaae700917cde9c4f  FIRST_RESOURCES {"time_commit_start":[1795476917.356629,"s"],"time_commit_end":[1795476917.356644,"s"],"time_input_mgr":[1.5e-05,"s"],"size_input_mgr":[0,"MB"],"memory":[500,"MB"],"disk":[1500,"MB"],"gpus":[0,"gpus"],"cores":[1,"cores"]}
+1795476917356673 2590730 TASK 4 RUNNING worker-4d22627a2fdfe1ebaae700917cde9c4f  FIRST_RESOURCES {"time_commit_start":[1795476917.356656,"s"],"time_commit_end":[1795476917.356668,"s"],"time_input_mgr":[1.2e-05,"s"],"size_input_mgr":[0,"MB"],"memory":[500,"MB"],"disk":[1500,"MB"],"gpus":[0,"gpus"],"cores":[1,"cores"]}
+1795476922363121 2590730 TASK 1 RETRIEVED CANCELLED  -1  {} {"time_commit_start":[1795476917.356558,"s"],"time_commit_end":[1795476917.356587,"s"],"time_input_mgr":[2.9e-05,"s"],"size_input_mgr":[0,"MB"]}
+1795476922363156 2590730 TASK 2 RETRIEVED CANCELLED  -1  {} {"time_commit_start":[1795476917.356602,"s"],"time_commit_end":[1795476917.356616,"s"],"time_input_mgr":[1.4e-05,"s"],"size_input_mgr":[0,"MB"]}
+1795476922363174 2590730 TASK 3 RETRIEVED CANCELLED  -1  {} {"time_commit_start":[1795476917.356629,"s"],"time_commit_end":[1795476917.356644,"s"],"time_input_mgr":[1.5e-05,"s"],"size_input_mgr":[0,"MB"]}
+1795476922363204 2590730 TASK 4 RETRIEVED CANCELLED  -1  {} {"time_commit_start":[1795476917.356656,"s"],"time_commit_end":[1795476917.356668,"s"],"time_input_mgr":[1.2e-05,"s"],"size_input_mgr":[0,"MB"]}
+1795476922363212 2590730 TASK 5 RETRIEVED CANCELLED  -1  {} {}
+1795476922363230 2590730 TASK 6 READY default FIRST_RESOURCES 1 {"disk":[0,"MB"],"cores":[1,"cores"]}
+1795476922363242 2590730 TASK 7 READY default FIRST_RESOURCES 1 {"disk":[0,"MB"],"cores":[1,"cores"]}
+1795476922363250 2590730 TASK 8 READY default FIRST_RESOURCES 1 {"disk":[0,"MB"],"cores":[1,"cores"]}
+1795476922363258 2590730 TASK 9 READY default FIRST_RESOURCES 1 {"disk":[0,"MB"],"cores":[1,"cores"]}
+1795476922363289 2590730 TASK 5 DONE CANCELLED  -1 
+1795476922363311 2590730 TASK 4 DONE CANCELLED  -1 
+1795476922363324 2590730 TASK 3 DONE CANCELLED  -1 
+1795476922363333 2590730 TASK 2 DONE CANCELLED  -1 
+1795476922363341 2590730 TASK 1 DONE CANCELLED  -1 
+1795476922363380 2590730 TASK 6 RUNNING worker-4d22627a2fdfe1ebaae700917cde9c4f  FIRST_RESOURCES {"time_commit_start":[1795476922.363357,"s"],"time_commit_end":[1795476922.363374,"s"],"time_input_mgr":[1.7e-05,"s"],"size_input_mgr":[0,"MB"],"memory":[500,"MB"],"disk":[1500,"MB"],"gpus":[0,"gpus"],"cores":[1,"cores"]}
+1795476922363403 2590730 TASK 7 RUNNING worker-4d22627a2fdfe1ebaae700917cde9c4f  FIRST_RESOURCES {"time_commit_start":[1795476922.363388,"s"],"time_commit_end":[1795476922.363398,"s"],"time_input_mgr":[1e-05,"s"],"size_input_mgr":[0,"MB"],"memory":[500,"MB"],"disk":[1500,"MB"],"gpus":[0,"gpus"],"cores":[1,"cores"]}
+1795476922363424 2590730 TASK 8 RUNNING worker-4d22627a2fdfe1ebaae700917cde9c4f  FIRST_RESOURCES {"time_commit_start":[1795476922.363409,"s"],"time_commit_end":[1795476922.36342,"s"],"time_input_mgr":[1.1e-05,"s"],"size_input_mgr":[0,"MB"],"memory":[500,"MB"],"disk":[1500,"MB"],"gpus":[0,"gpus"],"cores":[1,"cores"]}
+1795476922363451 2590730 TASK 9 RUNNING worker-4d22627a2fdfe1ebaae700917cde9c4f  FIRST_RESOURCES {"time_commit_start":[1795476922.36343,"s"],"time_commit_end":[1795476922.363446,"s"],"time_input_mgr":[1.6e-05,"s"],"size_input_mgr":[0,"MB"],"memory":[500,"MB"],"disk":[1500,"MB"],"gpus":[0,"gpus"],"cores":[1,"cores"]}
+1795476922366868 2590730 TASK 6 WAITING_RETRIEVAL worker-4d22627a2fdfe1ebaae700917cde9c4f 
+1795476922366878 2590730 CATEGORY default MAX {}
+1795476922366881 2590730 CATEGORY default MIN {}
+1795476922366883 2590730 CATEGORY default FIRST FIXED {}
+1795476922366894 2590730 TASK 6 RETRIEVED SUCCESS  0  {} {"time_worker_start":[1795476922.364163,"s"],"time_worker_end":[1795476922.36683,"s"],"time_output_mgr":[1e-06,"s"],"size_output_mgr":[0,"MB"],"time_commit_start":[1795476922.363357,"s"],"time_commit_end":[1795476922.363374,"s"],"time_input_mgr":[1.7e-05,"s"],"size_input_mgr":[0,"MB"],"start":[1795476922.364163,"s"],"end":[1795476922.36683,"s"],"wall_time":[0.002667,"s"],"memory":[500,"MB"],"disk":[1500,"MB"],"gpus":[0,"gpus"],"cores":[1,"cores"]}
+1795476922366920 2590730 TASK 6 DONE SUCCESS  0 
+1795476922366962 2590730 TASK 7 WAITING_RETRIEVAL worker-4d22627a2fdfe1ebaae700917cde9c4f 
+1795476922366974 2590730 TASK 7 RETRIEVED SUCCESS  0  {} {"time_worker_start":[1795476922.36436,"s"],"time_worker_end":[1795476922.366874,"s"],"time_output_mgr":[1e-06,"s"],"size_output_mgr":[0,"MB"],"time_commit_start":[1795476922.363388,"s"],"time_commit_end":[1795476922.363398,"s"],"time_input_mgr":[1e-05,"s"],"size_input_mgr":[0,"MB"],"start":[1795476922.36436,"s"],"end":[1795476922.366874,"s"],"wall_time":[0.002514,"s"],"memory":[500,"MB"],"disk":[1500,"MB"],"gpus":[0,"gpus"],"cores":[1,"cores"]}
+1795476922366995 2590730 TASK 7 DONE SUCCESS  0 
+1795476922367133 2590730 TASK 9 WAITING_RETRIEVAL worker-4d22627a2fdfe1ebaae700917cde9c4f 
+1795476922367147 2590730 TASK 9 RETRIEVED SUCCESS  0  {} {"time_worker_start":[1795476922.364749,"s"],"time_worker_end":[1795476922.367087,"s"],"time_output_mgr":[0,"s"],"size_output_mgr":[0,"MB"],"time_commit_start":[1795476922.36343,"s"],"time_commit_end":[1795476922.363446,"s"],"time_input_mgr":[1.6e-05,"s"],"size_input_mgr":[0,"MB"],"start":[1795476922.364749,"s"],"end":[1795476922.367087,"s"],"wall_time":[0.002338,"s"],"memory":[500,"MB"],"disk":[1500,"MB"],"gpus":[0,"gpus"],"cores":[1,"cores"]}
+1795476922367175 2590730 TASK 9 DONE SUCCESS  0 
+1795476922367377 2590730 TASK 8 WAITING_RETRIEVAL worker-4d22627a2fdfe1ebaae700917cde9c4f 
+1795476922367390 2590730 TASK 8 RETRIEVED SUCCESS  0  {} {"time_worker_start":[1795476922.364538,"s"],"time_worker_end":[1795476922.367342,"s"],"time_output_mgr":[0,"s"],"size_output_mgr":[0,"MB"],"time_commit_start":[1795476922.363409,"s"],"time_commit_end":[1795476922.36342,"s"],"time_input_mgr":[1.1e-05,"s"],"size_input_mgr":[0,"MB"],"start":[1795476922.364538,"s"],"end":[1795476922.367342,"s"],"wall_time":[0.002804,"s"],"memory":[500,"MB"],"disk":[1500,"MB"],"gpus":[0,"gpus"],"cores":[1,"cores"]}
+1795476922367416 2590730 TASK 8 DONE SUCCESS  0 
+1795476922375660 2590730 WORKER worker-4d22627a2fdfe1ebaae700917cde9c4f DISCONNECTION EXPLICIT
+1795476922375822 2590730 MANAGER 2590730 END 5029922

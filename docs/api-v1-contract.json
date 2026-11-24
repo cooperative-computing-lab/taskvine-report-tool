@@ -1,0 +1,52 @@
+{
+  "schema_version": "report-api/v1",
+  "compatibility": {
+    "additive_fields_allowed": true,
+    "identity_rule": "Every revision-scoped response repeats the resolved run_id and revision in both JSON and X-TaskVine headers.",
+    "breaking_change_rule": "Removing or renaming an endpoint, field, header, or error code requires a new major API path."
+  },
+  "envelopes": {
+    "success": ["schema_version", "request_id", "data"],
+    "pinned_success": ["schema_version", "request_id", "run_id", "revision", "data"],
+    "error": ["schema_version", "request_id", "error.code", "error.message"]
+  },
+  "endpoints": [
+    {"method": "GET", "path": "/api/v1/health", "identity": "service"},
+    {"method": "GET", "path": "/api/v1/diagnostics", "identity": "service"},
+    {"method": "GET", "path": "/api/v1/catalog", "identity": "service"},
+    {"method": "GET", "path": "/api/v1/runs", "identity": "service"},
+    {"method": "GET", "path": "/api/v1/compare?runs=<run_id>,<run_id>", "identity": "multi-run"},
+    {"method": "GET", "path": "/api/v1/runs/<run_id>", "identity": "pinned"},
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/watch", "identity": "run-watch"},
+    {"method": "POST", "path": "/api/v1/runs/<run_id>/refresh", "identity": "pinned"},
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/revisions/<revision>/summary", "identity": "pinned"},
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/revisions/<revision>/tasks", "identity": "pinned"},
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/revisions/<revision>/files", "identity": "pinned"},
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/revisions/<revision>/workers", "identity": "pinned"},
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/revisions/<revision>/metrics/<metric_id>", "identity": "pinned"},
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/revisions/<revision>/charts/<chart_id>", "identity": "pinned"},
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/revisions/<revision>/exports/<chart_id>.csv", "identity": "pinned"}
+  ],
+  "error_codes": [
+    "invalid_parameter",
+    "invalid_revision",
+    "invalid_run_id",
+    "logs_dir_not_found",
+    "run_not_found",
+    "run_data_unavailable",
+    "run_data_invalid",
+    "revision_not_found",
+    "chart_not_found",
+    "chart_request_failed",
+    "metric_not_found",
+    "export_not_found",
+    "parse_manifest_invalid",
+    "parse_diagnostics_invalid",
+    "parse_in_progress",
+    "snapshot_source_changed",
+    "snapshot_pointer_invalid",
+    "snapshot_manifest_invalid",
+    "snapshot_identity_mismatch",
+    "snapshot_integrity_failed"
+  ]
+}

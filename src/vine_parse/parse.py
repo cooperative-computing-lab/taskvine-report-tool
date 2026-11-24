@@ -18,6 +18,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from src.vine_parse.data_parser import DataParser
 from src.vine_parse.csv_manager import CSVManager
+from src.vine_parse.diagnostics import inspect_run, write_parse_manifest
 from src.utils import check_pip_updates
 from src import __version__
 
@@ -123,6 +124,17 @@ def sanitize_run_name(name):
     return cleaned or "taskvine-debug"
 
 
+def parse_timezone_offset(value):
+    match = re.fullmatch(r"([+-])(\d{2})(\d{2})", value or "")
+    if not match:
+        raise argparse.ArgumentTypeError("timezone offset must use ±HHMM, for example -0500")
+    sign, hours, minutes = match.groups()
+    if int(hours) > 23 or int(minutes) > 59:
+        raise argparse.ArgumentTypeError("timezone offset is outside the valid range")
+    seconds = int(hours) * 3600 + int(minutes) * 60
+    return -seconds if sign == "-" else seconds
+
+
 def prepare_debug_file_template(debug_file, logs_dir):
     base = Path(logs_dir).resolve()
     base.mkdir(parents=True, exist_ok=True)
@@ -147,7 +159,7 @@ def prepare_debug_file_template(debug_file, logs_dir):
     return str(run_dir)
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(
         prog='vine_parse',
         description='Parse TaskVine execution logs and generate analysis data'
@@ -187,6 +199,14 @@ def main():
         help='Enable debug mode'
     )
 
+    parser.add_argument(
+        '--timezone-offset',
+        type=parse_timezone_offset,
+        default=None,
+        metavar='±HHMM',
+        help='Explicit debug wall-clock offset when neither debug nor transactions can prove it.'
+    )
+
     group.add_argument(
         '-R', '--recursive',
         action='store_true',
@@ -197,6 +217,13 @@ def main():
         '--debug-file',
         type=str,
         help='Standalone debug file. vine_parse will create a minimal run folder in the current directory.'
+    )
+
+    group.add_argument(
+        '--doctor',
+        type=str,
+        metavar='RUN_DIR',
+        help='Inspect one run for log compatibility without generating report data.'
     )
 
     parser.add_argument(
@@ -226,7 +253,20 @@ def main():
         help='Downsample point count (default: 10000)'
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+
+    if args.doctor:
+        result = inspect_run(args.doctor, __version__, persist=True)
+        print("{} Compatibility preflight: {}".format(
+            "✅" if result["status"] == "PASS" else "⚠️" if result["status"] == "PARTIAL" else "❌",
+            result["status"],
+        ))
+        print("Diagnostics: {}".format(
+            Path(args.doctor).expanduser().resolve() / "vine-logs" / "parse-diagnostics.json"
+        ))
+        if result.get("partial_reasons"):
+            print("Reasons: {}".format(", ".join(result["partial_reasons"])))
+        return 0 if result["status"] == "PASS" else 2 if result["status"] == "PARTIAL" else 1
 
     check_pip_updates()
 
@@ -286,15 +326,20 @@ def main():
     # process each directory
     success = 0
     failed = 0
+    partial = 0
 
     for template in full_paths:
         print(f"\n=== Start parsing: {template}")
         try:
             data_parser = DataParser(template, debug_mode=args.debug, 
                                      enablee_checkpoint_pkl_files=args.checkpoint_pkl_files, 
+                                     timezone_offset=args.timezone_offset,
                                     )
             if args.load_pkl_files:
                 data_parser.load_pkl_files()
+                data_parser.diagnostics.data = inspect_run(
+                    template, __version__, persist=True
+                )
             else:
                 data_parser.parse_logs()
 
@@ -304,18 +349,33 @@ def main():
                                      downsample_task_count=args.downsample_task_count,
                                      downsample_point_count=args.downsample_point_count)
             csv_manager.generate_csv_files()
+            manifest_path = write_parse_manifest(template, data_parser.diagnostics.data)
+            if data_parser.diagnostics.data.get("status") == "PARTIAL":
+                partial += 1
+                print(f"⚠️  Parsed with incomplete compatibility evidence: {template}")
+            print(f"Compatibility diagnostics: {data_parser.diagnostics.path}")
+            print(f"Parse manifest: {manifest_path}")
             success += 1
             print(f"✅ Successfully processed: {template}")
         except Exception as e:
             print(f"❌ Error processing {template}")
             failed += 1
+            if 'data_parser' in locals() and getattr(data_parser, 'runtime_template', None) == template:
+                if data_parser.diagnostics.data.get("status") != "FAIL":
+                    data_parser.diagnostics.finalize(error=e, stage="projection")
+                    data_parser.diagnostics.write()
             print(tb.format_exc())
 
     if success > 0:
         print(f"\n🎉 {success} log {'directory' if success == 1 else 'directories'} processed successfully!")
     if failed > 0:
         print(f"❌ {failed} log {'directory' if failed == 1 else 'directories'} failed to process")
+        return 1
+    if partial > 0:
+        print(f"⚠️  {partial} log {'directory is' if partial == 1 else 'directories are'} partial; inspect parse-diagnostics.json")
+        return 2
+    return 0
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

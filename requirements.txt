@@ -1,10 +1,11 @@
 Flask
-pandas
 rich
 cloudpickle
 tqdm
 bitarray
 pytz
 graphviz
-polars
+polars>=0.20
 pyarrow
+numpy
+matplotlib

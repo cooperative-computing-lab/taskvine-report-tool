@@ -1,3 +1,4 @@
+from src.vine_report.request_context import get_run_snapshot
 from src.utils import *
 from flask import Blueprint, jsonify, current_app
 
@@ -7,7 +8,7 @@ worker_lifetime_bp = Blueprint('worker_lifetime', __name__, url_prefix='/api')
 @check_and_reload_data()
 def get_worker_lifetime():
     try:
-        df = read_csv_to_fd(current_app.config["RUNTIME_STATE"].csv_file_worker_lifetime)
+        df = read_csv_frame(get_run_snapshot().csv_file_worker_lifetime)
         points = extract_points_from_df(df, 'ID', 'LifeTime (s)')
         points = [[int(p[0]), float(p[1])] for p in points]
         x_domain = extract_x_range_from_points(points)
@@ -22,10 +23,11 @@ def get_worker_lifetime():
             'x_tick_formatter': d3_int_formatter(),
             'y_tick_formatter': d3_time_formatter(),
             'idx_to_worker_key': {
-                int(row['ID']): row['Worker IP Port'] for _, row in df.iterrows()
+                int(row['ID']): row['Worker IP Port']
+                for row in df.select('ID', 'Worker IP Port').iter_rows(named=True)
             },
         })
 
     except Exception as e:
-        current_app.config["RUNTIME_STATE"].log_error(f"Error in get_worker_lifetime: {e}")
+        get_run_snapshot().log_error(f"Error in get_worker_lifetime: {e}")
         return jsonify({'error': str(e)}), 500

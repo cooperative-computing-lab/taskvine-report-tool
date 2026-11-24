@@ -1,24 +1,26 @@
 from pathlib import Path
 import math
-import random
 import os
 import hashlib
-import math
-import random
-import bisect
-from rich.progress import Progress, SpinnerColumn, TimeElapsedColumn, TimeRemainingColumn, MofNCompleteColumn, BarColumn
 import polars as pl
 import numpy as np
 import functools
 import json
-import pandas as pd
-import cloudpickle
-from flask import current_app
-import shutil
 import subprocess
 import sys
 
+from src.runtime_utils import (
+    TASK_STATUS_NAMES,
+    count_elements_after,
+    create_progress_bar,
+    ensure_dir,
+    floor_decimal,
+    get_size_unit_and_scale,
+)
+
 def check_pip_updates():
+    if os.environ.get("TASKVINE_CHECK_UPDATES", "").lower() not in {"1", "true", "yes"}:
+        return
     try:
         package_name = "taskvine-report-tool"
         
@@ -51,24 +53,12 @@ def check_pip_updates():
         pass
 
 
-def floor_decimal(x, decimal_places):
-    factor = 10 ** decimal_places
-    return math.floor(x * factor) / factor
-
-def get_size_unit_and_scale(max_file_size_mb) -> tuple[str, float]:
-    if max_file_size_mb >= 1024 * 1024:
-        return 'TB', 1 / (1024 * 1024)
-    elif max_file_size_mb >= 1024:
-        return 'GB', 1 / 1024
-    elif max_file_size_mb >= 1:
-        return 'MB', 1
-    elif max_file_size_mb >= 1 / 1024:
-        return 'KB', 1024
-    else:
-        return 'Bytes', 1024 * 1024
-
 def file_list_formatter(file_list):
-    return ', '.join([f for f in file_list if not f.startswith('file-meta-') and not f.startswith('file-buffer-')])
+    visible_files = (
+        name for name in file_list
+        if not name.startswith('file-meta-') and not name.startswith('file-buffer-')
+    )
+    return ', '.join(sorted(visible_files))
 
 def compute_linear_tick_values(domain, num_ticks=5, round_digits=2):
     start, end = domain
@@ -337,20 +327,22 @@ def prefer_zero_else_max(series):
     return series.max()
 
 def get_current_time_domain():
-    csv_file_time_domain = current_app.config["RUNTIME_STATE"].csv_file_time_domain
+    from src.vine_report.request_context import get_run_snapshot
+    csv_file_time_domain = get_run_snapshot().csv_file_time_domain
     if not os.path.exists(csv_file_time_domain):
         raise ValueError(f"Time domain file not found: {csv_file_time_domain}")
     
-    df = pd.read_csv(csv_file_time_domain)
-    min_time = df['MIN_TIME'].iloc[0]
-    max_time = df['MAX_TIME'].iloc[0]
-    return [0, max_time - min_time]
+    df = pl.read_csv(csv_file_time_domain, infer_schema_length=None)
+    min_time = float(df['MIN_TIME'][0])
+    max_time = float(df['MAX_TIME'][0])
+    return [0.0, max_time - min_time]
 
 def check_and_reload_data():
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            current_app.config["RUNTIME_STATE"].reload_data_if_needed()
+            from src.vine_report.request_context import get_run_snapshot
+            snapshot = get_run_snapshot()
 
             response = func(*args, **kwargs)
 
@@ -370,7 +362,7 @@ def check_and_reload_data():
                 response_size = 0
 
             route_name = func.__name__
-            current_app.config["RUNTIME_STATE"].log_info(f"Route {route_name} response size: {response_size/1024/1024:.2f} MB")
+            snapshot.log_info(f"Route {route_name} response size: {response_size/1024/1024:.2f} MB")
 
             return response
         return wrapper
@@ -386,26 +378,20 @@ def all_subfolders_exists(parent: str, folder_names: list[str]) -> bool:
             return False
     return True
 
-def floor_decimal(x, decimal_places):
-    factor = 10 ** decimal_places
-    return math.floor(x * factor) / factor
+def is_missing_value(value):
+    """Return whether a scalar read from a dataframe represents missing data."""
+    if value is None:
+        return True
+    try:
+        return math.isnan(float(value))
+    except (TypeError, ValueError):
+        return False
 
-def get_size_unit_and_scale(max_file_size_mb) -> tuple[str, float]:
-    if max_file_size_mb >= 1024 * 1024:
-        return 'TB', 1 / (1024 * 1024)
-    elif max_file_size_mb >= 1024:
-        return 'GB', 1 / 1024
-    elif max_file_size_mb >= 1:
-        return 'MB', 1
-    elif max_file_size_mb >= 1 / 1024:
-        return 'KB', 1024
-    else:
-        return 'Bytes', 1024 * 1024
 
 def task_execution_safe_int(row, key):
     """Safely get int from row; handles missing column, NaN, and float. Used by task_execution_details."""
     val = row.get(key, None) if hasattr(row, "get") else None
-    if val is None or (hasattr(val, "__float__") and pd.isna(val)):
+    if is_missing_value(val):
         return None
     try:
         return int(float(val))
@@ -416,7 +402,7 @@ def task_execution_safe_int(row, key):
 def task_execution_safe_float(row, key):
     """Safely get float from row. Used by task_execution_details."""
     val = row.get(key, None) if hasattr(row, "get") else None
-    if val is None or pd.isna(val):
+    if is_missing_value(val):
         return None
     try:
         return float(val)
@@ -427,7 +413,7 @@ def task_execution_safe_float(row, key):
 def parse_worker_time_list(val):
     """Parse time_connected/time_disconnected from CSV (list as string)."""
     import ast
-    if pd.isna(val):
+    if is_missing_value(val):
         return []
     try:
         parsed = ast.literal_eval(val) if isinstance(val, str) else val
@@ -444,10 +430,47 @@ def get_time_domain_from_csv(csv_files_dir):
     time_domain_path = os.path.join(csv_files_dir, "time_domain.csv")
     if not os.path.exists(time_domain_path):
         return None
-    df = pd.read_csv(time_domain_path)
-    min_time = df["MIN_TIME"].iloc[0]
-    max_time = df["MAX_TIME"].iloc[0]
+    df = pl.read_csv(time_domain_path, infer_schema_length=None)
+    min_time = df["MIN_TIME"][0]
+    max_time = df["MAX_TIME"][0]
     return [0, max_time - min_time]
+
+
+def cumulative_size_frame(df):
+    """Normalize legacy per-time size deltas into a cumulative Polars frame."""
+    return (
+        df.select(
+            pl.col("time").cast(pl.Float64, strict=False),
+            pl.col("delta_size_mb").cast(pl.Float64, strict=False),
+        )
+        .drop_nulls()
+        .group_by("time")
+        .agg(pl.col("delta_size_mb").sum())
+        .sort("time")
+        .with_columns(
+            pl.col("delta_size_mb")
+            .cum_sum()
+            .clip(lower_bound=0)
+            .alias("cumulative_size_mb")
+        )
+    )
+
+
+def file_size_column(df):
+    """Return the size column and its declared unit from a file_sizes frame."""
+    tagged = next((column for column in df.columns if column.startswith("file_size_")), None)
+    if tagged is not None:
+        return tagged, tagged.rsplit("_", 1)[-1].upper()
+    if "file_size" in df.columns:
+        return "file_size", "MB"
+    return None, None
+
+
+def rows_to_frame(rows, schema=None):
+    """Build a Polars frame after scanning every row for stable mixed numeric types."""
+    if not rows:
+        return pl.DataFrame(schema=schema) if schema is not None else pl.DataFrame()
+    return pl.from_dicts(rows, schema=schema, infer_schema_length=None)
 
 
 def compute_task_execution_x_domain(successful_tasks, unsuccessful_tasks):
@@ -470,12 +493,12 @@ def compute_task_execution_x_domain(successful_tasks, unsuccessful_tasks):
     return [0, 1]
 
 
-def read_csv_to_fd(csv_path):
+def read_csv_frame(csv_path):
     if not os.path.exists(csv_path):
         raise FileNotFoundError(f"CSV file not found: {csv_path}")
     
     try:
-        df = pd.read_csv(csv_path)
+        df = pl.read_csv(csv_path, infer_schema_length=None)
     except Exception as e:
         raise RuntimeError(f"Failed to read CSV file {csv_path}: {e}")
 
@@ -487,19 +510,16 @@ def extract_points_from_df(df, x_col, *y_cols):
     if missing:
         raise KeyError(f"Missing columns in DataFrame: {missing}")
 
-    points = df[list(cols)].dropna().itertuples(index=False, name=None)
-    return list(points)
+    return list(df.select(cols).drop_nulls().iter_rows())
 
 
 def extract_series_points_dict(df, x_col):
     if x_col not in df.columns:
         raise KeyError(f"{x_col} not found in DataFrame")
     
-    melted = df.melt(id_vars=x_col, var_name='series', value_name='y').dropna()
-    
     return {
-        series: group[[x_col, 'y']].values.tolist()
-        for series, group in melted.groupby('series')
+        series: [list(row) for row in df.select([x_col, series]).drop_nulls().iter_rows()]
+        for series in df.columns if series != x_col
     }
 
 def scale_storage_series_points(storage_data):
@@ -643,45 +663,12 @@ def extract_size_points_from_df(df, x_col, y_col):
     unit, scale = get_size_unit_and_scale(max(p[1] for p in points))
     return [[x, y * scale] for x, y in points], unit
 
-def ensure_dir(path, replace=False):
-    if os.path.exists(path):
-        if replace:
-            shutil.rmtree(path)
-        else:
-            return
-    os.makedirs(path)
-
 def get_current_runtime_template():
-    return current_app.config["RUNTIME_STATE"].runtime_template
+    from src.vine_report.request_context import get_run_snapshot
+    return get_run_snapshot().runtime_template
 
 def request_template_matches_current_runtime_template(request):
-    return request.args.get('folder') == get_current_runtime_template()
-
-# Task status mappings
-TASK_STATUS_NAMES = {
-    0: 'successful',
-    1: 'unsuccessful-input-missing',
-    2: 'unsuccessful-output-missing', 
-    4: 'unsuccessful-stdout-missing',
-    1 << 3: 'unsuccessful-signal',
-    2 << 3: 'unsuccessful-resource-exhaustion',
-    3 << 3: 'unsuccessful-max-end-time',
-    4 << 3: 'unsuccessful-unknown',
-    5 << 3: 'unsuccessful-forsaken',
-    6 << 3: 'unsuccessful-max-retries',
-    7 << 3: 'unsuccessful-max-wall-time',
-    8 << 3: 'unsuccessful-monitor-error',
-    9 << 3: 'unsuccessful-output-transfer-error',
-    10 << 3: 'unsuccessful-location-missing',
-    11 << 3: 'unsuccessful-cancelled',
-    12 << 3: 'unsuccessful-library-exit',
-    13 << 3: 'unsuccessful-sandbox-exhaustion',
-    14 << 3: 'unsuccessful-missing-library',
-    15 << 3: 'unsuccessful-worker-disconnected',
-
-    42 << 3: 'undispatched',
-    43 << 3: 'failed-to-dispatch',
-}
+    return request.args.get('folder') == Path(get_current_runtime_template()).name
 
 def max_interval_overlap(intervals: list[tuple[float, float]]) -> int:
     """
@@ -722,48 +709,8 @@ def downsample_np_rows(arr, downsample_point_count=10000, value_col=1):
     downsampled = downsample_points(points, target_point_count=downsample_point_count, y_index=value_col)
     return np.array(downsampled)
 
-def downsample_df(df, downsample_point_count=10000, y_col=None, y_index=None):
-    """
-    Downsample a DataFrame using the same logic as downsample_np_rows.
-    
-    Args:
-        df: pandas DataFrame to downsample
-        downsample_point_count: target number of rows after downsampling
-        y_col: column name for y values (for preserving extremes)
-        y_index: column index for y values (alternative to y_col)
-        
-    Returns:
-        pandas DataFrame with downsampled data
-    """
-    if not downsample_point_count or downsample_point_count <= 0:
-        return df
-    if len(df) <= downsample_point_count:
-        return df
-
-    # Determine y_index if y_col is provided
-    if y_col is not None:
-        y_index = df.columns.get_loc(y_col)
-    elif y_index is None:
-        y_index = 1  # Default to second column
-    
-    # Convert to numpy array, downsample, then back to DataFrame
-    arr = df.values
-    downsampled_arr = downsample_np_rows(arr, downsample_point_count=downsample_point_count, value_col=y_index)
-    
-    # Create new DataFrame with same columns and preserve dtypes
-    result = pd.DataFrame(downsampled_arr, columns=df.columns)
-    
-    # Try to preserve original dtypes where possible
-    for col in df.columns:
-        try:
-            if df[col].dtype in ['int64', 'int32', 'float64', 'float32']:
-                result[col] = result[col].astype(df[col].dtype)
-        except:
-            pass  # Keep as-is if conversion fails
-            
-    return result
-
-def downsample_df_polars(df: pl.DataFrame, downsample_point_count=10000, y_col=None, y_index=None) -> pl.DataFrame:
+def downsample_df(df: pl.DataFrame, downsample_point_count=10000, y_col=None, y_index=None) -> pl.DataFrame:
+    """Downsample a Polars frame while preserving the original schema."""
     if not downsample_point_count or downsample_point_count <= 0:
         return df
     if df.height <= downsample_point_count:
@@ -774,7 +721,7 @@ def downsample_df_polars(df: pl.DataFrame, downsample_point_count=10000, y_col=N
     elif y_index is None:
         y_index = 1
 
-    arr = np.array([row for row in df.iter_rows()], dtype=object)
+    arr = df.to_numpy()
 
     downsampled_arr = downsample_np_rows(arr, downsample_point_count=downsample_point_count, value_col=y_index)
 
@@ -788,31 +735,17 @@ def downsample_df_polars(df: pl.DataFrame, downsample_point_count=10000, y_col=N
         new_cols.append(col)
     return pl.DataFrame(new_cols)
 
-def count_elements_after(item, lst):
-    try:
-        idx = lst.index(item)
-        return len(lst) - idx - 1
-    except ValueError:
-        return -1
+
+downsample_df_polars = downsample_df
 
 def string_contains_any(text, substrings):
     return any(s in text for s in substrings)
 
 def write_df_to_csv(df, csv_file_path, **kwargs):
-    if hasattr(df, "to_pandas"):
-        df = df.to_pandas()
-    if "index" not in kwargs:
-        kwargs["index"] = False
-    df.to_csv(csv_file_path, **kwargs)
-
-def create_progress_bar():
-    return Progress(
-        SpinnerColumn(),
-        "[progress.description]{task.description}",
-        BarColumn(),
-        MofNCompleteColumn(),
-        "[progress.percentage]{task.percentage:>3.0f}%",
-        TimeElapsedColumn(),
-        TimeRemainingColumn(),
-        refresh_per_second=2,
-    )
+    """Write a Polars frame; reject implicit dataframe-engine conversions."""
+    kwargs.pop("index", None)
+    if isinstance(df, pl.LazyFrame):
+        df = df.collect()
+    if not isinstance(df, pl.DataFrame):
+        raise TypeError(f"expected polars.DataFrame, got {type(df).__name__}")
+    df.write_csv(csv_file_path, **kwargs)

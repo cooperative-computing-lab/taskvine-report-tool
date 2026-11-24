@@ -3,8 +3,7 @@
 ## Environment Setup
 
 ```bash
-pip install --upgrade pip wheel twine
-pip install "setuptools>=65.0,<68.0"
+python -m pip install --upgrade pip build twine
 ```
 
 ## PyPI Authentication
@@ -27,9 +26,11 @@ chmod 600 ~/.pypirc
 ## PIP Upload
 
 ```bash
-rm -rf dist/ build/ *.egg-info/
-python setup.py sdist bdist_wheel
-twine upload dist/*
+python -m build
+python -m twine check dist/*
+
+# Only after CI, wheel-install acceptance, and an explicit release decision:
+python -m twine upload dist/*
 ```
 
 ## Conda Upload
@@ -50,10 +51,28 @@ anaconda upload dist/noarch/taskvine-report-tool-*.conda
 
 ## Python Version Requirement
 
-This package is restricted to Python >=3.7,<3.12
+This package supports Python 3.10 through 3.13. CI installs and tests each
+supported interpreter. Python 3.9 and older are rejected by package metadata.
 
 ```bash
 conda create -n taskvine-env python=3.11
 conda activate taskvine-env
 conda install -c jinzhou5042 taskvine-report-tool
 ```
+
+## Required release gates
+
+```bash
+python -m unittest discover -s tests -q
+npm ci
+npm audit --audit-level=high
+npx playwright install chromium
+npm run test:e2e
+python -m build
+python -m twine check dist/*
+```
+
+Also install the built wheel into a clean virtual environment and run
+`vine_parse --help`, `vine_report --help`, `vine_report gc --help`, and
+`vine_export --help`. Publishing to PyPI or Conda remains a credentialed,
+explicit release action.

@@ -1,29 +1,16 @@
 
 .legend-flex-container {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
     align-items: flex-start;
-    gap: 16px;
+    gap: 12px 24px;
     width: 100%;
     margin: 0 0 10px 0;
-    max-height: 20vh;
-    overflow-y: auto;
-    overflow-x: hidden;
-}
-
-.legend-flex-container::-webkit-scrollbar {
-    height: 0;
-    width: 8px;
-}
-
-.legend-flex-container::-webkit-scrollbar-thumb {
-    background-color: #ccc;
-    border-radius: 4px;
 }
 
 .legend-group {
-    flex: 1 1 0;
+    min-width: 0;
+    max-width: 100%;
     margin: 0;
     display: flex;
     flex-direction: column;
@@ -102,37 +89,6 @@
     background-color: #ddd;
 }
 
-.legend-group:nth-child(3),
-.legend-group:nth-child(4) {
-    min-width: 140px;
-    margin-left: auto;  /* Push these groups to the right */
-}
-
-.legend-group-title-container {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 6px;
-}
-
-.legend-help-icon {
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background-color: #eee;
-    color: #666;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    cursor: help;
-    user-select: none;
-}
-
-.legend-help-icon:hover {
-    background-color: #ddd;
-}
-
 /* Control groups in toolbox */
 .control-group {
     display: flex;
@@ -168,10 +124,21 @@
     gap: 10px;
 }
 
-.legend-item {
-    display: flex;
-    align-items: center;
-    margin-right: 15px;
+.legend-row {
+    width: 100%;
+    margin-bottom: 6px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
+    grid-auto-rows: minmax(30px, auto);
+    align-items: stretch;
+    gap: 6px 24px;
+}
+
+.legend-row .legend-item {
+    min-width: 0;
+    max-width: 100%;
+    margin: 0;
+    padding: 5px 6px;
 }
 
 .legend-checkbox {
@@ -184,11 +151,14 @@
     cursor: pointer;
     user-select: none;
     transition: opacity 0.2s;
+    overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     color: #333;
     font-size: 12px;
-    flex: 1;
+    min-width: 0;
+    max-width: 100%;
+    flex: 1 1 auto;
     padding-right: 2px;
 }
 

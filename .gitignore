@@ -37,6 +37,14 @@ MANIFEST
 pip-log.txt
 pip-delete-this-directory.txt
 
+# NFS placeholders for files unlinked while a report process still holds them
+.nfs*
+
+# Browser acceptance artifacts
+node_modules/
+playwright-report/
+test-results/
+
 # Unit test / coverage reports
 htmlcov/
 .tox/

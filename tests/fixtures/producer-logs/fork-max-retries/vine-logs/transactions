@@ -1,0 +1,38 @@
+# time manager_pid MANAGER manager_pid START|END time_from_origin
+# time manager_pid WORKER worker_id CONNECTION host:port
+# time manager_pid WORKER worker_id DISCONNECTION (UNKNOWN|IDLE_OUT|FAST_ABORT|FAILURE|STATUS_WORKER|EXPLICIT|XFER_ERRORS)
+# time manager_pid WORKER worker_id RESOURCES {resources}
+# time manager_pid WORKER worker_id CACHE_UPDATE filename size_in_mb wall_time_us start_time_us
+# time manager_pid WORKER worker_id TRANSFER (INPUT|OUTPUT) filename size_in_mb wall_time_us start_time_us
+# time manager_pid CATEGORY name MAX {resources_max_per_task}
+# time manager_pid CATEGORY name MIN {resources_min_per_task_per_worker}
+# time manager_pid CATEGORY name FIRST (FIXED|MAX|MIN_WASTE|MAX_THROUGHPUT) {resources_requested}
+# time manager_pid TASK task_id WAITING category_name (FIRST_RESOURCES|MAX_RESOURCES) attempt_number {resources_requested}
+# time manager_pid TASK task_id RUNNING worker_id (FIRST_RESOURCES|MAX_RESOURCES) {resources_allocated}
+# time manager_pid TASK task_id WAITING_RETRIEVAL worker_id
+# time manager_pid TASK task_id RETRIEVED (SUCCESS|UNKNOWN|INPUT_MISSING|OUTPUT_MISSING|STDOUT_MISSING|SIGNAL|RESOURCE_EXHAUSTION|MAX_RETRIES|MAX_END_TIME|MAX_WALL_TIME|FORSAKEN) {limits_exceeded} {resources_measured}
+# time manager_pid TASK task_id DONE (SUCCESS|UNKNOWN|INPUT_MISSING|OUTPUT_MISSING|STDOUT_MISSING|SIGNAL|RESOURCE_EXHAUSTION|MAX_RETRIES|MAX_END_TIME|MAX_WALL_TIME|FORSAKEN) exit_code
+# time manager_pid LIBRARY library_id (WAITING|SENT|STARTED|FAILURE) worker_id
+# time manager_pid APPLICATION message*
+1795476956142541 2592591 MANAGER 2592591 START 0
+1795476956143442 2592591 TASK 1 READY default FIRST_RESOURCES 1 {"disk":[0,"MB"],"cores":[1,"cores"]}
+1795476956143459 2592591 TASK 2 READY default FIRST_RESOURCES 1 {"disk":[0,"MB"],"cores":[1,"cores"]}
+1795476956153551 2592591 WORKER worker-3e6d3882eb2b0b1dc7417109497deab6 CONNECTION 127.0.0.1:48482
+1795476956153602 2592591 WORKER worker-3e6d3882eb2b0b1dc7417109497deab6 RESOURCES {"memory":[2000,"MB"],"disk":[8000,"MB"],"cores":[2,"cores"]}
+1795476956153661 2592591 TASK 1 RUNNING worker-3e6d3882eb2b0b1dc7417109497deab6  FIRST_RESOURCES {"time_commit_start":[1795476956.153614,"s"],"time_commit_end":[1795476956.153645,"s"],"time_input_mgr":[3.1e-05,"s"],"size_input_mgr":[0,"MB"],"memory":[1000,"MB"],"disk":[3000,"MB"],"gpus":[0,"gpus"],"cores":[1,"cores"]}
+1795476956153691 2592591 TASK 2 RUNNING worker-3e6d3882eb2b0b1dc7417109497deab6  FIRST_RESOURCES {"time_commit_start":[1795476956.15367,"s"],"time_commit_end":[1795476956.153686,"s"],"time_input_mgr":[1.6e-05,"s"],"size_input_mgr":[0,"MB"],"memory":[1000,"MB"],"disk":[3000,"MB"],"gpus":[0,"gpus"],"cores":[1,"cores"]}
+1795476956156834 2592591 TASK 1 WAITING_RETRIEVAL worker-3e6d3882eb2b0b1dc7417109497deab6 
+1795476956156845 2592591 CATEGORY default MAX {}
+1795476956156847 2592591 CATEGORY default MIN {}
+1795476956156849 2592591 CATEGORY default FIRST FIXED {}
+1795476956156862 2592591 TASK 1 RETRIEVED SUCCESS  0  {} {"time_worker_start":[1795476956.154077,"s"],"time_worker_end":[1795476956.156784,"s"],"time_output_mgr":[1e-06,"s"],"size_output_mgr":[0,"MB"],"time_commit_start":[1795476956.153614,"s"],"time_commit_end":[1795476956.153645,"s"],"time_input_mgr":[3.1e-05,"s"],"size_input_mgr":[0,"MB"],"start":[1795476956.154077,"s"],"end":[1795476956.156784,"s"],"wall_time":[0.002707,"s"],"memory":[1000,"MB"],"disk":[3000,"MB"],"gpus":[0,"gpus"],"cores":[1,"cores"]}
+1795476956156886 2592591 TASK 1 DONE SUCCESS  0 
+1795476959160565 2592591 WORKER worker-3e6d3882eb2b0b1dc7417109497deab6 DISCONNECTION FAILURE
+1795476959160630 2592591 TASK 2 READY default FIRST_RESOURCES 2 {"disk":[0,"MB"],"cores":[1,"cores"]}
+1795476965177030 2592591 WORKER worker-5786ca4f0c3eb82f9ce0faf3590e9897 CONNECTION 127.0.0.1:48490
+1795476965177087 2592591 WORKER worker-5786ca4f0c3eb82f9ce0faf3590e9897 RESOURCES {"memory":[2000,"MB"],"disk":[8000,"MB"],"cores":[2,"cores"]}
+1795476965177154 2592591 TASK 2 RUNNING worker-5786ca4f0c3eb82f9ce0faf3590e9897  FIRST_RESOURCES {"time_commit_start":[1795476965.17711,"s"],"time_commit_end":[1795476965.177144,"s"],"time_input_mgr":[3.4e-05,"s"],"size_input_mgr":[0,"MB"],"memory":[1000,"MB"],"disk":[3000,"MB"],"gpus":[0,"gpus"],"cores":[1,"cores"]}
+1795476968181180 2592591 WORKER worker-5786ca4f0c3eb82f9ce0faf3590e9897 DISCONNECTION FAILURE
+1795476968181239 2592591 TASK 2 RETRIEVED MAX_RETRIES  -1  {} {"time_commit_start":[1795476965.17711,"s"],"time_commit_end":[1795476965.177144,"s"],"time_input_mgr":[3.4e-05,"s"],"size_input_mgr":[0,"MB"]}
+1795476968181264 2592591 TASK 2 DONE MAX_RETRIES  -1 
+1795476974204554 2592591 MANAGER 2592591 END 18062662

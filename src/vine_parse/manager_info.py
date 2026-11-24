@@ -32,6 +32,11 @@ class ManagerInfo:
         self.current_max_time = None
         self.equivalent_tz = None
         self.checkpoint_processing_time_us = 0
+        # vine-graph fork: vault checkpoints by id, and simulated worker losses in order.
+        self.checkpoints = {}
+        self.simulated_losses = []
+        # Connections logged as workers that never became sessions (wrong password, probe links of the fork).
+        self.retracted_connections = 0
 
     def get_min_max_time(self):
         MIN_TIME = self.when_first_task_start_commit if self.when_first_task_start_commit is not None else self.time_start
